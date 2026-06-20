@@ -2,9 +2,9 @@ import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { Icon, type IconName } from '@/pass/icon';
-import { CITIES, fmtAgo, me, myListings, reviewsFor, USERS, usePass } from '@/pass/store';
+import { CITIES, me, myListings, USERS, usePass } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Avatar, BottomNav, Btn, Hatch, ReviewCard, Screen, shadow, VerifiedBadge } from '@/pass/ui';
+import { Avatar, BottomNav, Btn, Hatch, Screen, shadow, VerifiedBadge } from '@/pass/ui';
 import type { UserId } from '@/pass/data';
 
 const ROWS: { icon: IconName; label: string; route: '/manage' | '/impact' | '/saved' | '/safety' | '/settings' }[] = [
@@ -25,7 +25,6 @@ export default function Profile() {
   const givenCount = mine.filter((l) => l.taken).length;
   const cityName = CITIES.find((c) => c.id === user.cityId)?.name ?? CITIES[0].name;
   const dp = s.dp[s.currentUserId];
-  const reviews = reviewsFor(s, s.currentUserId);
 
   return (
     <Screen>
@@ -102,20 +101,6 @@ export default function Profile() {
           </View>
         </View>
 
-        {/* reviews received */}
-        <Text style={{ fontSize: 11, fontWeight: '700', color: C.muted, letterSpacing: 0.3, marginTop: 18, marginBottom: 11, marginLeft: 4 }}>REVIEWS</Text>
-        {reviews.length === 0 ? (
-          <View style={{ backgroundColor: C.surface, borderRadius: 18, padding: 16, ...shadow(8, 24, 0.3) }}>
-            <Text style={{ fontSize: 13.5, color: C.muted, lineHeight: 19 }}>No reviews yet. They appear here after someone you gave an item to rates you.</Text>
-          </View>
-        ) : (
-          <View style={{ gap: 11 }}>
-            {reviews.map((r) => (
-              <ReviewCard key={r.id} rating={r.rating} tags={r.tags} text={r.text} author={USERS[r.from].name} time={fmtAgo(r.ts)} />
-            ))}
-          </View>
-        )}
-
         {/* menu */}
         <View style={{ backgroundColor: C.surface, borderRadius: 18, marginTop: 16, overflow: 'hidden', ...shadow(8, 24, 0.3) }}>
           {ROWS.map((r, i) => (
@@ -127,20 +112,6 @@ export default function Profile() {
               <Icon name="forward" size={20} color={C.muted} />
             </Pressable>
           ))}
-        </View>
-
-        {/* marketplace (later) */}
-        <View style={{ backgroundColor: C.surface, borderRadius: 18, marginTop: 13, padding: 15, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 13, opacity: 0.6 }}>
-          <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="cart" size={17} color={C.muted} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 15, fontWeight: '600', color: C.ink }}>Marketplace</Text>
-            <Text style={{ fontSize: 11, color: C.muted }}>A separate space, maybe one day. Giving stays free.</Text>
-          </View>
-          <View style={{ backgroundColor: C.bg, borderRadius: radius.pill, paddingVertical: 4, paddingHorizontal: 9 }}>
-            <Text style={{ fontSize: 10, fontWeight: '700', color: C.muted }}>Later</Text>
-          </View>
         </View>
 
         {/* logout */}

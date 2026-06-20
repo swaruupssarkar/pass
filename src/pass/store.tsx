@@ -29,6 +29,9 @@ export type LocMode = 'city' | 'gps';
 export type DialogAction = { label: string; kind?: 'primary' | 'cancel' | 'destructive'; onPress?: () => void };
 export type Dialog = { title: string; message?: string; actions: DialogAction[] };
 
+export type NotifyPrefs = { near: boolean; chat: boolean; addr: { lat: number; lng: number; label: string } | null };
+const NOTIFY_RADIUS_KM = 100;
+
 const STORAGE_KEY = 'pass.state.v4';
 
 type State = {
@@ -82,6 +85,7 @@ type State = {
   // misc
   saved: Record<string, boolean>;
   blocked: Record<string, boolean>;
+  notify: Record<UserId, NotifyPrefs>;
   dp: Record<UserId, string | null>;
   onboarded: boolean;
   hydrated: boolean;
@@ -132,6 +136,7 @@ const INITIAL: State = {
   reportDone: false,
   saved: {},
   blocked: {},
+  notify: { u1: { near: true, chat: true, addr: null }, u2: { near: true, chat: true, addr: null } },
   dp: { u1: null, u2: null },
   onboarded: false,
   hydrated: false,
@@ -376,10 +381,15 @@ type Store = {
   toggleRateTag: (t: string) => void;
   // notifications
   markNotifsRead: () => void;
+  deleteNotif: (id: string) => void;
+  clearNotifs: () => void;
   openNotif: (n: Notification) => string | null;
   // report / onboarding
   submitReport: () => void;
   markOnboarded: () => void;
+  setNotifyNear: (on: boolean) => void;
+  setNotifyChat: (on: boolean) => void;
+  setNotifyAddress: (coords: Coords, label: string) => void;
   restart: () => void;
   // branded dialogs
   showAlert: (title: string, message?: string) => void;
@@ -551,7 +561,21 @@ export function PassProvider({ children }: { children: ReactNode }) {
             createdAt: Date.now(),
             taken: false,
           };
-          return { ...prev, listings: [listing, ...prev.listings], activeListingId: id };
+          const nearNotifs = (Object.keys(prev.notify) as UserId[])
+            .filter((uid) => uid !== prev.currentUserId)
+            .filter((uid) => {
+              const p = prev.notify[uid];
+              return p.near && p.addr && haversineKm(p.addr, { lat: listing.lat, lng: listing.lng }) <= NOTIFY_RADIUS_KM;
+            })
+            .map((uid) =>
+              notify(prev, { userId: uid, kind: 'item', title: 'New free item near you', body: listing.title, listingId: listing.id, route: '/detail' })
+            );
+          return {
+            ...prev,
+            listings: [listing, ...prev.listings],
+            activeListingId: id,
+            notifications: [...nearNotifs, ...prev.notifications],
+          };
         });
         return outId;
       },
@@ -618,11 +642,18 @@ export function PassProvider({ children }: { children: ReactNode }) {
           const id = threadId(req.toUserId, req.fromUserId);
           const l = prev.listings.find((x) => x.id === req.listingId);
           const seed: Message = { id: uid('m'), from: req.fromUserId, text: req.note, ts: req.createdAt };
+          const accept: Message = {
+            id: uid('m'),
+            from: req.toUserId,
+            text: `Accepted your request for ${l?.title ?? 'the item'}. Let's arrange the pickup!`,
+            ts: Date.now(),
+          };
           const existing = prev.threads[id] ?? [];
+          const msgs = existing.length === 0 ? [seed, accept] : [...existing, accept];
           return {
             ...prev,
             requests: prev.requests.map((r) => (r.id === requestId ? { ...r, status: 'accepted' } : r)),
-            threads: { ...prev.threads, [id]: [...existing, seed] },
+            threads: { ...prev.threads, [id]: msgs },
             threadListing: { ...prev.threadListing, [id]: req.listingId },
             notifications: [
               notify(prev, { userId: req.fromUserId, kind: 'request', title: `${USERS[req.toUserId].name} accepted your request`, body: `You can now chat about ${l?.title ?? 'the item'}.`, threadId: id, listingId: req.listingId, route: '/thread' }),
@@ -828,6 +859,11 @@ export function PassProvider({ children }: { children: ReactNode }) {
           notifications: prev.notifications.map((n) => (n.userId === prev.currentUserId ? { ...n, read: true } : n)),
         })),
 
+      deleteNotif: (id) =>
+        setS((prev) => ({ ...prev, notifications: prev.notifications.filter((n) => n.id !== id) })),
+      clearNotifs: () =>
+        setS((prev) => ({ ...prev, notifications: prev.notifications.filter((n) => n.userId !== prev.currentUserId) })),
+
       openNotif: (n) => {
         let route: string | null = n.route ?? null;
         setS((prev) => {
@@ -845,6 +881,14 @@ export function PassProvider({ children }: { children: ReactNode }) {
 
       submitReport: () => setS((prev) => ({ ...prev, reportDone: true })),
       markOnboarded: () => setS((prev) => (prev.onboarded ? prev : { ...prev, onboarded: true })),
+
+      setNotifyNear: (on) =>
+        setS((prev) => ({ ...prev, notify: { ...prev.notify, [prev.currentUserId]: { ...prev.notify[prev.currentUserId], near: on } } })),
+      setNotifyChat: (on) =>
+        setS((prev) => ({ ...prev, notify: { ...prev.notify, [prev.currentUserId]: { ...prev.notify[prev.currentUserId], chat: on } } })),
+      setNotifyAddress: (coords, label) =>
+        setS((prev) => ({ ...prev, notify: { ...prev.notify, [prev.currentUserId]: { ...prev.notify[prev.currentUserId], addr: { lat: coords.lat, lng: coords.lng, label } } } })),
+
       restart: () => setS({ ...INITIAL, hydrated: true }),
 
       showAlert: (title, message) =>
@@ -896,6 +940,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
       reviews: s.reviews,
       saved: s.saved,
       blocked: s.blocked,
+      notify: s.notify,
       dp: s.dp,
       radius: s.radius,
       activeMode: s.activeMode,
@@ -920,6 +965,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
     s.reviews,
     s.saved,
     s.blocked,
+    s.notify,
     s.dp,
     s.radius,
     s.activeMode,

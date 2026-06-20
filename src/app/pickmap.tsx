@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import MapView, { Marker, type Region } from 'react-native-maps';
@@ -14,10 +14,13 @@ import { Btn } from '@/pass/ui';
 export default function PickMap() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { s, setPickup } = usePass();
+  const { s, setPickup, setNotifyAddress } = usePass();
   const mapRef = useRef<MapView>(null);
+  const notifyMode = useLocalSearchParams().mode === 'notify';
 
-  const start = s.postCoords ?? s.userLoc ?? activeOrigin(s);
+  const start = notifyMode
+    ? s.notify[s.currentUserId].addr ?? s.userLoc ?? activeOrigin(s)
+    : s.postCoords ?? s.userLoc ?? activeOrigin(s);
   const [coords, setCoords] = useState({ lat: start.lat, lng: start.lng });
   const [query, setQuery] = useState('');
   const [suggests, setSuggests] = useState<Suggestion[]>([]);
@@ -55,7 +58,8 @@ export default function PickMap() {
   const confirm = async () => {
     setBusy(true);
     const address = await reverseGeocode(coords.lat, coords.lng);
-    setPickup(coords, address);
+    if (notifyMode) setNotifyAddress(coords, address);
+    else setPickup(coords, address);
     setBusy(false);
     router.back();
   };

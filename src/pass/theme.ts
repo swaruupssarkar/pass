@@ -68,8 +68,9 @@ export const TINTS = [
 // Diagonal hatch overlay used on every placeholder image in the design.
 // Uses the New Architecture CSS background-image support; degrades to the
 // flat tint underneath on platforms that ignore it.
-export const hatch = (gap = 16) =>
-  `repeating-linear-gradient(45deg, rgba(255,255,255,0.4) 0 ${gap / 2}px, transparent ${gap / 2}px ${gap}px)`;
+const hatchCache: Record<number, string> = {};
+export const hatch = (gap = 16): string =>
+  (hatchCache[gap] ??= `repeating-linear-gradient(45deg, rgba(255,255,255,0.4) 0 ${gap / 2}px, transparent ${gap / 2}px ${gap}px)`);
 
 export const radius = {
   sm: 12,

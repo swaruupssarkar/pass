@@ -56,7 +56,6 @@ export default function Post() {
     if (!s.postTitle.trim()) return showAlert('Add a title', 'Give your item a short title.');
     if (photos.length === 0) return showAlert('Add a photo', 'Add at least one photo so people can see the item.');
     if (!s.postCoords) {
-      // try to resolve a typed address before failing
       if (s.postAddress.trim()) {
         const place = await geocodeAddress(s.postAddress);
         if (place) setPickup({ lat: place.lat, lng: place.lng }, place.address);
@@ -70,105 +69,142 @@ export default function Post() {
   };
 
   return (
-    <Screen bg={C.surface} edges={['top', 'bottom']}>
-      <View style={{ borderBottomWidth: 1, borderBottomColor: C.line }}>
+    <Screen bg={C.bg} edges={['top', 'bottom']}>
+      <View style={{ backgroundColor: C.surface, borderBottomWidth: 1, borderBottomColor: C.line }}>
         <Header title={editing ? 'Edit listing' : 'Post an item'} />
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 18 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <Label text="Add photos" hint="(from your gallery or camera)" />
-        <View style={{ flexDirection: 'row', gap: 11, flexWrap: 'wrap' }}>
-          {photos.map((uri) => (
-            <View key={uri} style={{ width: 96, height: 96 }}>
-              <Image source={{ uri }} style={{ width: 96, height: 96, borderRadius: radius.lg }} contentFit="cover" />
-              <Pressable onPress={() => removePostPhoto(uri)} hitSlop={8} style={{ position: 'absolute', top: -6, right: -6, width: 24, height: 24, borderRadius: 12, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' }}>
-                <Icon name="close" size={14} color="#fff" />
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 28 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        {/* photos */}
+        <Section title="Photos" hint={`${photos.length}/4`}>
+          <View style={{ flexDirection: 'row', gap: 11, flexWrap: 'wrap' }}>
+            {photos.map((uri) => (
+              <View key={uri} style={{ width: 96, height: 96 }}>
+                <Image source={{ uri }} style={{ width: 96, height: 96, borderRadius: radius.md }} contentFit="cover" />
+                <Pressable onPress={() => removePostPhoto(uri)} hitSlop={8} style={{ position: 'absolute', top: -6, right: -6, width: 24, height: 24, borderRadius: 12, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon name="close" size={14} color="#fff" />
+                </Pressable>
+              </View>
+            ))}
+            {canAdd ? (
+              <Pressable onPress={pickFromGallery} style={{ width: 96, height: 96, borderRadius: radius.md, borderWidth: 2, borderColor: C.accent, borderStyle: 'dashed', backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center', gap: 3 }}>
+                <Icon name="image" size={24} color={C.accent} />
+                <Text style={{ fontSize: 11, fontWeight: '700', color: C.accent }}>Gallery</Text>
               </Pressable>
-            </View>
-          ))}
-          {canAdd ? (
-            <Pressable onPress={pickFromGallery} style={{ width: 96, height: 96, borderRadius: radius.lg, borderWidth: 2, borderColor: C.accent, borderStyle: 'dashed', backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="add" size={26} color={C.accent} />
-              <Text style={{ fontSize: 11, fontWeight: '700', color: C.accent, marginTop: 2 }}>Gallery</Text>
-            </Pressable>
-          ) : null}
-          {canAdd ? (
-            <Pressable onPress={takePhoto} style={{ width: 96, height: 96, borderRadius: radius.lg, borderWidth: 1, borderColor: C.line, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="camera" size={24} color={C.ink} />
-              <Text style={{ fontSize: 11, fontWeight: '700', color: C.ink, marginTop: 4 }}>Camera</Text>
-            </Pressable>
-          ) : null}
-        </View>
+            ) : null}
+            {canAdd ? (
+              <Pressable onPress={takePhoto} style={{ width: 96, height: 96, borderRadius: radius.md, borderWidth: 1, borderColor: C.line, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                <Icon name="camera" size={22} color={C.ink} />
+                <Text style={{ fontSize: 11, fontWeight: '700', color: C.ink }}>Camera</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </Section>
 
-        <Label text="Title" top />
-        <Input value={s.postTitle} onChangeText={(postTitle) => patch({ postTitle })} placeholder="e.g. Wooden study table" />
-
-        <Label text="Category" top />
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {CATS.map((c) => (
-            <Pill key={c} label={c} selected={s.postCat === c} tone="soft" onPress={() => patch({ postCat: c })} />
-          ))}
-        </View>
-
-        <Label text="Condition" top />
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {CONDS.map((c) => (
-            <Pill key={c} label={c} selected={s.postCond === c} tone="soft" onPress={() => patch({ postCond: c })} />
-          ))}
-        </View>
-
-        {/* pickup location: type (autocomplete) or pin on map */}
-        <Label text="Pickup location" top />
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: C.bg, borderWidth: 1, borderColor: s.postCoords ? C.free : C.line, borderRadius: radius.md, padding: 14 }}>
-          <Icon name="pin" size={16} color={s.postCoords ? C.free : C.accent} />
+        {/* title */}
+        <Section title="Title">
           <TextInput
-            value={s.postAddress}
-            onChangeText={onAddress}
-            onBlur={geocodeTyped}
-            placeholder="Type a home or pickup address"
+            value={s.postTitle}
+            onChangeText={(postTitle) => patch({ postTitle })}
+            placeholder="e.g. Wooden study table"
             placeholderTextColor={C.muted}
-            style={{ flex: 1, fontSize: 14, color: C.ink }}
+            style={inputStyle}
           />
-          {busy ? <ActivityIndicator size="small" color={C.accent} /> : s.postCoords ? <Icon name="check-circle" size={18} color={C.free} /> : null}
-        </View>
-        {suggests.length > 0 ? (
-          <View style={{ backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: radius.md, marginTop: 6, overflow: 'hidden' }}>
-            {suggests.map((sug) => (
-              <Pressable key={sug.id} onPress={() => pickSuggestion(sug)} style={{ paddingVertical: 12, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: C.line }}>
-                <Text style={{ fontSize: 13.5, color: C.ink }} numberOfLines={1}>{sug.label}</Text>
-              </Pressable>
+        </Section>
+
+        {/* category */}
+        <Section title="Category">
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {CATS.map((c) => (
+              <Pill key={c} label={c} selected={s.postCat === c} tone="soft" onPress={() => patch({ postCat: c })} />
             ))}
           </View>
-        ) : null}
-        <Pressable onPress={() => router.push('/pickmap')} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, alignSelf: 'flex-start' }}>
-          <Icon name="map" size={16} color={C.accent} />
-          <Text style={{ fontSize: 13.5, fontWeight: '700', color: C.accent }}>Pin on map instead</Text>
-        </Pressable>
-        <Text style={{ fontSize: 11.5, color: C.muted, marginTop: 7, lineHeight: 18 }}>
-          Only the approximate area shows publicly. Your exact address is shared only with the person you accept.
-        </Text>
+        </Section>
 
-        <Label text="Availability" top />
-        <Input value={s.postAvail} onChangeText={(postAvail) => patch({ postAvail })} placeholder="e.g. Evenings after 6pm" />
+        {/* condition */}
+        <Section title="Condition">
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {CONDS.map((c) => (
+              <Pill key={c} label={c} selected={s.postCond === c} tone="soft" onPress={() => patch({ postCond: c })} />
+            ))}
+          </View>
+        </Section>
+
+        {/* pickup */}
+        <Section title="Pickup location">
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: C.surface, borderWidth: 1.5, borderColor: s.postCoords ? C.free : C.line, borderRadius: radius.md, paddingHorizontal: 14, height: 52 }}>
+            <Icon name="pin" size={16} color={s.postCoords ? C.free : C.accent} />
+            <TextInput
+              value={s.postAddress}
+              onChangeText={onAddress}
+              onBlur={geocodeTyped}
+              placeholder="Type a home or pickup address"
+              placeholderTextColor={C.muted}
+              style={{ flex: 1, fontSize: 14, color: C.ink }}
+            />
+            {busy ? <ActivityIndicator size="small" color={C.accent} /> : s.postCoords ? <Icon name="check-circle" size={18} color={C.free} /> : null}
+          </View>
+
+          {suggests.length > 0 ? (
+            <View style={{ backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: radius.md, marginTop: 6, overflow: 'hidden' }}>
+              {suggests.map((sug) => (
+                <Pressable key={sug.id} onPress={() => pickSuggestion(sug)} style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 12, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: C.line }}>
+                  <Icon name="pin" size={14} color={C.muted} />
+                  <Text style={{ flex: 1, fontSize: 13.5, color: C.ink }} numberOfLines={1}>{sug.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+
+          {/* prominent pin-on-map button */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 }}>
+            <View style={{ flex: 1, height: 1, backgroundColor: C.line }} />
+            <Text style={{ fontSize: 12, fontWeight: '700', color: C.muted }}>or</Text>
+            <View style={{ flex: 1, height: 1, backgroundColor: C.line }} />
+          </View>
+          <Btn icon="map" label="Pin exact spot on map" variant="accentOutline" onPress={() => router.push('/pickmap')} block style={{ marginTop: 10, paddingVertical: 13 }} textStyle={{ fontSize: 14.5 }} />
+
+          {s.postCoords ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, backgroundColor: '#E4F0E9', borderRadius: radius.md, padding: 11 }}>
+              <Icon name="check-circle" size={16} color={C.free} />
+              <Text style={{ flex: 1, fontSize: 12.5, color: C.ink }} numberOfLines={2}>{s.postAddress || 'Pinned on map'}</Text>
+            </View>
+          ) : (
+            <Text style={{ fontSize: 11.5, color: C.muted, marginTop: 9, lineHeight: 17 }}>
+              Only the approximate area shows publicly. Your exact address is shared only with the person you accept.
+            </Text>
+          )}
+        </Section>
+
+        {/* availability */}
+        <Section title="Availability">
+          <TextInput
+            value={s.postAvail}
+            onChangeText={(postAvail) => patch({ postAvail })}
+            placeholder="e.g. Evenings after 6pm"
+            placeholderTextColor={C.muted}
+            style={inputStyle}
+          />
+        </Section>
       </ScrollView>
 
-      <View style={{ padding: 18, borderTopWidth: 1, borderTopColor: C.line }}>
+      <View style={{ padding: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.surface }}>
         <Btn label={editing ? 'Save changes' : 'Post for free'} onPress={submit} block />
       </View>
     </Screen>
   );
 }
 
-function Label({ text, hint, top }: { text: string; hint?: string; top?: boolean }) {
-  return (
-    <Text style={{ fontSize: 13, fontWeight: '700', color: C.ink, marginTop: top ? 18 : 0, marginBottom: 8 }}>
-      {text} {hint ? <Text style={{ color: C.muted, fontWeight: '500' }}>{hint}</Text> : null}
-    </Text>
-  );
-}
+const inputStyle = { backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: radius.md, paddingHorizontal: 14, height: 52, fontSize: 14, color: C.ink } as const;
 
-function Input({ value, onChangeText, placeholder }: { value: string; onChangeText: (v: string) => void; placeholder?: string }) {
+function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={C.muted} style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: C.line, borderRadius: radius.md, padding: 14, fontSize: 14, color: C.ink }} />
+    <View style={{ backgroundColor: C.surface, borderRadius: radius.lg, borderCurve: 'continuous', padding: 15, gap: 11 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text style={{ fontSize: 13.5, fontWeight: '800', color: C.ink }}>{title}</Text>
+        {hint ? <Text style={{ fontSize: 12, fontWeight: '700', color: C.muted }}>{hint}</Text> : null}
+      </View>
+      {children}
+    </View>
   );
 }
