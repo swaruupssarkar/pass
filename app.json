@@ -34,6 +34,19 @@
             "imageWidth": 76
           }
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow pass to use your location to show free items near you."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow pass to access your photos so you can add item pictures.",
+          "cameraPermission": "Allow pass to use your camera to take item pictures."
+        }
       ]
     ],
     "experiments": {

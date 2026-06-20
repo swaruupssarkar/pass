@@ -1,0 +1,221 @@
+import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Keyboard, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { Icon } from '@/pass/icon';
+import {
+  activeLocationLabel,
+  browseListings,
+  CATS,
+  distLabel,
+  unreadCount,
+  usePass,
+} from '@/pass/store';
+import { C, radius, TINTS } from '@/pass/theme';
+import { BottomNav, Btn, FreeTag, PhotoTile, Pill, Screen, shadow, t } from '@/pass/ui';
+
+const RADIUS_PRESETS = [3, 5, 10, 20, 100];
+
+export default function Feed() {
+  const router = useRouter();
+  const { s, patch, openListing, toggleSave, useCurrentLocation, markOnboarded, showAlert, showConfirm } = usePass();
+  const insets = useSafeAreaInsets();
+  const items = browseListings(s);
+  const loc = activeLocationLabel(s);
+  const unread = unreadCount(s);
+
+  useEffect(() => {
+    markOnboarded();
+  }, [markOnboarded]);
+
+  const [locating, setLocating] = useState(false);
+  const onUseLocation = async () => {
+    setLocating(true);
+    const r = await useCurrentLocation();
+    setLocating(false);
+    if (r === 'denied') {
+      showConfirm({
+        title: 'Location is off',
+        message: 'Allow location access so pass can show free items near you.',
+        cancelLabel: 'Not now',
+        confirmLabel: 'Open settings',
+        onConfirm: () => Linking.openSettings(),
+      });
+    } else if (r === 'error') {
+      showAlert('Could not get your location', 'Please try again, or choose a city instead.');
+    }
+  };
+
+  const open = (id: string) => {
+    openListing(id);
+    router.push('/detail');
+  };
+  const clampRadius = (n: number) => Math.max(1, Math.min(500, n));
+
+  return (
+    <Screen>
+      <View style={{ paddingHorizontal: 18, paddingTop: 6, paddingBottom: 12 }}>
+        {/* location · my-location icon · radius · bell */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Pressable onPress={() => router.push('/city')} style={{ flex: 1 }}>
+            <Text style={t.label}>FREE STUFF IN</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: C.ink }} numberOfLines={1}>{loc}</Text>
+              <Icon name="down" size={11} color={C.accent} />
+            </View>
+          </Pressable>
+          <Pressable
+            onPress={onUseLocation}
+            disabled={locating}
+            style={{ width: 42, height: 42, borderRadius: 14, borderCurve: 'continuous', borderWidth: 1, borderColor: s.activeMode === 'gps' ? C.accent : C.line, backgroundColor: s.activeMode === 'gps' ? C.accent : C.surface, alignItems: 'center', justifyContent: 'center' }}>
+            {locating ? (
+              <ActivityIndicator size="small" color={s.activeMode === 'gps' ? '#fff' : C.accent} />
+            ) : (
+              <Icon name="pin" size={18} color={s.activeMode === 'gps' ? '#fff' : C.accent} />
+            )}
+          </Pressable>
+          <Pressable
+            onPress={() => patch({ showRadius: true })}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 5, height: 42, paddingHorizontal: 12, borderRadius: 14, borderCurve: 'continuous', borderWidth: 1, borderColor: C.line, backgroundColor: C.surface }}>
+            <Text style={{ fontSize: 13.5, fontWeight: '700', color: C.ink }}>{s.radius} km</Text>
+            <Icon name="down" size={11} color={C.muted} />
+          </Pressable>
+          <Pressable
+            onPress={() => router.push('/notifs')}
+            style={{ width: 42, height: 42, borderRadius: 14, borderCurve: 'continuous', backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="bell" size={18} color={C.ink} />
+            {unread > 0 ? <View style={{ position: 'absolute', top: 8, right: 9, width: 9, height: 9, borderRadius: 5, backgroundColor: C.accent, borderWidth: 2, borderColor: C.surface }} /> : null}
+          </Pressable>
+        </View>
+
+        {/* search bar + search button */}
+        <View style={{ flexDirection: 'row', gap: 11, marginTop: 13 }}>
+          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: radius.lg, paddingHorizontal: 16, height: 52, ...shadow(6, 18, 0.4) }}>
+            <Icon name="search" size={15} color={C.muted} />
+            <TextInput value={s.q} onChangeText={(q) => patch({ q })} placeholder="Search free items…" placeholderTextColor={C.muted} returnKeyType="search" style={{ flex: 1, fontSize: 14.5, color: C.ink }} />
+          </View>
+          <Pressable onPress={() => Keyboard.dismiss()} style={{ width: 52, height: 52, borderRadius: radius.lg, borderCurve: 'continuous', backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', boxShadow: `0 8px 20px -8px ${C.accent}` }}>
+            <Icon name="search" size={18} color="#fff" />
+          </Pressable>
+        </View>
+      </View>
+
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+        {/* categories — image tiles */}
+        <View style={{ paddingHorizontal: 18, paddingTop: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={t.title}>Categories</Text>
+          <Pressable onPress={() => router.push('/categories')}>
+            <Text style={{ color: C.accent, fontSize: 13, fontWeight: '700' }}>See all</Text>
+          </Pressable>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 13, paddingHorizontal: 18, paddingVertical: 12 }}>
+          {CATS.map((c, i) => {
+            const sel = s.catFilter === c;
+            return (
+              <Pressable key={c} onPress={() => patch({ catFilter: sel ? null : c, q: '' })} style={{ alignItems: 'center', gap: 8, width: 72 }}>
+                <PhotoTile
+                  tint={TINTS[i % 9]}
+                  caption={c.toLowerCase()}
+                  gap={16}
+                  style={{ width: 72, height: 72, borderRadius: 20, borderCurve: 'continuous', borderWidth: sel ? 2 : 0, borderColor: C.accent, ...shadow(8, 18, 0.45) }}
+                />
+                <Text numberOfLines={2} style={{ fontSize: 11, fontWeight: sel ? '800' : '600', color: sel ? C.accent : C.ink, textAlign: 'center' }}>{c}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        <View style={{ paddingHorizontal: 18, paddingTop: 10, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
+          <Text style={t.h3}>
+            Nearby <Text style={{ fontSize: 14, fontWeight: '600', color: C.muted }}>· {items.length} free</Text>
+          </Text>
+          <Pressable onPress={() => patch({ sortMode: s.sortMode === 'Nearest' ? 'Newest' : 'Nearest' })} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            <Icon name="sort" size={14} color={C.accent} />
+            <Text style={{ color: C.accent, fontSize: 14, fontWeight: '700' }}>{s.sortMode}</Text>
+          </Pressable>
+        </View>
+
+        {items.length === 0 ? (
+          <View style={{ padding: 40, paddingTop: 50, alignItems: 'center' }}>
+            <View style={{ width: 78, height: 78, borderRadius: 39, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="search" size={32} color={C.accent} />
+            </View>
+            <Text style={[t.h3, { marginTop: 16 }]}>Nothing in {loc}</Text>
+            <Text style={[t.small, { marginTop: 8, textAlign: 'center' }]}>Try a wider radius, another city, or clear the filter.</Text>
+            {s.catFilter || s.q ? (
+              <Btn label="Clear filters" onPress={() => patch({ q: '', catFilter: null })} style={{ marginTop: 18, paddingVertical: 12, paddingHorizontal: 22 }} textStyle={{ fontSize: 14 }} />
+            ) : null}
+          </View>
+        ) : (
+          <View style={{ paddingHorizontal: 18, paddingTop: 12, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+            {items.map((it) => {
+              const saved = !!s.saved[it.id];
+              return (
+                <Pressable key={it.id} onPress={() => open(it.id)} style={{ width: '48%', backgroundColor: C.surface, borderRadius: radius.xl, borderCurve: 'continuous', padding: 9, marginBottom: 14, ...shadow(10, 26, 0.4) }}>
+                  <PhotoTile tint={it.tint} caption={it.ph} uri={it.photos?.[0]} gap={20} style={{ aspectRatio: 1, borderRadius: radius.md }}>
+                    <View style={{ position: 'absolute', top: 9, left: 9, backgroundColor: 'rgba(28,24,22,0.62)', borderRadius: radius.pill, paddingVertical: 4, paddingHorizontal: 10 }}>
+                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{distLabel(s, it)}</Text>
+                    </View>
+                    <Pressable onPress={() => toggleSave(it.id)} style={{ position: 'absolute', top: 7, right: 7, width: 32, height: 32, borderRadius: 16, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px -3px rgba(0,0,0,0.3)' }}>
+                      <Icon name={saved ? 'heart' : 'heart-outline'} size={16} color={C.accent} />
+                    </Pressable>
+                    <FreeTag style={{ position: 'absolute', bottom: 9, left: 9 }} />
+                  </PhotoTile>
+                  <View style={{ paddingHorizontal: 6, paddingTop: 11, paddingBottom: 6 }}>
+                    <Text style={{ fontSize: 15.5, fontWeight: '800', color: C.ink, letterSpacing: -0.2 }} numberOfLines={1}>{it.title}</Text>
+                    <Text style={{ fontSize: 12.5, color: C.muted, marginTop: 5 }} numberOfLines={1}>{it.area}</Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+      </ScrollView>
+
+      <BottomNav active="home" />
+
+      {/* radius picker — in-screen overlay so the feed shows through */}
+      {s.showRadius ? (
+      <View style={StyleSheet.absoluteFill}>
+        <Pressable onPress={() => patch({ showRadius: false })} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(17,17,17,0.35)' }]} />
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: C.surface, borderTopLeftRadius: 26, borderTopRightRadius: 26, borderCurve: 'continuous', padding: 22, paddingTop: 8, paddingBottom: insets.bottom + 22 }}>
+          <View style={{ width: 44, height: 5, borderRadius: 3, backgroundColor: C.line, alignSelf: 'center', marginBottom: 16 }} />
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
+            <Text style={t.h3}>Search radius</Text>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: C.accent }}>Within {s.radius} km</Text>
+          </View>
+          <Text style={[t.small, { marginTop: 5 }]}>Show free items within this distance of {loc}.</Text>
+
+          {/* rounded stepper with manual entry */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: C.bg, borderWidth: 1, borderColor: C.line, borderRadius: radius.lg, borderCurve: 'continuous', overflow: 'hidden', marginTop: 16, height: 54 }}>
+            <Pressable onPress={() => patch({ radius: clampRadius(s.radius - 1) })} style={{ width: 54, height: 54, alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="remove" size={22} color={C.ink} />
+            </Pressable>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+              <TextInput
+                value={String(s.radius)}
+                onChangeText={(v) => patch({ radius: clampRadius(parseInt(v.replace(/[^0-9]/g, ''), 10) || 1) })}
+                keyboardType="number-pad"
+                style={{ minWidth: 40, fontSize: 20, fontWeight: '800', color: C.ink, textAlign: 'center', fontVariant: ['tabular-nums'] }}
+              />
+              <Text style={{ fontSize: 14, fontWeight: '700', color: C.muted }}>km</Text>
+            </View>
+            <Pressable onPress={() => patch({ radius: clampRadius(s.radius + 1) })} style={{ width: 54, height: 54, alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="add" size={22} color={C.ink} />
+            </Pressable>
+          </View>
+
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 }}>
+            {RADIUS_PRESETS.map((n) => (
+              <Pill key={n} label={`${n} km`} selected={s.radius === n} tone="soft" onPress={() => patch({ radius: n })} />
+            ))}
+          </View>
+
+          <Btn label={`Show ${items.length} items`} onPress={() => patch({ showRadius: false })} block style={{ marginTop: 22 }} />
+        </View>
+      </View>
+      ) : null}
+    </Screen>
+  );
+}
