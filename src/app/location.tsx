@@ -2,12 +2,13 @@ import { useRouter } from 'expo-router';
 import { Text, View } from 'react-native';
 
 import { Icon } from '@/pass/icon';
-import { usePass } from '@/pass/store';
+import { usePass, useT } from '@/pass/store';
 import { C } from '@/pass/theme';
 import { Btn, Screen, t } from '@/pass/ui';
 
 export default function Location() {
   const router = useRouter();
+  const tr = useT();
   const { useCurrentLocation } = usePass();
   const allow = async () => {
     await useCurrentLocation();
@@ -20,13 +21,13 @@ export default function Location() {
           <View style={{ width: 120, height: 120, borderRadius: 60, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="pin" size={52} color={C.accent} />
           </View>
-          <Text style={[t.h1, { marginTop: 30 }]}>Turn on location</Text>
+          <Text style={[t.h1, { marginTop: 30 }]}>{tr('location.title')}</Text>
           <Text style={[t.muted, { fontSize: 15, marginTop: 12, textAlign: 'center', maxWidth: 300, lineHeight: 23 }]}>
-            So we can show you free items closest to you. Your exact spot is never shared with anyone.
+            {tr('location.body')}
           </Text>
         </View>
-        <Btn label="Allow location" onPress={allow} block />
-        <Btn label="Not now" variant="ghost" onPress={() => router.push('/city')} block style={{ marginTop: 4 }} />
+        <Btn label={tr('location.allow')} onPress={allow} block />
+        <Btn label={tr('location.notNow')} variant="ghost" onPress={() => router.push('/city')} block style={{ marginTop: 4 }} />
       </View>
     </Screen>
   );

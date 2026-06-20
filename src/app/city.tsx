@@ -2,12 +2,13 @@ import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/pass/icon';
-import { CITIES, usePass } from '@/pass/store';
+import { CITIES, usePass, useT } from '@/pass/store';
 import { C } from '@/pass/theme';
 import { Avatar, Header, Screen, t } from '@/pass/ui';
 
 export default function City() {
   const router = useRouter();
+  const tr = useT();
   const { s, setCity, useCurrentLocation } = usePass();
 
   const onUseLocation = async () => {
@@ -22,9 +23,9 @@ export default function City() {
 
   return (
     <Screen edges={['top', 'bottom']}>
-      <Header title="Pick your city" />
+      <Header title={tr('city.title')} />
       <ScrollView contentContainerStyle={{ padding: 22, paddingTop: 8 }}>
-        <Text style={[t.muted, { marginBottom: 18 }]}>We&apos;ll show free items in your neighbourhood.</Text>
+        <Text style={[t.muted, { marginBottom: 18 }]}>{tr('city.subtitle')}</Text>
 
         {/* current location */}
         <Pressable
@@ -53,13 +54,13 @@ export default function City() {
             <Icon name="pin" size={20} color={C.accent} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: C.ink }}>Use my current location</Text>
-            <Text style={[t.small, { marginTop: 2 }]}>Show free items near you right now</Text>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: C.ink }}>{tr('city.useLocation')}</Text>
+            <Text style={[t.small, { marginTop: 2 }]}>{tr('city.useLocationHint')}</Text>
           </View>
           <Icon name="forward" size={18} color={C.muted} />
         </Pressable>
 
-        <Text style={[t.label, { marginBottom: 11 }]}>CITIES</Text>
+        <Text style={[t.label, { marginBottom: 11 }]}>{tr('city.citiesLabel')}</Text>
 
         <View style={{ gap: 11 }}>
           {CITIES.map((c) => {

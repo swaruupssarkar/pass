@@ -19,6 +19,7 @@ import {
   type UserId,
   USERS,
 } from '@/pass/data';
+import { DEFAULT_LANG, type LangCode, translate } from '@/pass/i18n';
 import { reverseGeocode } from '@/pass/places';
 import { TINTS } from '@/pass/theme';
 
@@ -36,6 +37,7 @@ const STORAGE_KEY = 'pass.state.v4';
 
 type State = {
   currentUserId: UserId;
+  lang: LangCode;
   listings: Listing[];
   requests: Request[];
   threads: Record<string, Message[]>;
@@ -94,6 +96,7 @@ type State = {
 
 const INITIAL: State = {
   currentUserId: 'u1',
+  lang: DEFAULT_LANG,
   listings: SEED_LISTINGS.map((l) => ({ ...l })),
   requests: [],
   threads: {},
@@ -332,6 +335,12 @@ export function fmtTime(ts: number): string {
   const hr = h % 12 === 0 ? 12 : h % 12;
   return `${hr}:${mm} ${ap}`;
 }
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** Absolute calendar date, e.g. "20 Jun 2026". */
+export function fmtDate(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
 
 let SEQ = 0;
 const uid = (p: string) => `${p}_${Date.now()}_${SEQ++}`;
@@ -535,7 +544,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
             outId = prev.editingId;
             const listings = prev.listings.map((l) =>
               l.id === prev.editingId
-                ? { ...l, title, cat: prev.postCat, cond: prev.postCond, blurb: `${prev.postCond} · ${prev.postCat}`, desc, address: prev.postAddress, area, lat: coords.lat, lng: coords.lng, cityId, photos: prev.postPhotos }
+                ? { ...l, title, cat: prev.postCat, cond: prev.postCond, blurb: `${prev.postCond} · ${prev.postCat}`, desc, address: prev.postAddress, area, lat: coords.lat, lng: coords.lng, cityId, photos: prev.postPhotos, updatedAt: Date.now() }
                 : l
             );
             return { ...prev, listings, editingId: null };
@@ -932,6 +941,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
     if (!s.hydrated) return;
     const snapshot = {
       currentUserId: s.currentUserId,
+      lang: s.lang,
       listings: s.listings,
       requests: s.requests,
       threads: s.threads,
@@ -957,6 +967,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
   }, [
     s.hydrated,
     s.currentUserId,
+    s.lang,
     s.listings,
     s.requests,
     s.threads,
@@ -980,6 +991,12 @@ export function usePass(): Store {
   const ctx = use(PassContext);
   if (!ctx) throw new Error('usePass must be used within PassProvider');
   return ctx;
+}
+
+/** Returns a `t(key, params?)` translator bound to the user's chosen language. */
+export function useT(): (key: string, params?: Record<string, string | number>) => string {
+  const { s } = usePass();
+  return (key: string, params?: Record<string, string | number>) => translate(s.lang, key, params);
 }
 
 export { CATS, CITIES, USERS };

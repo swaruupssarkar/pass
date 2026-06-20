@@ -2,23 +2,24 @@ import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { Icon, type IconName } from '@/pass/icon';
-import { CITIES, me, myListings, USERS, usePass } from '@/pass/store';
+import { CITIES, me, myListings, USERS, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, BottomNav, Btn, Hatch, Screen, shadow, VerifiedBadge } from '@/pass/ui';
 import type { UserId } from '@/pass/data';
 
-const ROWS: { icon: IconName; label: string; route: '/manage' | '/impact' | '/saved' | '/safety' | '/settings' }[] = [
-  { icon: 'clipboard', label: 'My listings', route: '/manage' },
-  { icon: 'star', label: 'My impact', route: '/impact' },
-  { icon: 'heart-outline', label: 'Saved items', route: '/saved' },
-  { icon: 'shield', label: 'Safety center', route: '/safety' },
-  { icon: 'settings', label: 'Settings', route: '/settings' },
+const ROWS: { icon: IconName; labelKey: string; route: '/manage' | '/impact' | '/saved' | '/safety' | '/settings' }[] = [
+  { icon: 'clipboard', labelKey: 'profile.myListings', route: '/manage' },
+  { icon: 'star', labelKey: 'profile.myImpact', route: '/impact' },
+  { icon: 'heart-outline', labelKey: 'profile.savedItems', route: '/saved' },
+  { icon: 'shield', labelKey: 'profile.safetyCenter', route: '/safety' },
+  { icon: 'settings', labelKey: 'profile.settings', route: '/settings' },
 ];
 
 const SWITCH_IDS: UserId[] = ['u1', 'u2'];
 
 export default function Profile() {
   const router = useRouter();
+  const tr = useT();
   const { s, switchUser, logout } = usePass();
   const user = me(s);
   const mine = myListings(s);
@@ -48,26 +49,26 @@ export default function Profile() {
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 }}>
                 <Icon name="star" size={12.5} color={C.star} />
-                <Text style={{ fontSize: 12.5, color: C.muted }}>{user.rating} · {cityName} · Verified</Text>
+                <Text style={{ fontSize: 12.5, color: C.muted }}>{user.rating} · {cityName} · {tr('profile.verified')}</Text>
               </View>
             </View>
           </View>
           <View style={{ flexDirection: 'row', marginTop: 18, borderTopWidth: 1, borderTopColor: C.line, paddingTop: 16 }}>
             <Pressable onPress={() => router.push('/manage')} style={{ flex: 1, alignItems: 'center', gap: 3 }}>
               <Text style={{ fontSize: 25, fontWeight: '800', color: C.ink }}>{givenCount}</Text>
-              <Text style={{ fontSize: 12, color: C.muted }}>Given</Text>
+              <Text style={{ fontSize: 12, color: C.muted }}>{tr('profile.given')}</Text>
             </Pressable>
             <View style={{ width: 1, backgroundColor: C.line, marginVertical: 2 }} />
             <View style={{ flex: 1, alignItems: 'center', gap: 3 }}>
               <Text style={{ fontSize: 25, fontWeight: '800', color: C.ink }}>{mine.length}</Text>
-              <Text style={{ fontSize: 12, color: C.muted }}>Listings</Text>
+              <Text style={{ fontSize: 12, color: C.muted }}>{tr('profile.listings')}</Text>
             </View>
           </View>
         </View>
 
         {/* user switcher */}
         <View style={{ backgroundColor: C.surface, borderRadius: 18, marginTop: 16, padding: 14, ...shadow(8, 24, 0.3) }}>
-          <Text style={{ fontSize: 11, fontWeight: '700', color: C.muted, letterSpacing: 0.3, marginBottom: 11 }}>SWITCH ACCOUNT</Text>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: C.muted, letterSpacing: 0.3, marginBottom: 11 }}>{tr('profile.switchAccount')}</Text>
           <View style={{ flexDirection: 'row', gap: 10 }}>
             {SWITCH_IDS.map((id) => {
               const u = USERS[id];
@@ -92,7 +93,7 @@ export default function Profile() {
                   <Avatar name={u.name} size={34} square tint={on ? C.surface : C.bg} />
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 13.5, fontWeight: '800', color: C.ink }} numberOfLines={1}>{u.name}</Text>
-                    <Text style={{ fontSize: 11, color: C.muted }} numberOfLines={1}>{on ? 'Active' : 'Tap to switch'}</Text>
+                    <Text style={{ fontSize: 11, color: C.muted }} numberOfLines={1}>{on ? tr('profile.active') : tr('profile.tapToSwitch')}</Text>
                   </View>
                   {on ? <Icon name="check-circle" size={17} color={C.accent} /> : null}
                 </Pressable>
@@ -108,7 +109,7 @@ export default function Profile() {
               <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
                 <Icon name={r.icon} size={17} color={C.accent} />
               </View>
-              <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: C.ink }}>{r.label}</Text>
+              <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: C.ink }}>{tr(r.labelKey)}</Text>
               <Icon name="forward" size={20} color={C.muted} />
             </Pressable>
           ))}
@@ -117,7 +118,7 @@ export default function Profile() {
         {/* logout */}
         <Btn
           icon="back"
-          label="Log out"
+          label={tr('profile.logout')}
           variant="outline"
           onPress={() => {
             logout();

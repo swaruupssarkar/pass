@@ -3,12 +3,13 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { CITIES, USERS } from '@/pass/data';
 import { Icon } from '@/pass/icon';
-import { distLabel, fmtAgo, otherOf, reviewsFor, usePass } from '@/pass/store';
+import { distLabel, fmtAgo, otherOf, reviewsFor, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, Btn, FreeTag, Header, PhotoTile, Screen, shadow, t, VerifiedBadge } from '@/pass/ui';
 
 export default function Giver() {
   const router = useRouter();
+  const tr = useT();
   const { s, openListing, openThreadFor } = usePass();
 
   const id = s.activePersonId ?? otherOf(s.currentUserId).id;
@@ -34,7 +35,7 @@ export default function Giver() {
 
   return (
     <Screen>
-      <Header title="Profile" />
+      <Header title={tr('giver.title')} />
       <ScrollView contentContainerStyle={{ paddingBottom: 12 }} showsVerticalScrollIndicator={false}>
         <View style={{ paddingHorizontal: 18 }}>
           <View style={{ backgroundColor: C.surface, borderRadius: 22, borderCurve: 'continuous', padding: 20, ...shadow(12, 30, 0.35) }}>
@@ -47,7 +48,7 @@ export default function Giver() {
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 }}>
                   <Icon name="star" size={12.5} color={C.star} />
-                  <Text style={{ fontSize: 12.5, color: C.muted }}>{person.rating} · Member since {person.since}</Text>
+                  <Text style={{ fontSize: 12.5, color: C.muted }}>{person.rating} · {tr('giver.memberSince', { year: person.since })}</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 }}>
                   <Icon name="pin" size={12.5} color={C.muted} />
@@ -56,25 +57,25 @@ export default function Giver() {
               </View>
             </View>
             <View style={{ flexDirection: 'row', marginTop: 18, borderTopWidth: 1, borderTopColor: C.line, paddingTop: 16 }}>
-              <Stat n={live.length} label="Live listings" />
+              <Stat n={live.length} label={tr('giver.liveListings')} />
               <View style={{ width: 1, backgroundColor: C.line, marginVertical: 2 }} />
-              <Stat n={given} label="Given" />
+              <Stat n={given} label={tr('giver.given')} />
             </View>
           </View>
         </View>
 
         <View style={{ paddingHorizontal: 18, paddingTop: 22, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={[t.h3, { fontSize: 17 }]}>{person.name}&apos;s giveaways</Text>
+          <Text style={[t.h3, { fontSize: 17 }]}>{tr('giver.giveaways', { name: person.name })}</Text>
           {live.length > 0 && (
             <View style={{ backgroundColor: '#E4F0E9', borderRadius: radius.pill, paddingVertical: 5, paddingHorizontal: 11 }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: C.free }}>{live.length} live</Text>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: C.free }}>{tr('giver.liveCount', { count: live.length })}</Text>
             </View>
           )}
         </View>
         {live.length === 0 && (
           <View style={{ paddingHorizontal: 18 }}>
             <View style={{ backgroundColor: C.surface, borderRadius: radius.lg, padding: 16 }}>
-              <Text style={{ fontSize: 13.5, color: C.muted, lineHeight: 19 }}>No live giveaways right now.</Text>
+              <Text style={{ fontSize: 13.5, color: C.muted, lineHeight: 19 }}>{tr('giver.noGiveaways')}</Text>
             </View>
           </View>
         )}
@@ -95,11 +96,11 @@ export default function Giver() {
           ))}
         </View>
 
-        <Text style={[t.title, { paddingHorizontal: 18, paddingTop: 22 }]}>What people say</Text>
+        <Text style={[t.title, { paddingHorizontal: 18, paddingTop: 22 }]}>{tr('giver.whatPeopleSay')}</Text>
         <View style={{ paddingHorizontal: 18, paddingTop: 10, gap: 11 }}>
           {reviews.length === 0 ? (
             <View style={{ backgroundColor: C.surface, borderRadius: radius.lg, padding: 16 }}>
-              <Text style={{ fontSize: 13.5, color: C.muted, lineHeight: 19 }}>No reviews yet.</Text>
+              <Text style={{ fontSize: 13.5, color: C.muted, lineHeight: 19 }}>{tr('giver.noReviews')}</Text>
             </View>
           ) : (
             reviews.map((r) => (
@@ -114,7 +115,7 @@ export default function Giver() {
                   <Text style={{ fontSize: 11, color: C.muted, fontWeight: '600' }}>· {fmtAgo(r.ts)}</Text>
                 </View>
                 {r.tags.length > 0 ? (
-                  <Text style={{ fontSize: 12, color: C.muted, marginBottom: r.text ? 6 : 0 }}>{r.tags.join(' · ')}</Text>
+                  <Text style={{ fontSize: 12, color: C.muted, marginBottom: r.text ? 6 : 0 }}>{r.tags.map((tag) => tr('rate.tag.' + tag)).join(' · ')}</Text>
                 ) : null}
                 {r.text ? <Text style={{ fontSize: 13.5, color: C.ink, lineHeight: 19 }}>{r.text}</Text> : null}
               </View>
@@ -124,7 +125,7 @@ export default function Giver() {
       </ScrollView>
 
       <View style={{ paddingHorizontal: 18, paddingVertical: 13, backgroundColor: C.bg, borderTopWidth: 1, borderTopColor: C.line }}>
-        <Btn label={`Message ${person.name}`} onPress={message} block />
+        <Btn label={tr('giver.message', { name: person.name })} onPress={message} block />
       </View>
     </Screen>
   );

@@ -3,12 +3,13 @@ import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { RATE_TAGS, USERS } from '@/pass/data';
 import { Icon } from '@/pass/icon';
-import { usePass } from '@/pass/store';
+import { usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Btn, Pill, Screen, t } from '@/pass/ui';
 
 export default function Rate() {
   const router = useRouter();
+  const tr = useT();
   const { s, patch, toggleRateTag, submitRate } = usePass();
   const giver = s.rateGiverId ? USERS[s.rateGiverId] : null;
 
@@ -27,9 +28,9 @@ export default function Rate() {
           <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="celebrate" size={38} color={C.accent} />
           </View>
-          <Text style={[t.h2, { fontSize: 23, marginTop: 20 }]}>Rate the giver</Text>
+          <Text style={[t.h2, { fontSize: 23, marginTop: 20 }]}>{tr('rate.title')}</Text>
           <Text style={[t.muted, { fontSize: 14.5, marginTop: 10, textAlign: 'center', maxWidth: 280, lineHeight: 21 }]}>
-            How was your pickup with {giver?.name ?? 'the giver'}? Your rating keeps the community trustworthy.
+            {tr('rate.prompt', { name: giver?.name ?? tr('rate.theGiver') })}
           </Text>
 
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 24 }}>
@@ -42,18 +43,18 @@ export default function Rate() {
 
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 9, justifyContent: 'center', marginTop: 24 }}>
             {RATE_TAGS.map((tag) => (
-              <Pill key={tag} label={tag} selected={s.rateTags.includes(tag)} onPress={() => toggleRateTag(tag)} />
+              <Pill key={tag} label={tr('rate.tag.' + tag)} selected={s.rateTags.includes(tag)} onPress={() => toggleRateTag(tag)} />
             ))}
           </View>
 
           <View style={{ alignSelf: 'stretch', marginTop: 24 }}>
             <Text style={{ fontSize: 13, fontWeight: '700', color: C.ink, marginBottom: 8 }}>
-              Write a review <Text style={{ color: C.muted, fontWeight: '500' }}>(optional)</Text>
+              {tr('rate.writeReview')} <Text style={{ color: C.muted, fontWeight: '500' }}>{tr('rate.optional')}</Text>
             </Text>
             <TextInput
               value={s.reviewDraft}
               onChangeText={(reviewDraft) => patch({ reviewDraft })}
-              placeholder={`Share how the pickup with ${giver?.name ?? 'them'} went…`}
+              placeholder={tr('rate.reviewPlaceholder', { name: giver?.name ?? tr('rate.them') })}
               placeholderTextColor={C.muted}
               multiline
               style={{ minHeight: 90, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: radius.md, padding: 14, fontSize: 14, color: C.ink, textAlignVertical: 'top' }}
@@ -61,12 +62,12 @@ export default function Rate() {
           </View>
         </ScrollView>
         <Btn
-          label="Submit & say thanks"
+          label={tr('rate.submit')}
           onPress={s.rating > 0 ? submit : undefined}
           block
           style={s.rating === 0 && { opacity: 0.4 }}
         />
-        <Btn label="Maybe later" onPress={skip} variant="ghost" block style={{ marginTop: 4 }} />
+        <Btn label={tr('rate.maybeLater')} onPress={skip} variant="ghost" block style={{ marginTop: 4 }} />
       </View>
     </Screen>
   );

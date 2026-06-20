@@ -11,6 +11,7 @@ import {
   distLabel,
   unreadCount,
   usePass,
+  useT,
 } from '@/pass/store';
 import { C, radius, TINTS } from '@/pass/theme';
 import { BottomNav, Btn, FreeTag, PhotoTile, Pill, Screen, shadow, t } from '@/pass/ui';
@@ -19,6 +20,7 @@ const RADIUS_PRESETS = [3, 5, 10, 20, 100];
 
 export default function Feed() {
   const router = useRouter();
+  const tr = useT();
   const { s, patch, openListing, toggleSave, useCurrentLocation, markOnboarded, showAlert, showConfirm } = usePass();
   const insets = useSafeAreaInsets();
   const items = useMemo(
@@ -40,14 +42,14 @@ export default function Feed() {
     setLocating(false);
     if (r === 'denied') {
       showConfirm({
-        title: 'Location is off',
-        message: 'Allow location access so pass can show free items near you.',
-        cancelLabel: 'Not now',
-        confirmLabel: 'Open settings',
+        title: tr('feed.locationOffTitle'),
+        message: tr('feed.locationOffMsg'),
+        cancelLabel: tr('feed.notNow'),
+        confirmLabel: tr('feed.openSettings'),
         onConfirm: () => Linking.openSettings(),
       });
     } else if (r === 'error') {
-      showAlert('Could not get your location', 'Please try again, or choose a city instead.');
+      showAlert(tr('feed.locationErrorTitle'), tr('feed.locationErrorMsg'));
     }
   };
 
@@ -63,7 +65,7 @@ export default function Feed() {
         {/* location · my-location icon · radius · bell */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Pressable onPress={() => router.push('/city')} style={{ flex: 1 }}>
-            <Text style={t.label}>FREE STUFF IN</Text>
+            <Text style={t.label}>{tr('feed.freeStuffIn')}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
               <Text style={{ fontSize: 18, fontWeight: '800', color: C.ink }} numberOfLines={1}>{loc}</Text>
               <Icon name="down" size={11} color={C.accent} />
@@ -97,7 +99,7 @@ export default function Feed() {
         <View style={{ flexDirection: 'row', gap: 11, marginTop: 13 }}>
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: radius.lg, paddingHorizontal: 16, height: 52, ...shadow(6, 18, 0.4) }}>
             <Icon name="search" size={15} color="#FFD60A" />
-            <TextInput value={s.q} onChangeText={(q) => patch({ q })} placeholder="Search free items…" placeholderTextColor={C.muted} returnKeyType="search" style={{ flex: 1, fontSize: 14.5, color: C.ink }} />
+            <TextInput value={s.q} onChangeText={(q) => patch({ q })} placeholder={tr('feed.searchPlaceholder')} placeholderTextColor={C.muted} returnKeyType="search" style={{ flex: 1, fontSize: 14.5, color: C.ink }} />
           </View>
           <Pressable onPress={() => Keyboard.dismiss()} style={{ width: 52, height: 52, borderRadius: radius.lg, borderCurve: 'continuous', backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', boxShadow: `0 8px 20px -8px ${C.accent}` }}>
             <Icon name="search" size={18} color="#fff" />
@@ -108,9 +110,9 @@ export default function Feed() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
         {/* categories — image tiles */}
         <View style={{ paddingHorizontal: 18, paddingTop: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={t.title}>Categories</Text>
+          <Text style={t.title}>{tr('feed.categories')}</Text>
           <Pressable onPress={() => router.push('/categories')}>
-            <Text style={{ color: C.accent, fontSize: 13, fontWeight: '700' }}>See all</Text>
+            <Text style={{ color: C.accent, fontSize: 13, fontWeight: '700' }}>{tr('common.seeAll')}</Text>
           </Pressable>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 13, paddingHorizontal: 18, paddingVertical: 12 }}>
@@ -124,7 +126,7 @@ export default function Feed() {
                   gap={16}
                   style={{ width: 72, height: 72, borderRadius: 20, borderCurve: 'continuous', borderWidth: sel ? 2 : 0, borderColor: C.accent, ...shadow(8, 18, 0.45) }}
                 />
-                <Text numberOfLines={2} style={{ fontSize: 11, fontWeight: sel ? '800' : '600', color: sel ? C.accent : C.ink, textAlign: 'center' }}>{c}</Text>
+                <Text numberOfLines={2} style={{ fontSize: 11, fontWeight: sel ? '800' : '600', color: sel ? C.accent : C.ink, textAlign: 'center' }}>{tr('cat.' + c)}</Text>
               </Pressable>
             );
           })}
@@ -132,11 +134,11 @@ export default function Feed() {
 
         <View style={{ paddingHorizontal: 18, paddingTop: 10, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
           <Text style={t.h3}>
-            Nearby <Text style={{ fontSize: 14, fontWeight: '600', color: C.muted }}>· {items.length} free</Text>
+            {tr('feed.nearby')} <Text style={{ fontSize: 14, fontWeight: '600', color: C.muted }}>· {tr('feed.countFree', { n: items.length })}</Text>
           </Text>
           <Pressable onPress={() => patch({ sortMode: s.sortMode === 'Nearest' ? 'Newest' : 'Nearest' })} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
             <Icon name="sort" size={14} color={C.accent} />
-            <Text style={{ color: C.accent, fontSize: 14, fontWeight: '700' }}>{s.sortMode}</Text>
+            <Text style={{ color: C.accent, fontSize: 14, fontWeight: '700' }}>{s.sortMode === 'Nearest' ? tr('feed.sortNearest') : tr('feed.sortNewest')}</Text>
           </Pressable>
         </View>
 
@@ -145,10 +147,10 @@ export default function Feed() {
             <View style={{ width: 78, height: 78, borderRadius: 39, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="search" size={32} color={C.accent} />
             </View>
-            <Text style={[t.h3, { marginTop: 16 }]}>Nothing in {loc}</Text>
-            <Text style={[t.small, { marginTop: 8, textAlign: 'center' }]}>Try a wider radius, another city, or clear the filter.</Text>
+            <Text style={[t.h3, { marginTop: 16 }]}>{tr('feed.nothingIn', { loc })}</Text>
+            <Text style={[t.small, { marginTop: 8, textAlign: 'center' }]}>{tr('feed.nothingHint')}</Text>
             {s.catFilter || s.q ? (
-              <Btn label="Clear filters" onPress={() => patch({ q: '', catFilter: null })} style={{ marginTop: 18, paddingVertical: 12, paddingHorizontal: 22 }} textStyle={{ fontSize: 14 }} />
+              <Btn label={tr('feed.clearFilters')} onPress={() => patch({ q: '', catFilter: null })} style={{ marginTop: 18, paddingVertical: 12, paddingHorizontal: 22 }} textStyle={{ fontSize: 14 }} />
             ) : null}
           </View>
         ) : (
@@ -186,10 +188,10 @@ export default function Feed() {
         <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: C.surface, borderTopLeftRadius: 26, borderTopRightRadius: 26, borderCurve: 'continuous', padding: 22, paddingTop: 8, paddingBottom: insets.bottom + 22 }}>
           <View style={{ width: 44, height: 5, borderRadius: 3, backgroundColor: C.line, alignSelf: 'center', marginBottom: 16 }} />
           <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
-            <Text style={t.h3}>Search radius</Text>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: C.accent }}>Within {s.radius} km</Text>
+            <Text style={t.h3}>{tr('feed.searchRadius')}</Text>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: C.accent }}>{tr('feed.withinKm', { n: s.radius })}</Text>
           </View>
-          <Text style={[t.small, { marginTop: 5 }]}>Show free items within this distance of {loc}.</Text>
+          <Text style={[t.small, { marginTop: 5 }]}>{tr('feed.radiusDesc', { loc })}</Text>
 
           {/* rounded stepper with manual entry */}
           <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: C.bg, borderWidth: 1, borderColor: C.line, borderRadius: radius.lg, borderCurve: 'continuous', overflow: 'hidden', marginTop: 16, height: 54 }}>
@@ -216,7 +218,7 @@ export default function Feed() {
             ))}
           </View>
 
-          <Btn label={`Show ${items.length} items`} onPress={() => patch({ showRadius: false })} block style={{ marginTop: 22 }} />
+          <Btn label={tr('feed.showItems', { n: items.length })} onPress={() => patch({ showRadius: false })} block style={{ marginTop: 22 }} />
         </View>
       </View>
       ) : null}

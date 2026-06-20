@@ -5,12 +5,13 @@ import { useEffect, useRef } from 'react';
 import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { Icon } from '@/pass/icon';
-import { activeThreadMessages, fmtTime, isBlocked, pendingIncomingFrom, threadMeta, usePass } from '@/pass/store';
+import { activeThreadMessages, fmtTime, isBlocked, pendingIncomingFrom, threadMeta, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, Btn, FreeTag, PhotoTile, Screen, VerifiedBadge } from '@/pass/ui';
 
 export default function Thread() {
   const router = useRouter();
+  const tr = useT();
   const { s, patch, sendMsg, sendImage, shareLoc, viewPerson, openListing, blockUser, unblockUser, showConfirm, acceptRequest, declineRequest } = usePass();
   const id = s.activeThreadId;
   const meta = id ? threadMeta(s, id) : null;
@@ -37,8 +38,8 @@ export default function Thread() {
     return (
       <Screen edges={['top', 'bottom']} bg={C.bg}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 14 }}>
-          <Text style={{ fontSize: 15, color: C.muted, textAlign: 'center' }}>This conversation is no longer available.</Text>
-          <Btn icon="back" label="Go back" variant="outline" onPress={() => router.back()} />
+          <Text style={{ fontSize: 15, color: C.muted, textAlign: 'center' }}>{tr('thread.unavailable')}</Text>
+          <Btn icon="back" label={tr('common.back')} variant="outline" onPress={() => router.back()} />
         </View>
       </Screen>
     );
@@ -58,9 +59,9 @@ export default function Thread() {
       return;
     }
     showConfirm({
-      title: `Block ${meta.otherName}?`,
-      message: 'They will be hidden from your feed and you will stop chatting. You can unblock later.',
-      confirmLabel: 'Block',
+      title: tr('thread.blockTitle', { name: meta.otherName }),
+      message: tr('thread.blockMsg'),
+      confirmLabel: tr('thread.block'),
       destructive: true,
       onConfirm: () => blockUser(meta.otherId),
     });
@@ -86,7 +87,7 @@ export default function Thread() {
           </View>
           <Pressable onPress={toggleBlock} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.pill, borderWidth: 1, borderColor: blocked ? C.accent : C.line }}>
             <Icon name="shield" size={14} color={blocked ? C.accent : C.muted} />
-            <Text style={{ fontSize: 12, fontWeight: '700', color: blocked ? C.accent : C.muted }}>{blocked ? 'Unblock' : 'Block'}</Text>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: blocked ? C.accent : C.muted }}>{blocked ? tr('thread.unblock') : tr('thread.block')}</Text>
           </Pressable>
         </View>
         <Pressable onPress={openItem} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.bg, borderRadius: 12, padding: 8, marginTop: 11, opacity: pressed ? 0.7 : 1 })}>
@@ -106,7 +107,7 @@ export default function Thread() {
       {/* safety strip */}
       <View style={{ backgroundColor: C.warnBg, paddingVertical: 8, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: 1, borderBottomColor: C.warnBorder }}>
         <Icon name="warning" size={12} color={C.warnInk} />
-        <Text style={{ fontSize: 11.5, color: C.warnInk, fontWeight: '600' }}>Free means free — never pay or share an OTP.</Text>
+        <Text style={{ fontSize: 11.5, color: C.warnInk, fontWeight: '600' }}>{tr('thread.safety')}</Text>
       </View>
 
       {/* messages */}
@@ -135,7 +136,7 @@ export default function Thread() {
                   {url ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                       <Icon name="pin" size={15} color={fg} />
-                      <Text style={{ fontSize: 14, lineHeight: 20, fontWeight: '700', color: fg, textDecorationLine: 'underline' }}>Open live location</Text>
+                      <Text style={{ fontSize: 14, lineHeight: 20, fontWeight: '700', color: fg, textDecorationLine: 'underline' }}>{tr('thread.openLiveLocation')}</Text>
                     </View>
                   ) : (
                     <Text style={{ fontSize: 14, lineHeight: 20, color: fg }}>{m.text}</Text>
@@ -147,7 +148,7 @@ export default function Thread() {
           );
         })}
         {!locShared && !blocked && (
-          <Btn icon="pin" label="Share my live location for the meetup" variant="accentOutline" onPress={shareLoc} style={{ alignSelf: 'flex-start', paddingVertical: 9, paddingHorizontal: 14 }} textStyle={{ fontSize: 12.5 }} />
+          <Btn icon="pin" label={tr('thread.shareLocation')} variant="accentOutline" onPress={shareLoc} style={{ alignSelf: 'flex-start', paddingVertical: 9, paddingHorizontal: 14 }} textStyle={{ fontSize: 12.5 }} />
         )}
       </ScrollView>
 
@@ -155,7 +156,7 @@ export default function Thread() {
       {incomingReq && !blocked ? (
         <View style={{ backgroundColor: C.surface, borderTopWidth: 1, borderTopColor: C.line, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4, gap: 10 }}>
           <Text style={{ fontSize: 12.5, color: C.muted }}>
-            <Text style={{ fontWeight: '800', color: C.ink }}>{meta.otherName}</Text> requested this item
+            <Text style={{ fontWeight: '800', color: C.ink }}>{meta.otherName}</Text> {tr('thread.requestedThisItem')}
           </Text>
           <Pressable
             onPress={() => {
@@ -168,13 +169,13 @@ export default function Thread() {
             <PhotoTile tint={reqListing?.tint ?? meta.tint} uri={reqListing?.photos?.[0]} gap={10} style={{ width: 46, height: 46, borderRadius: 11 }} />
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 14, fontWeight: '800', color: C.ink }} numberOfLines={1}>{reqListing?.title ?? meta.item}</Text>
-              <Text style={{ fontSize: 11.5, color: C.accent, fontWeight: '700' }}>View product</Text>
+              <Text style={{ fontSize: 11.5, color: C.accent, fontWeight: '700' }}>{tr('thread.viewProduct')}</Text>
             </View>
             <Icon name="forward" size={18} color={C.muted} />
           </Pressable>
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <Btn label="Reject" variant="outline" onPress={() => declineRequest(incomingReq.id)} style={{ flex: 1, paddingVertical: 10, borderColor: C.dangerBorder }} textStyle={{ fontSize: 14, color: C.dangerInk }} />
-            <Btn icon="check" label="Accept" onPress={() => acceptRequest(incomingReq.id)} style={{ flex: 1, paddingVertical: 10 }} textStyle={{ fontSize: 14 }} />
+            <Btn label={tr('thread.reject')} variant="outline" onPress={() => declineRequest(incomingReq.id)} style={{ flex: 1, paddingVertical: 10, borderColor: C.dangerBorder }} textStyle={{ fontSize: 14, color: C.dangerInk }} />
+            <Btn icon="check" label={tr('common.accept')} onPress={() => acceptRequest(incomingReq.id)} style={{ flex: 1, paddingVertical: 10 }} textStyle={{ fontSize: 14 }} />
           </View>
         </View>
       ) : null}
@@ -183,8 +184,8 @@ export default function Thread() {
       <View style={{ backgroundColor: C.surface, borderTopWidth: 1, borderTopColor: C.line, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 14 }}>
         {blocked ? (
           <View style={{ alignItems: 'center', gap: 10, paddingVertical: 6 }}>
-            <Text style={{ fontSize: 13, color: C.muted, textAlign: 'center' }}>You blocked {meta.otherName}. Unblock to chat.</Text>
-            <Btn icon="shield" label="Unblock" variant="outline" onPress={() => unblockUser(meta.otherId)} />
+            <Text style={{ fontSize: 13, color: C.muted, textAlign: 'center' }}>{tr('thread.blockedNotice', { name: meta.otherName })}</Text>
+            <Btn icon="shield" label={tr('thread.unblock')} variant="outline" onPress={() => unblockUser(meta.otherId)} />
           </View>
         ) : (
           <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
@@ -194,7 +195,7 @@ export default function Thread() {
             <TextInput
               value={s.draft}
               onChangeText={(draft) => patch({ draft })}
-              placeholder="Message…"
+              placeholder={tr('thread.messagePlaceholder')}
               placeholderTextColor={C.muted}
               style={{ flex: 1, height: 46, borderRadius: 23, backgroundColor: C.bg, borderWidth: 1, borderColor: C.line, paddingHorizontal: 16, fontSize: 13.5, color: C.ink }}
             />

@@ -34,6 +34,8 @@ export type Listing = {
   ph: string;
   photos?: string[];
   createdAt: number;
+  /** Set when the listing is edited after posting. */
+  updatedAt?: number;
   taken: boolean;
   takenBy?: UserId;
 };

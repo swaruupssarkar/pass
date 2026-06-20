@@ -4,7 +4,7 @@ import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeabl
 
 import type { Notification } from '@/pass/data';
 import { Icon } from '@/pass/icon';
-import { fmtAgo, notificationsFor, usePass } from '@/pass/store';
+import { fmtAgo, notificationsFor, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Header, Screen, shadow } from '@/pass/ui';
 
@@ -12,6 +12,7 @@ const ICON_FOR = (kind: Notification['kind']) => (kind === 'taken' ? 'gift' : 'c
 
 export default function Notifs() {
   const router = useRouter();
+  const tr = useT();
   const { s, openNotif, markNotifsRead, deleteNotif, clearNotifs, showConfirm } = usePass();
   const list = notificationsFor(s);
   const hasUnread = list.some((n) => !n.read);
@@ -22,9 +23,9 @@ export default function Notifs() {
   };
   const clearAll = () =>
     showConfirm({
-      title: 'Clear all notifications?',
-      message: 'This removes every notification for you.',
-      confirmLabel: 'Clear all',
+      title: tr('notifs.clearTitle'),
+      message: tr('notifs.clearMessage'),
+      confirmLabel: tr('notifs.clearAll'),
       destructive: true,
       onConfirm: clearNotifs,
     });
@@ -32,17 +33,17 @@ export default function Notifs() {
   return (
     <Screen>
       <Header
-        title="Notifications"
+        title={tr('notifs.title')}
         right={
           list.length > 0 ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
               {hasUnread ? (
                 <Pressable onPress={markNotifsRead} hitSlop={6}>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: C.accent }}>Read all</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: C.accent }}>{tr('notifs.readAll')}</Text>
                 </Pressable>
               ) : null}
               <Pressable onPress={clearAll} hitSlop={6}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: C.dangerInk }}>Clear</Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: C.dangerInk }}>{tr('notifs.clear')}</Text>
               </Pressable>
             </View>
           ) : undefined
@@ -53,7 +54,7 @@ export default function Notifs() {
           <View style={{ width: 78, height: 78, borderRadius: 39, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="bell" size={32} color={C.accent} />
           </View>
-          <Text style={{ fontSize: 18, fontWeight: '800', color: C.ink, marginTop: 16 }}>No notifications yet</Text>
+          <Text style={{ fontSize: 18, fontWeight: '800', color: C.ink, marginTop: 16 }}>{tr('notifs.empty')}</Text>
         </View>
       ) : (
         <ScrollView contentContainerStyle={{ padding: 18, paddingTop: 4, paddingBottom: 24, gap: 10 }}>
@@ -65,7 +66,7 @@ export default function Notifs() {
                   onPress={() => deleteNotif(n.id)}
                   style={{ width: 78, marginLeft: 8, backgroundColor: C.dangerBg, borderRadius: radius.lg, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center' }}>
                   <Icon name="trash" size={22} color={C.dangerInk} />
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: C.dangerInk, marginTop: 4 }}>Delete</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: C.dangerInk, marginTop: 4 }}>{tr('common.delete')}</Text>
                 </Pressable>
               )}>
               <Pressable

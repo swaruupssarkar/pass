@@ -2,11 +2,13 @@ import { useRouter } from 'expo-router';
 import { Text, View } from 'react-native';
 
 import { Icon } from '@/pass/icon';
+import { useT } from '@/pass/store';
 import { C } from '@/pass/theme';
 import { Btn, Screen, t } from '@/pass/ui';
 
 export default function Notif() {
   const router = useRouter();
+  const tr = useT();
   const toCity = () => router.push('/city');
 
   return (
@@ -32,13 +34,13 @@ export default function Notif() {
               <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>1</Text>
             </View>
           </View>
-          <Text style={[t.h1, { marginTop: 30, textAlign: 'center' }]}>Get the good stuff first</Text>
+          <Text style={[t.h1, { marginTop: 30, textAlign: 'center' }]}>{tr('notif.title')}</Text>
           <Text style={[t.muted, { fontSize: 15, marginTop: 12, textAlign: 'center', maxWidth: 300, lineHeight: 23 }]}>
-            Get a ping when something free pops up near you. Good items go fast — and alerts are always free.
+            {tr('notif.subtitle')}
           </Text>
         </View>
-        <Btn label="Turn on notifications" onPress={toCity} block />
-        <Btn label="Maybe later" variant="ghost" onPress={toCity} block style={{ marginTop: 4 }} />
+        <Btn label={tr('notif.turnOn')} onPress={toCity} block />
+        <Btn label={tr('notif.maybeLater')} variant="ghost" onPress={toCity} block style={{ marginTop: 4 }} />
       </View>
     </Screen>
   );

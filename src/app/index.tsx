@@ -3,11 +3,12 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
-import { usePass } from '@/pass/store';
+import { usePass, useT } from '@/pass/store';
 import { C } from '@/pass/theme';
 
 export default function Splash() {
   const router = useRouter();
+  const tr = useT();
   const { s } = usePass();
 
   // returning user: skip onboarding once persisted state has loaded
@@ -38,9 +39,9 @@ export default function Splash() {
       </View>
       <Text style={{ fontSize: 40, fontWeight: '800', color: '#fff', letterSpacing: -1, marginTop: 24 }}>pass</Text>
       <Text style={{ fontSize: 17, color: 'rgba(255,255,255,0.92)', textAlign: 'center', marginTop: 10, lineHeight: 26, fontWeight: '500', maxWidth: 260 }}>
-        Free stuff near you.{'\n'}Give what you don&apos;t need.
+        {tr('index.tagline', { br: '\n' })}
       </Text>
-      <Text style={{ position: 'absolute', bottom: 50, fontSize: 13, color: 'rgba(255,255,255,0.8)', fontWeight: '600' }}>Tap to start</Text>
+      <Text style={{ position: 'absolute', bottom: 50, fontSize: 13, color: 'rgba(255,255,255,0.8)', fontWeight: '600' }}>{tr('index.tapToStart')}</Text>
     </Pressable>
   );
 }

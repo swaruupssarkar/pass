@@ -3,12 +3,13 @@ import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/pass/icon';
-import { distLabel, myRequests, savedListings, usePass } from '@/pass/store';
+import { distLabel, fmtAgo, fmtDate, myRequests, savedListings, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { BottomNav, Btn, FreeTag, PhotoTile, Screen, shadow, t } from '@/pass/ui';
 
 export default function Saved() {
   const router = useRouter();
+  const tr = useT();
   const { s, openListing, toggleSave, openThreadFor, cancelRequest, showConfirm } = usePass();
   const [tab, setTab] = useState<'saved' | 'requested'>('saved');
   const saved = savedListings(s);
@@ -24,9 +25,9 @@ export default function Saved() {
   };
   const cancel = (requestId: string, title?: string) => {
     showConfirm({
-      title: 'Cancel request?',
-      message: title ? `Withdraw your request for “${title}”?` : 'Withdraw this request?',
-      confirmLabel: 'Cancel request',
+      title: tr('saved.cancelTitle'),
+      message: title ? tr('saved.cancelMessage', { title }) : tr('saved.cancelMessageNoTitle'),
+      confirmLabel: tr('saved.cancelRequest'),
       destructive: true,
       onConfirm: () => cancelRequest(requestId),
     });
@@ -35,7 +36,7 @@ export default function Saved() {
   return (
     <Screen>
       <View style={{ paddingHorizontal: 18, paddingTop: 6 }}>
-        <Text style={[t.h2, { marginBottom: 12 }]}>Saved</Text>
+        <Text style={[t.h2, { marginBottom: 12 }]}>{tr('saved.title')}</Text>
         {/* tabs */}
         <View style={{ flexDirection: 'row', backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: radius.md, padding: 4, gap: 4 }}>
           {(['saved', 'requested'] as const).map((k) => {
@@ -44,7 +45,7 @@ export default function Saved() {
             return (
               <Pressable key={k} onPress={() => setTab(k)} style={{ flex: 1, paddingVertical: 9, borderRadius: 11, backgroundColor: on ? C.accent : 'transparent', alignItems: 'center' }}>
                 <Text style={{ fontSize: 14, fontWeight: '700', color: on ? '#fff' : C.ink }}>
-                  {k === 'saved' ? 'Saved' : 'Requested'} {n > 0 ? `· ${n}` : ''}
+                  {k === 'saved' ? tr('saved.tabSaved') : tr('saved.tabRequested')} {n > 0 ? `· ${n}` : ''}
                 </Text>
               </Pressable>
             );
@@ -57,9 +58,9 @@ export default function Saved() {
           saved.length === 0 ? (
             <Empty
               icon="heart-outline"
-              title="Nothing saved yet"
-              body="Tap the heart on any item to keep it here."
-              cta="Browse free items"
+              title={tr('saved.emptySavedTitle')}
+              body={tr('saved.emptySavedBody')}
+              cta={tr('saved.browse')}
               onPress={() => router.navigate('/feed')}
             />
           ) : (
@@ -80,9 +81,9 @@ export default function Saved() {
         ) : requested.length === 0 ? (
           <Empty
             icon="time"
-            title="No requests yet"
-            body="Tap “I want this” on an item to request it. It shows up here with its status."
-            cta="Browse free items"
+            title={tr('saved.emptyRequestedTitle')}
+            body={tr('saved.emptyRequestedBody')}
+            cta={tr('saved.browse')}
             onPress={() => router.navigate('/feed')}
           />
         ) : (
@@ -91,20 +92,21 @@ export default function Saved() {
               <Pressable disabled={!listing} onPress={() => listing && open(listing.id)} style={{ flexDirection: 'row', gap: 13, alignItems: 'center' }}>
                 <PhotoTile tint={listing?.tint ?? C.bg} uri={listing?.photos?.[0]} style={{ width: 64, height: 64, borderRadius: radius.md }} />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: C.ink }} numberOfLines={1}>{listing ? listing.title : 'Listing removed'}</Text>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: C.ink }} numberOfLines={1}>{listing ? listing.title : tr('saved.listingRemoved')}</Text>
                   <Text style={[t.small, { marginTop: 4 }]} numberOfLines={1}>{request.note}</Text>
+                  <Text style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{tr('saved.requestedLine', { ago: fmtAgo(request.createdAt), date: fmtDate(request.createdAt) })}</Text>
                 </View>
-                <StatusBadge status={request.status} />
+                <StatusBadge status={request.status} tr={tr} />
               </Pressable>
               {request.status === 'accepted' && listing ? (
                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 11 }}>
-                  <Btn icon="chat" label="Chat" onPress={() => chat(listing.id)} style={{ flex: 1, paddingVertical: 11 }} textStyle={{ fontSize: 14 }} />
-                  <Btn label="Cancel" variant="outline" onPress={() => cancel(request.id, listing?.title)} style={{ paddingVertical: 11, borderColor: C.dangerBorder }} textStyle={{ fontSize: 14, color: C.dangerInk }} />
+                  <Btn icon="chat" label={tr('saved.chat')} onPress={() => chat(listing.id)} style={{ flex: 1, paddingVertical: 11 }} textStyle={{ fontSize: 14 }} />
+                  <Btn label={tr('common.cancel')} variant="outline" onPress={() => cancel(request.id, listing?.title)} style={{ paddingVertical: 11, borderColor: C.dangerBorder }} textStyle={{ fontSize: 14, color: C.dangerInk }} />
                 </View>
               ) : request.status === 'pending' ? (
-                <Btn icon="close" label="Cancel request" variant="outline" onPress={() => cancel(request.id, listing?.title)} block style={{ marginTop: 11, paddingVertical: 11, borderColor: C.dangerBorder }} textStyle={{ fontSize: 14, color: C.dangerInk }} />
+                <Btn icon="close" label={tr('saved.cancelRequest')} variant="outline" onPress={() => cancel(request.id, listing?.title)} block style={{ marginTop: 11, paddingVertical: 11, borderColor: C.dangerBorder }} textStyle={{ fontSize: 14, color: C.dangerInk }} />
               ) : (
-                <Btn icon="trash" label="Remove" variant="outline" onPress={() => cancelRequest(request.id)} block style={{ marginTop: 11, paddingVertical: 11 }} textStyle={{ fontSize: 14, color: C.muted }} />
+                <Btn icon="trash" label={tr('common.remove')} variant="outline" onPress={() => cancelRequest(request.id)} block style={{ marginTop: 11, paddingVertical: 11 }} textStyle={{ fontSize: 14, color: C.muted }} />
               )}
             </View>
           ))
@@ -116,13 +118,13 @@ export default function Saved() {
   );
 }
 
-function StatusBadge({ status }: { status: 'pending' | 'accepted' | 'declined' }) {
+function StatusBadge({ status, tr }: { status: 'pending' | 'accepted' | 'declined'; tr: (key: string, params?: Record<string, string | number>) => string }) {
   const map =
     {
-      pending: { label: 'Pending', bg: C.pendingBg, fg: C.pendingInk },
-      accepted: { label: 'Accepted', bg: '#E4F0E9', fg: C.free },
-      declined: { label: 'Declined', bg: C.bg, fg: C.muted },
-    }[status] ?? { label: 'Pending', bg: C.pendingBg, fg: C.pendingInk };
+      pending: { label: tr('saved.statusPending'), bg: C.pendingBg, fg: C.pendingInk },
+      accepted: { label: tr('saved.statusAccepted'), bg: '#E4F0E9', fg: C.free },
+      declined: { label: tr('saved.statusDeclined'), bg: C.bg, fg: C.muted },
+    }[status] ?? { label: tr('saved.statusPending'), bg: C.pendingBg, fg: C.pendingInk };
   return (
     <View style={{ backgroundColor: map.bg, borderRadius: radius.pill, paddingVertical: 5, paddingHorizontal: 11 }}>
       <Text style={{ fontSize: 11, fontWeight: '700', color: map.fg }}>{map.label}</Text>

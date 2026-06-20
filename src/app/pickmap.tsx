@@ -7,13 +7,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '@/pass/icon';
 import { hasPlaces } from '@/pass/config';
 import { autocomplete, geocodeAddress, placeDetails, reverseGeocode, type Suggestion } from '@/pass/places';
-import { activeOrigin, usePass } from '@/pass/store';
+import { activeOrigin, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Btn } from '@/pass/ui';
 
 export default function PickMap() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const tr = useT();
   const { s, setPickup, setNotifyAddress } = usePass();
   const mapRef = useRef<MapView>(null);
   const notifyMode = useLocalSearchParams().mode === 'notify';
@@ -92,7 +93,7 @@ export default function PickMap() {
               value={query}
               onChangeText={onQuery}
               onSubmitEditing={searchPlain}
-              placeholder="Search address"
+              placeholder={tr('pickmap.searchPlaceholder')}
               placeholderTextColor={C.muted}
               returnKeyType="search"
               style={{ flex: 1, fontSize: 14, color: C.ink }}
@@ -113,7 +114,7 @@ export default function PickMap() {
         ) : null}
         {!hasPlaces() ? (
           <Text style={{ marginTop: 8, marginLeft: 52, fontSize: 11.5, color: C.muted, backgroundColor: C.surface, borderRadius: 10, padding: 8 }}>
-            Tip: set a Google Places key for live suggestions. For now, type an address and press search, or drag the pin.
+            {tr('pickmap.placesTip')}
           </Text>
         ) : null}
       </View>
@@ -122,9 +123,9 @@ export default function PickMap() {
       <View style={{ position: 'absolute', left: 16, right: 16, bottom: insets.bottom + 18 }}>
         <View style={{ backgroundColor: C.surface, borderRadius: radius.md, padding: 12, marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 8, boxShadow: '0 6px 16px -6px rgba(0,0,0,0.3)' }}>
           <Icon name="pin" size={16} color={C.accent} />
-          <Text style={{ flex: 1, fontSize: 12.5, color: C.muted }}>Tap the map or drag the pin to the exact pickup spot.</Text>
+          <Text style={{ flex: 1, fontSize: 12.5, color: C.muted }}>{tr('pickmap.hint')}</Text>
         </View>
-        <Btn icon="check" label="Confirm pickup here" onPress={confirm} block />
+        <Btn icon="check" label={tr('pickmap.confirm')} onPress={confirm} block />
       </View>
     </View>
   );

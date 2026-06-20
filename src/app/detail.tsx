@@ -6,13 +6,14 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/pass/icon';
-import { activeListing, distLabel, myRequestFor, USERS, usePass } from '@/pass/store';
+import { activeListing, distLabel, fmtAgo, fmtDate, myRequestFor, USERS, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, Btn, Hatch, Header, SafetyNote, Screen, VerifiedBadge, t } from '@/pass/ui';
 
 export default function Detail() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const tr = useT();
   const { height } = useWindowDimensions();
   const { s, patch, toggleSave, viewPerson, requestListing, openThreadFor, openTakenPicker, showAlert, cancelRequest, showConfirm } = usePass();
   const item = activeListing(s);
@@ -20,13 +21,13 @@ export default function Detail() {
   if (!item) {
     return (
       <Screen>
-        <Header title="Listing" />
+        <Header title={tr('detail.listing')} />
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
           <View style={{ width: 78, height: 78, borderRadius: 39, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="search" size={32} color={C.accent} />
           </View>
-          <Text style={[t.h3, { marginTop: 16 }]}>Listing not found</Text>
-          <Btn label="Go back" onPress={() => router.back()} style={{ marginTop: 18, paddingVertical: 12, paddingHorizontal: 22 }} textStyle={{ fontSize: 14 }} />
+          <Text style={[t.h3, { marginTop: 16 }]}>{tr('detail.notFound')}</Text>
+          <Btn label={tr('common.back')} onPress={() => router.back()} style={{ marginTop: 18, paddingVertical: 12, paddingHorizontal: 22 }} textStyle={{ fontSize: 14 }} />
         </View>
       </Screen>
     );
@@ -48,7 +49,7 @@ export default function Detail() {
   };
   const wantThis = () => {
     requestListing(item.id, '');
-    showAlert('Request sent', `We let ${owner.name} know. You can chat once they accept.`);
+    showAlert(tr('detail.requestSentTitle'), tr('detail.requestSentMsg', { name: owner.name }));
   };
   const messageGiver = () => {
     openThreadFor(item.id);
@@ -61,9 +62,9 @@ export default function Detail() {
   const cancel = () => {
     if (!myReq) return;
     showConfirm({
-      title: 'Cancel request?',
-      message: `Withdraw your request for “${item.title}”?`,
-      confirmLabel: 'Cancel request',
+      title: tr('detail.cancelRequestTitle'),
+      message: tr('detail.cancelRequestMsg', { title: item.title }),
+      confirmLabel: tr('detail.cancelRequestConfirm'),
       destructive: true,
       onConfirm: () => cancelRequest(myReq.id),
     });
@@ -122,7 +123,7 @@ export default function Detail() {
         <GestureDetector gesture={sheetPan}>
           <Pressable onPress={() => patch({ sheetExpanded: !s.sheetExpanded })} style={{ alignItems: 'center', gap: 5, paddingTop: 11, paddingBottom: 6 }}>
             <View style={{ width: 44, height: 5, borderRadius: 3, backgroundColor: C.line }} />
-            <Text style={{ fontSize: 11, fontWeight: '700', color: C.muted }}>{s.sheetExpanded ? 'Show less · swipe down' : 'Show more · swipe up'}</Text>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: C.muted }}>{s.sheetExpanded ? tr('detail.showLess') : tr('detail.showMore')}</Text>
           </Pressable>
         </GestureDetector>
 
@@ -130,17 +131,27 @@ export default function Detail() {
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
             <Text style={{ flex: 1, fontSize: 25, fontWeight: '800', color: C.ink, letterSpacing: -0.6, lineHeight: 29 }}>{item.title}</Text>
             <View style={{ backgroundColor: C.free, borderRadius: 13, paddingVertical: 9, paddingHorizontal: 16 }}>
-              <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14, letterSpacing: 0.4 }}>FREE</Text>
+              <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14, letterSpacing: 0.4 }}>{tr('detail.free')}</Text>
             </View>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 11 }}>
             <Icon name="pin" size={15} color={C.muted} />
             <Text style={{ fontSize: 14.5, fontWeight: '600', color: C.muted }}>{distLabel(s, item)} · {item.area}</Text>
           </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 7 }}>
+            <Icon name="time" size={15} color={C.muted} />
+            <Text style={{ fontSize: 14.5, fontWeight: '600', color: C.muted }}>{tr('detail.posted', { ago: fmtAgo(item.createdAt), date: fmtDate(item.createdAt) })}</Text>
+          </View>
+          {item.updatedAt ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 7 }}>
+              <Icon name="pencil" size={14} color={C.muted} />
+              <Text style={{ fontSize: 14.5, fontWeight: '600', color: C.muted }}>{tr('detail.lastUpdated', { date: fmtDate(item.updatedAt) })}</Text>
+            </View>
+          ) : null}
           <View style={{ flexDirection: 'row', gap: 9, marginTop: 14, flexWrap: 'wrap' }}>
-            <Chip text={item.cat} accent />
-            <Chip text={`Condition · ${item.cond}`} />
-            <Chip text={`Pickup · ${item.area}`} />
+            <Chip text={tr('cat.' + item.cat)} accent />
+            <Chip text={tr('detail.conditionChip', { cond: tr('cond.' + item.cond) })} />
+            <Chip text={tr('detail.pickupChip', { area: item.area })} />
           </View>
 
           <Pressable onPress={mine ? undefined : viewGiver} style={{ marginTop: 16, backgroundColor: C.bg, borderRadius: radius.lg, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 13 }}>
@@ -155,7 +166,7 @@ export default function Detail() {
                 <Text style={{ fontSize: 12.5, color: C.muted }}>{owner.rating} · Member since {owner.since}</Text>
               </View>
             </View>
-            {!mine && <Text style={{ color: C.accent, fontSize: 14, fontWeight: '800' }}>View</Text>}
+            {!mine && <Text style={{ color: C.accent, fontSize: 14, fontWeight: '800' }}>{tr('detail.view')}</Text>}
           </Pressable>
 
           <Text style={{ fontSize: 14.5, color: C.ink, opacity: 0.82, lineHeight: 23, marginTop: 16 }}>{item.desc}</Text>
@@ -163,33 +174,33 @@ export default function Detail() {
           {item.taken ? (
             <View style={{ marginTop: 18, backgroundColor: C.bg, borderRadius: radius.lg, paddingVertical: 16, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 }}>
               <Icon name="check-circle" size={18} color={C.muted} />
-              <Text style={{ fontSize: 14, fontWeight: '700', color: C.muted }}>This item has been taken</Text>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: C.muted }}>{tr('detail.taken')}</Text>
             </View>
           ) : null}
 
           <View style={{ marginTop: 18 }}>
-            <SafetyNote text="This item is free. Never pay, never scan a QR code, never share an OTP to claim it." />
+            <SafetyNote text={tr('detail.safetyNote')} />
           </View>
           <Pressable onPress={() => router.push('/report')} style={{ alignSelf: 'center', marginTop: 12 }}>
-            <Text style={{ fontSize: 12.5, fontWeight: '700', color: C.muted }}>Report this listing</Text>
+            <Text style={{ fontSize: 12.5, fontWeight: '700', color: C.muted }}>{tr('detail.report')}</Text>
           </Pressable>
         </ScrollView>
 
         {!item.taken ? (
           <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center', padding: 12, paddingBottom: insets.bottom + 12, borderTopWidth: 1, borderTopColor: C.line }}>
             {mine ? (
-              <Btn icon="check" label="Mark as Taken" onPress={markTaken} style={{ flex: 1 }} />
+              <Btn icon="check" label={tr('detail.markTaken')} onPress={markTaken} style={{ flex: 1 }} />
             ) : !myReq ? (
-              <Btn label="I want this" onPress={wantThis} style={{ flex: 1 }} />
+              <Btn label={tr('detail.wantThis')} onPress={wantThis} style={{ flex: 1 }} />
             ) : myReq.status === 'pending' ? (
               <>
-                <Btn icon="time" label="Requested" onPress={undefined} style={{ flex: 1, opacity: 0.55 }} variant="outline" textStyle={{ color: C.muted }} />
-                <Btn label="Cancel" onPress={cancel} variant="outline" style={{ borderColor: C.dangerBorder }} textStyle={{ color: C.dangerInk }} />
+                <Btn icon="time" label={tr('detail.requested')} onPress={undefined} style={{ flex: 1, opacity: 0.55 }} variant="outline" textStyle={{ color: C.muted }} />
+                <Btn label={tr('common.cancel')} onPress={cancel} variant="outline" style={{ borderColor: C.dangerBorder }} textStyle={{ color: C.dangerInk }} />
               </>
             ) : myReq.status === 'accepted' ? (
-              <Btn icon="mail" label={`Message ${owner.name}`} onPress={messageGiver} style={{ flex: 1 }} />
+              <Btn icon="mail" label={tr('detail.message', { name: owner.name })} onPress={messageGiver} style={{ flex: 1 }} />
             ) : (
-              <Btn label="Request declined" onPress={undefined} style={{ flex: 1, opacity: 0.55 }} variant="outline" textStyle={{ color: C.muted }} />
+              <Btn label={tr('detail.requestDeclined')} onPress={undefined} style={{ flex: 1, opacity: 0.55 }} variant="outline" textStyle={{ color: C.muted }} />
             )}
           </View>
         ) : null}

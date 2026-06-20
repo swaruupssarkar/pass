@@ -2,12 +2,13 @@ import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/pass/icon';
-import { browseListings, CATS, distLabel, usePass } from '@/pass/store';
+import { browseListings, CATS, distLabel, usePass, useT } from '@/pass/store';
 import { C, radius, TINTS } from '@/pass/theme';
 import { BottomNav, Btn, FreeTag, Header, PhotoTile, Screen, shadow, t } from '@/pass/ui';
 
 export default function Categories() {
   const router = useRouter();
+  const tr = useT();
   const { s, patch, openListing } = usePass();
   const selCat = CATS[s.catSel];
   const products = browseListings({ ...s, catFilter: selCat, q: '' });
@@ -24,7 +25,7 @@ export default function Categories() {
   return (
     <Screen bg={C.surface}>
       <Header
-        title="All categories"
+        title={tr('categories.title')}
         right={
           <Pressable onPress={() => { patch({ catFilter: null, q: '' }); router.navigate('/feed'); }} hitSlop={8}>
             <Icon name="search" size={18} color={C.muted} />
@@ -40,7 +41,7 @@ export default function Categories() {
               <Pressable key={c} onPress={() => patch({ catSel: i })} style={{ alignItems: 'center', gap: 6, paddingVertical: 12, paddingHorizontal: 4, backgroundColor: sel ? C.accentSoft : 'transparent' }}>
                 {sel ? <View style={{ position: 'absolute', left: 0, top: 12, bottom: 12, width: 3, borderRadius: 3, backgroundColor: C.accent }} /> : null}
                 <PhotoTile tint={TINTS[i % 9]} gap={12} style={{ width: 40, height: 40, borderRadius: radius.md }} />
-                <Text numberOfLines={2} style={{ fontSize: 10, lineHeight: 12, fontWeight: sel ? '800' : '600', color: sel ? C.accent : C.ink, textAlign: 'center' }}>{c}</Text>
+                <Text numberOfLines={2} style={{ fontSize: 10, lineHeight: 12, fontWeight: sel ? '800' : '600', color: sel ? C.accent : C.ink, textAlign: 'center' }}>{tr('cat.' + c)}</Text>
               </Pressable>
             );
           })}
@@ -51,10 +52,10 @@ export default function Categories() {
           {/* banner */}
           <Pressable onPress={seeAll} style={{ borderRadius: 18, borderCurve: 'continuous', backgroundColor: C.accentSoft, padding: 18, flexDirection: 'row', alignItems: 'center', gap: 12, overflow: 'hidden' }}>
             <View style={{ flex: 1 }}>
-              <Text style={[t.h3, { fontSize: 19 }]}>{selCat}</Text>
-              <Text style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>{products.length} free nearby</Text>
+              <Text style={[t.h3, { fontSize: 19 }]}>{tr('cat.' + selCat)}</Text>
+              <Text style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>{tr('categories.freeNearby', { n: products.length })}</Text>
             </View>
-            <PhotoTile tint="rgba(255,255,255,0.55)" caption={selCat} gap={16} style={{ width: 92, height: 92, borderRadius: radius.lg }} />
+            <PhotoTile tint="rgba(255,255,255,0.55)" caption={tr('cat.' + selCat)} gap={16} style={{ width: 92, height: 92, borderRadius: radius.lg }} />
           </Pressable>
 
           {/* products */}
@@ -63,7 +64,7 @@ export default function Categories() {
               <View style={{ width: 70, height: 70, borderRadius: 35, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
                 <Icon name="search" size={28} color={C.accent} />
               </View>
-              <Text style={[t.small, { marginTop: 14, textAlign: 'center' }]}>No {selCat} items free nearby yet</Text>
+              <Text style={[t.small, { marginTop: 14, textAlign: 'center' }]}>{tr('categories.emptyCat', { cat: tr('cat.' + selCat) })}</Text>
             </View>
           ) : (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 16 }}>

@@ -3,28 +3,29 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { REPORT_REASONS } from '@/pass/data';
 import { Icon } from '@/pass/icon';
-import { usePass } from '@/pass/store';
+import { usePass, useT } from '@/pass/store';
 import { C } from '@/pass/theme';
 import { Btn, Header, SafetyNote, Screen, t } from '@/pass/ui';
 
 export default function Report() {
   const router = useRouter();
+  const tr = useT();
   const { s, patch, submitReport } = usePass();
 
   if (s.reportDone) {
     return (
       <Screen edges={['top', 'bottom']}>
-        <Header title="Report & block" />
+        <Header title={tr('report.title')} />
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 }}>
           <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: C.free, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="check-circle" size={48} color="#fff" />
           </View>
-          <Text style={{ fontSize: 22, fontWeight: '800', color: C.ink, marginTop: 20 }}>Thanks for flagging</Text>
+          <Text style={{ fontSize: 22, fontWeight: '800', color: C.ink, marginTop: 20 }}>{tr('report.thanks')}</Text>
           <Text style={{ fontSize: 14.5, color: C.muted, marginTop: 10, textAlign: 'center', maxWidth: 290, lineHeight: 22 }}>
-            Our team reviews money-request reports fast. This person can no longer contact you.
+            {tr('report.thanksBody')}
           </Text>
           <Btn
-            label="Done"
+            label={tr('common.done')}
             onPress={() => {
               patch({ reportDone: false, reportReason: null });
               router.back();
@@ -43,10 +44,10 @@ export default function Report() {
       <Header title="Report & block" />
       <ScrollView contentContainerStyle={{ padding: 18, paddingTop: 4 }} showsVerticalScrollIndicator={false}>
         <Text style={[t.small, { marginBottom: 14 }]}>
-          Tell us what&apos;s wrong. Reports are anonymous and reviewed by our safety team.
+          {tr('report.intro')}
         </Text>
         <View style={{ gap: 10 }}>
-          {REPORT_REASONS.map((label, i) => {
+          {REPORT_REASONS.map((_label, i) => {
             const sel = s.reportReason === i;
             return (
               <Pressable
@@ -54,7 +55,7 @@ export default function Report() {
                 onPress={() => patch({ reportReason: i })}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 13, borderWidth: 1.5, borderColor: sel ? C.accent : C.line, backgroundColor: C.surface, borderRadius: 15, padding: 15 }}>
                 <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: sel ? C.accent : '#CFC6B9', backgroundColor: sel ? C.accent : 'transparent' }} />
-                <Text style={{ flex: 1, fontSize: 14.5, fontWeight: '600', color: C.ink }}>{label}</Text>
+                <Text style={{ flex: 1, fontSize: 14.5, fontWeight: '600', color: C.ink }}>{tr('report.reason' + i)}</Text>
               </Pressable>
             );
           })}
@@ -62,13 +63,13 @@ export default function Report() {
         <View style={{ marginTop: 16 }}>
           <SafetyNote
             danger
-            text="If someone asked you to pay for a free item, report it — that's the clearest scam signal and we act on it fast."
+            text={tr('report.safetyNote')}
           />
         </View>
       </ScrollView>
       <View style={{ padding: 18, borderTopWidth: 1, borderTopColor: C.line }}>
         <Btn
-          label="Submit report & block"
+          label={tr('report.submit')}
           onPress={() => {
             if (canSubmit) submitReport();
           }}

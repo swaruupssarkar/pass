@@ -14,7 +14,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets, type Edge } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/pass/icon';
-import { usePass } from '@/pass/store';
+import { usePass, useT } from '@/pass/store';
 import { C, hatch, radius } from '@/pass/theme';
 
 // ---------- screen scaffold ----------
@@ -409,20 +409,21 @@ const NAV_ROUTE: Record<NavKey, '/feed' | '/saved' | '/give' | '/inbox' | '/prof
 export function BottomNav({ active }: { active: NavKey }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const tr = useT();
   const go = (k: NavKey) => () => router.navigate(NAV_ROUTE[k]);
   const col = (k: NavKey) => (active === k ? C.accent : '#B6ADA2');
   return (
     <View style={[styles.nav, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-      <NavItem icon={active === 'home' ? 'home' : 'home-outline'} label="Home" color={col('home')} onPress={go('home')} />
-      <NavItem icon={active === 'saved' ? 'heart' : 'heart-outline'} label="Saved" color={col('saved')} onPress={go('saved')} />
+      <NavItem icon={active === 'home' ? 'home' : 'home-outline'} label={tr('nav.home')} color={col('home')} onPress={go('home')} />
+      <NavItem icon={active === 'saved' ? 'heart' : 'heart-outline'} label={tr('nav.saved')} color={col('saved')} onPress={go('saved')} />
       <Pressable onPress={go('give')} style={({ pressed }) => [styles.fabWrap, pressed && { opacity: 0.6 }]}>
         <View style={styles.fab}>
           <Icon name="add" size={32} color="#fff" />
         </View>
-        <Text style={{ fontSize: 10, fontWeight: '700', color: C.accent, marginTop: 5 }}>Give</Text>
+        <Text style={{ fontSize: 10, fontWeight: '700', color: C.accent, marginTop: 5 }}>{tr('nav.give')}</Text>
       </Pressable>
-      <NavItem icon={active === 'inbox' ? 'chat' : 'chat-outline'} label="Chats" color={col('inbox')} onPress={go('inbox')} />
-      <NavItem icon={active === 'profile' ? 'person' : 'person-outline'} label="Profile" color={col('profile')} onPress={go('profile')} />
+      <NavItem icon={active === 'inbox' ? 'chat' : 'chat-outline'} label={tr('nav.chats')} color={col('inbox')} onPress={go('inbox')} />
+      <NavItem icon={active === 'profile' ? 'person' : 'person-outline'} label={tr('nav.profile')} color={col('profile')} onPress={go('profile')} />
     </View>
   );
 }

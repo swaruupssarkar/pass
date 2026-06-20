@@ -12,20 +12,15 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Icon } from '@/pass/icon';
-import { myListings, usePass } from '@/pass/store';
+import { myListings, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Btn, BottomNav, CloseButton, Screen, t } from '@/pass/ui';
 
-const LINES = [
-  'One person’s clutter is another’s treasure.',
-  'Give once, smile twice.',
-  'Your spare chair could be someone’s first.',
-  'Less landfill, more love.',
-  'Kindness travels fast in the neighbourhood.',
-];
+const LINE_KEYS = ['give.line1', 'give.line2', 'give.line3', 'give.line4', 'give.line5'];
 
 export default function Give() {
   const router = useRouter();
+  const tr = useT();
   const { s, startPost } = usePass();
   const given = myListings(s).filter((l) => l.taken).length;
   const [line, setLine] = useState(0);
@@ -38,7 +33,7 @@ export default function Give() {
     float.value = withRepeat(withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.quad) }), -1, true);
     pulse.value = withRepeat(withTiming(1, { duration: 2400, easing: Easing.out(Easing.quad) }), -1, false);
     cta.value = withRepeat(withTiming(1, { duration: 1300, easing: Easing.inOut(Easing.quad) }), -1, true);
-    const id = setInterval(() => setLine((p) => (p + 1) % LINES.length), 3000);
+    const id = setInterval(() => setLine((p) => (p + 1) % LINE_KEYS.length), 3000);
     return () => clearInterval(id);
   }, [cta, float, pulse]);
 
@@ -55,7 +50,7 @@ export default function Give() {
     <Screen>
       <View style={{ flex: 1, paddingHorizontal: 22, paddingTop: 16, paddingBottom: 16 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={t.h2}>Give away</Text>
+          <Text style={t.h2}>{tr('give.title')}</Text>
           <CloseButton onPress={() => router.navigate('/feed')} />
         </View>
 
@@ -69,13 +64,13 @@ export default function Give() {
           </View>
 
           <Animated.Text entering={FadeInDown.delay(120).springify()} style={[t.h1, { fontSize: 27, marginTop: 30, textAlign: 'center', maxWidth: 290, lineHeight: 32 }]}>
-            Turn clutter into kindness
+            {tr('give.headline')}
           </Animated.Text>
 
           {/* rotating motivational line */}
           <View style={{ height: 44, justifyContent: 'center', marginTop: 10 }}>
             <Animated.Text key={line} entering={FadeIn.duration(500)} style={[t.muted, { fontSize: 15, textAlign: 'center', maxWidth: 300, lineHeight: 22 }]}>
-              {LINES[line]}
+              {tr(LINE_KEYS[line])}
             </Animated.Text>
           </View>
 
@@ -83,17 +78,17 @@ export default function Give() {
           <Animated.View entering={FadeIn.delay(300)} style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: C.surface, borderRadius: radius.pill, paddingVertical: 8, paddingHorizontal: 14, marginTop: 18 }}>
             <Icon name="heart" size={14} color={C.accent} />
             <Text style={{ fontSize: 13, fontWeight: '700', color: C.ink }}>
-              {given > 0 ? `You've gifted ${given} item${given > 1 ? 's' : ''} so far` : 'Be the first to give today'}
+              {given > 0 ? tr(given > 1 ? 'give.giftedPlural' : 'give.giftedOne', { count: given }) : tr('give.beFirst')}
             </Text>
           </Animated.View>
         </View>
 
         <Animated.View entering={FadeInDown.delay(200)} style={ctaStyle}>
-          <Btn icon="add" label="Post an item" onPress={post} block />
+          <Btn icon="add" label={tr('give.postItem')} onPress={post} block />
         </Animated.View>
         <Animated.View entering={FadeInDown.delay(300)} style={{ flexDirection: 'row', gap: 11, marginTop: 11 }}>
-          <Btn icon="clipboard" label="My listings" variant="outline" onPress={() => router.push('/manage')} style={{ flex: 1, paddingVertical: 13 }} textStyle={{ fontSize: 14 }} />
-          <Btn icon="star" label="My impact" variant="outline" onPress={() => router.push('/impact')} style={{ flex: 1, paddingVertical: 13 }} textStyle={{ fontSize: 14 }} />
+          <Btn icon="clipboard" label={tr('give.myListings')} variant="outline" onPress={() => router.push('/manage')} style={{ flex: 1, paddingVertical: 13 }} textStyle={{ fontSize: 14 }} />
+          <Btn icon="star" label={tr('give.myImpact')} variant="outline" onPress={() => router.push('/impact')} style={{ flex: 1, paddingVertical: 13 }} textStyle={{ fontSize: 14 }} />
         </Animated.View>
       </View>
       <BottomNav active="give" />

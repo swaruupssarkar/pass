@@ -3,11 +3,13 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { INTRO_CARDS } from '@/pass/data';
+import { useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Btn, PhotoTile, Screen, t } from '@/pass/ui';
 
 export default function Intro() {
   const router = useRouter();
+  const tr = useT();
   const [i, setI] = useState(0);
   const card = INTRO_CARDS[i] ?? INTRO_CARDS[0];
 
@@ -21,7 +23,7 @@ export default function Intro() {
       <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 18, paddingBottom: 28 }}>
         <View style={{ alignItems: 'flex-end' }}>
           <Pressable onPress={() => router.push('/location')} hitSlop={10} style={{ padding: 6 }}>
-            <Text style={{ fontSize: 14, fontWeight: '600', color: C.muted }}>Skip</Text>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: C.muted }}>{tr('intro.skip')}</Text>
           </Pressable>
         </View>
 

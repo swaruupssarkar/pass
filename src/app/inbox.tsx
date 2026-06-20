@@ -4,12 +4,13 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 
 import { Icon } from '@/pass/icon';
-import { fmtAgo, inboxRows, incomingRequests, threadId, usePass } from '@/pass/store';
+import { fmtAgo, inboxRows, incomingRequests, threadId, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, BottomNav, Btn, PhotoTile, Screen, shadow, t } from '@/pass/ui';
 
 export default function Inbox() {
   const router = useRouter();
+  const tr = useT();
   const { s, openThread, viewPerson, acceptRequest, declineRequest, openThreadFor, openListing, deleteThread, showConfirm } = usePass();
   const [tab, setTab] = useState<'chats' | 'requests'>('chats');
   const rows = inboxRows(s);
@@ -35,9 +36,9 @@ export default function Inbox() {
   };
   const confirmDelete = (rowId: string, name: string) => {
     showConfirm({
-      title: 'Delete chat?',
-      message: `Delete your conversation with ${name}? This removes it for you.`,
-      confirmLabel: 'Delete',
+      title: tr('inbox.deleteChatTitle'),
+      message: tr('inbox.deleteChatMsg', { name }),
+      confirmLabel: tr('common.delete'),
       destructive: true,
       onConfirm: () => deleteThread(rowId),
     });
@@ -46,7 +47,7 @@ export default function Inbox() {
   return (
     <Screen>
       <View style={{ paddingHorizontal: 18, paddingTop: 6 }}>
-        <Text style={[t.h2, { marginBottom: 12 }]}>Messages</Text>
+        <Text style={[t.h2, { marginBottom: 12 }]}>{tr('inbox.title')}</Text>
         <View style={{ flexDirection: 'row', backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: radius.md, padding: 4, gap: 4 }}>
           {(['chats', 'requests'] as const).map((k) => {
             const on = tab === k;
@@ -54,7 +55,7 @@ export default function Inbox() {
             return (
               <Pressable key={k} onPress={() => setTab(k)} style={{ flex: 1, paddingVertical: 9, borderRadius: 11, backgroundColor: on ? C.accent : 'transparent', alignItems: 'center' }}>
                 <Text style={{ fontSize: 14, fontWeight: '700', color: on ? '#fff' : C.ink }}>
-                  {k === 'chats' ? 'Chats' : 'Requests'} {badge > 0 ? `· ${badge}` : ''}
+                  {k === 'chats' ? tr('inbox.tabChats') : tr('inbox.tabRequests')} {badge > 0 ? `· ${badge}` : ''}
                 </Text>
               </Pressable>
             );
@@ -65,7 +66,7 @@ export default function Inbox() {
       <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 24, gap: 11, flexGrow: 1 }} showsVerticalScrollIndicator={false}>
         {tab === 'chats' ? (
           rows.length === 0 ? (
-            <Empty icon="chat" title="No chats yet" body="Messages from people you chat with show up here." />
+            <Empty icon="chat" title={tr('inbox.noChatsTitle')} body={tr('inbox.noChatsBody')} />
           ) : (
             rows.map((row) => (
               <ReanimatedSwipeable
@@ -75,7 +76,7 @@ export default function Inbox() {
                     onPress={() => confirmDelete(row.id, row.otherName)}
                     style={{ width: 78, marginLeft: 8, backgroundColor: C.dangerBg, borderRadius: radius.lg, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center' }}>
                     <Icon name="trash" size={22} color={C.dangerInk} />
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: C.dangerInk, marginTop: 4 }}>Delete</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: C.dangerInk, marginTop: 4 }}>{tr('common.delete')}</Text>
                   </Pressable>
                 )}>
                 <Pressable onPress={() => openChatThread(row.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: C.surface, borderRadius: radius.lg, borderCurve: 'continuous', padding: 12, ...shadow(8, 20, 0.4) }}>
@@ -94,7 +95,7 @@ export default function Inbox() {
             ))
           )
         ) : requests.length === 0 ? (
-          <Empty icon="clipboard" title="No requests yet" body="When someone wants one of your listings, it shows up here to accept or reject." />
+          <Empty icon="clipboard" title={tr('inbox.noRequestsTitle')} body={tr('inbox.noRequestsBody')} />
         ) : (
           requests.map(({ request, user, listing }) => (
             <View key={request.id} style={{ backgroundColor: C.surface, borderRadius: radius.lg, borderCurve: 'continuous', padding: 13, gap: 11, ...shadow(8, 20, 0.4) }}>
@@ -104,12 +105,12 @@ export default function Inbox() {
                   <Avatar name={user.name} size={42} color={C.ink} />
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 15, fontWeight: '700', color: C.ink }} numberOfLines={1}>{user.name}</Text>
-                    <Text style={{ fontSize: 11.5, color: C.muted }}>requested · {fmtAgo(request.createdAt)}</Text>
+                    <Text style={{ fontSize: 11.5, color: C.muted }}>{tr('inbox.requested')} · {fmtAgo(request.createdAt)}</Text>
                   </View>
                 </Pressable>
                 {request.status !== 'pending' ? (
                   <View style={{ backgroundColor: request.status === 'accepted' ? '#E4F0E9' : C.bg, borderRadius: radius.pill, paddingVertical: 5, paddingHorizontal: 11 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: request.status === 'accepted' ? C.free : C.muted }}>{request.status === 'accepted' ? 'Accepted' : 'Declined'}</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: request.status === 'accepted' ? C.free : C.muted }}>{request.status === 'accepted' ? tr('inbox.accepted') : tr('inbox.declined')}</Text>
                   </View>
                 ) : null}
               </View>
@@ -118,7 +119,7 @@ export default function Inbox() {
               <Pressable onPress={() => listing && openItem(listing.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: C.bg, borderRadius: radius.md, padding: 10 }}>
                 <PhotoTile tint={listing?.tint ?? C.bg} uri={listing?.photos?.[0]} gap={10} style={{ width: 44, height: 44, borderRadius: 11 }} />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 13.5, fontWeight: '700', color: C.ink }} numberOfLines={1}>{listing ? listing.title : 'Listing removed'}</Text>
+                  <Text style={{ fontSize: 13.5, fontWeight: '700', color: C.ink }} numberOfLines={1}>{listing ? listing.title : tr('inbox.listingRemoved')}</Text>
                   <Text style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }} numberOfLines={2}>{request.note}</Text>
                 </View>
               </Pressable>
@@ -126,11 +127,11 @@ export default function Inbox() {
               {/* actions */}
               {request.status === 'pending' ? (
                 <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <Btn label="Reject" variant="outline" onPress={() => declineRequest(request.id)} style={{ flex: 1, paddingVertical: 11, borderColor: C.dangerBorder }} textStyle={{ fontSize: 14, color: C.dangerInk }} />
-                  <Btn icon="check" label="Accept" onPress={() => acceptRequest(request.id)} style={{ flex: 1, paddingVertical: 11 }} textStyle={{ fontSize: 14 }} />
+                  <Btn label={tr('inbox.reject')} variant="outline" onPress={() => declineRequest(request.id)} style={{ flex: 1, paddingVertical: 11, borderColor: C.dangerBorder }} textStyle={{ fontSize: 14, color: C.dangerInk }} />
+                  <Btn icon="check" label={tr('common.accept')} onPress={() => acceptRequest(request.id)} style={{ flex: 1, paddingVertical: 11 }} textStyle={{ fontSize: 14 }} />
                 </View>
               ) : request.status === 'accepted' && listing ? (
-                <Btn icon="chat" label={`Chat with ${user.name}`} onPress={() => chatWith(listing.id)} block style={{ paddingVertical: 11 }} textStyle={{ fontSize: 14 }} />
+                <Btn icon="chat" label={tr('inbox.chatWith', { name: user.name })} onPress={() => chatWith(listing.id)} block style={{ paddingVertical: 11 }} textStyle={{ fontSize: 14 }} />
               ) : null}
             </View>
           ))
