@@ -1,21 +1,16 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/pass/icon';
 import { activeLocationLabel, usePass } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Header, Pill, Screen, Toggle } from '@/pass/ui';
-
-const RADIUS_PRESETS = [3, 5, 10, 20, 100];
+import { Header, Screen, Toggle } from '@/pass/ui';
 
 export default function Settings() {
   const router = useRouter();
-  const { s, patch, logout } = usePass();
+  const { s, logout, setNotifyNear, setNotifyChat } = usePass();
   const city = activeLocationLabel(s);
-
-  const [notifNear, setNotifNear] = useState(true);
-  const [notifChat, setNotifChat] = useState(true);
+  const np = s.notify[s.currentUserId];
 
   const onLogout = () => {
     logout();
@@ -34,19 +29,34 @@ export default function Settings() {
               <Icon name="forward" size={16} color={C.muted} />
             </View>
           </Pressable>
-          <View style={{ padding: 15, paddingHorizontal: 16 }}>
-            <Text style={{ fontSize: 14.5, color: C.ink, marginBottom: 11 }}>Default search radius</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-              {RADIUS_PRESETS.map((km) => (
-                <Pill key={km} label={`${km} km`} selected={s.radius === km} onPress={() => patch({ radius: km })} />
-              ))}
+          <Pressable onPress={() => router.push({ pathname: '/pickmap', params: { mode: 'notify' } })} style={row}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14.5, color: C.ink }}>Notify address</Text>
+              <Text style={{ fontSize: 12, color: np.addr ? C.free : C.muted, marginTop: 2 }} numberOfLines={1}>
+                {np.addr ? np.addr.label : 'Set on map for nearby alerts'}
+              </Text>
             </View>
-          </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Icon name="pin" size={16} color={C.accent} />
+              <Icon name="forward" size={16} color={C.muted} />
+            </View>
+          </Pressable>
         </Section>
 
         <Section title="NOTIFICATIONS">
-          <ToggleRow label="New items near me" on={notifNear} onPress={() => setNotifNear((v) => !v)} divider />
-          <ToggleRow label="Chat & request updates" on={notifChat} onPress={() => setNotifChat((v) => !v)} />
+          <View style={[row, { borderBottomWidth: 1, borderBottomColor: C.line }]}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={{ fontSize: 14.5, color: C.ink }}>New items near me</Text>
+              <Text style={{ fontSize: 11.5, color: C.muted, marginTop: 2, lineHeight: 16 }}>
+                Alert me when someone posts within 100 km of my notify address.
+              </Text>
+            </View>
+            <Toggle on={np.near} onPress={() => setNotifyNear(!np.near)} />
+          </View>
+          <View style={row}>
+            <Text style={{ flex: 1, fontSize: 14.5, color: C.ink }}>Chat &amp; request updates</Text>
+            <Toggle on={np.chat} onPress={() => setNotifyChat(!np.chat)} />
+          </View>
         </Section>
 
         <Section title="LANGUAGE">
@@ -85,15 +95,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <View style={{ marginBottom: 18 }}>
       <Text style={{ fontSize: 12, fontWeight: '700', color: C.muted, marginBottom: 9, marginLeft: 4 }}>{title}</Text>
       <View style={{ backgroundColor: C.surface, borderRadius: radius.lg, overflow: 'hidden' }}>{children}</View>
-    </View>
-  );
-}
-
-function ToggleRow({ label, on, onPress, divider }: { label: string; on: boolean; onPress: () => void; divider?: boolean }) {
-  return (
-    <View style={[row, divider && { borderBottomWidth: 1, borderBottomColor: C.line }]}>
-      <Text style={{ flex: 1, fontSize: 14.5, color: C.ink }}>{label}</Text>
-      <Toggle on={on} onPress={onPress} />
     </View>
   );
 }

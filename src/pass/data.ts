@@ -71,7 +71,7 @@ export type Notification = {
   body: string;
   ts: number;
   read: boolean;
-  kind: 'message' | 'request' | 'taken';
+  kind: 'message' | 'request' | 'taken' | 'item';
   threadId?: string;
   listingId?: string;
   route?: string;

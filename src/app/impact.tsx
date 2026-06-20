@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/pass/icon';
@@ -6,7 +7,12 @@ import { C, radius } from '@/pass/theme';
 import { Avatar, Header, ReviewCard, Screen, shadow, t } from '@/pass/ui';
 
 export default function Impact() {
-  const { s } = usePass();
+  const router = useRouter();
+  const { s, viewPerson } = usePass();
+  const openPerson = (id: typeof s.currentUserId) => {
+    viewPerson(id);
+    router.push('/giver');
+  };
   const given = myListings(s).filter((l) => l.taken);
   const n = given.length;
   const reviews = reviewsFor(s, s.currentUserId);
@@ -63,7 +69,7 @@ export default function Impact() {
         ) : (
           <View style={{ gap: 11 }}>
             {reviews.map((r) => (
-              <ReviewCard key={r.id} rating={r.rating} tags={r.tags} text={r.text} author={USERS[r.from].name} time={fmtAgo(r.ts)} />
+              <ReviewCard key={r.id} rating={r.rating} tags={r.tags} text={r.text} author={USERS[r.from].name} time={fmtAgo(r.ts)} onAuthorPress={() => openPerson(r.from)} />
             ))}
           </View>
         )}

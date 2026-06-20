@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Keyboard, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -21,7 +21,11 @@ export default function Feed() {
   const router = useRouter();
   const { s, patch, openListing, toggleSave, useCurrentLocation, markOnboarded, showAlert, showConfirm } = usePass();
   const insets = useSafeAreaInsets();
-  const items = browseListings(s);
+  const items = useMemo(
+    () => browseListings(s),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [s.listings, s.activeMode, s.activeCityId, s.userLoc, s.radius, s.catFilter, s.q, s.sortMode, s.currentUserId, s.blocked, s.requests]
+  );
   const loc = activeLocationLabel(s);
   const unread = unreadCount(s);
 

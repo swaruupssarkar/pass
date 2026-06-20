@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
+import { memo } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -51,9 +52,9 @@ export const t = StyleSheet.create({
 
 // ---------- placeholder photo (diagonal hatch over a tint) ----------
 
-export function Hatch({ gap = 16 }: { gap?: number }) {
+export const Hatch = memo(function Hatch({ gap = 16 }: { gap?: number }) {
   return <View style={[StyleSheet.absoluteFill, { experimental_backgroundImage: hatch(gap) } as unknown as ViewStyle]} />;
-}
+});
 
 export function PhotoTile({
   tint,
@@ -268,6 +269,29 @@ export function Header({
   );
 }
 
+// ---------- circular close button ----------
+
+export function CloseButton({ onPress, size = 38 }: { onPress?: () => void; size?: number }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={8}
+      style={({ pressed }) => ({
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        borderWidth: 1,
+        borderColor: C.line,
+        backgroundColor: C.surface,
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: pressed ? 0.6 : 1,
+      })}>
+      <Icon name="close" size={size * 0.5} color={C.ink} />
+    </Pressable>
+  );
+}
+
 // ---------- toggle switch ----------
 
 export function Toggle({ on, onPress }: { on: boolean; onPress?: () => void }) {
@@ -321,12 +345,14 @@ export function ReviewCard({
   text,
   author,
   time,
+  onAuthorPress,
 }: {
   rating: number;
   tags: string[];
   text: string;
   author: string;
   time: string;
+  onAuthorPress?: () => void;
 }) {
   return (
     <View style={{ backgroundColor: C.surface, borderRadius: radius.lg, borderCurve: 'continuous', padding: 14, ...shadow(8, 20, 0.35) }}>
@@ -336,7 +362,13 @@ export function ReviewCard({
             <Icon key={n} name={n <= rating ? 'star' : 'star-outline'} size={13} color={C.star} />
           ))}
         </View>
-        <Text style={{ fontSize: 11, color: C.accent, fontWeight: '700' }}>{author}</Text>
+        {onAuthorPress ? (
+          <Pressable onPress={onAuthorPress} hitSlop={6}>
+            <Text style={{ fontSize: 11, color: C.accent, fontWeight: '700', textDecorationLine: 'underline' }}>{author}</Text>
+          </Pressable>
+        ) : (
+          <Text style={{ fontSize: 11, color: C.accent, fontWeight: '700' }}>{author}</Text>
+        )}
         <Text style={{ fontSize: 11, color: C.muted, fontWeight: '600' }}>· {time}</Text>
       </View>
       {tags.length > 0 ? (
