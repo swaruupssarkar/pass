@@ -31,6 +31,19 @@ export default function Feed() {
   const loc = activeLocationLabel(s);
   const unread = unreadCount(s);
 
+  // keep the search box on local state so each keystroke is instant; only push the
+  // query into global state (which re-runs browseListings + re-renders) after a pause
+  const [query, setQuery] = useState(s.q);
+  useEffect(() => {
+    const id = setTimeout(() => patch({ q: query }), 220);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+  useEffect(() => {
+    if (s.q === '' && query !== '') setQuery('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.q]);
+
   useEffect(() => {
     markOnboarded();
   }, [markOnboarded]);
@@ -99,7 +112,7 @@ export default function Feed() {
         <View style={{ flexDirection: 'row', gap: 11, marginTop: 13 }}>
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: radius.lg, paddingHorizontal: 16, height: 52, ...shadow(6, 18, 0.4) }}>
             <Icon name="search" size={15} color="#FFD60A" />
-            <TextInput value={s.q} onChangeText={(q) => patch({ q })} placeholder={tr('feed.searchPlaceholder')} placeholderTextColor={C.muted} returnKeyType="search" style={{ flex: 1, fontSize: 14.5, color: C.ink }} />
+            <TextInput value={query} onChangeText={setQuery} placeholder={tr('feed.searchPlaceholder')} placeholderTextColor={C.muted} returnKeyType="search" style={{ flex: 1, fontSize: 14.5, color: C.ink }} />
           </View>
           <Pressable onPress={() => Keyboard.dismiss()} style={{ width: 52, height: 52, borderRadius: radius.lg, borderCurve: 'continuous', backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', boxShadow: `0 8px 20px -8px ${C.accent}` }}>
             <Icon name="search" size={18} color="#fff" />

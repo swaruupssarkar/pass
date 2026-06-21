@@ -53,6 +53,10 @@ type State = {
   requests: Request[];
   threads: Record<string, Message[]>;
   threadListing: Record<string, string>;
+  /** who opened the conversation first (the other party must accept a cold DM) */
+  threadStarter: Record<string, UserId>;
+  /** conversations the recipient has accepted (or that came from an accepted request) */
+  threadAccepted: Record<string, boolean>;
   notifications: Notification[];
   reviews: Review[];
   // browsing location
@@ -85,6 +89,8 @@ type State = {
   editingId: string | null;
   // chat
   draft: string;
+  // cancel-with-reason for an accepted request (role = who is cancelling)
+  cancelTarget: { requestId: string; role: 'owner' | 'client' } | null;
   // mark-taken + rate
   takenPickerId: string | null;
   rateListingId: string | null;
@@ -116,6 +122,8 @@ const INITIAL: State = {
   requests: [],
   threads: {},
   threadListing: {},
+  threadStarter: {},
+  threadAccepted: {},
   notifications: [],
   reviews: [],
   activeMode: 'city',
@@ -144,6 +152,7 @@ const INITIAL: State = {
   postCityId: USERS.u1.cityId,
   editingId: null,
   draft: '',
+  cancelTarget: null,
   takenPickerId: null,
   rateListingId: null,
   rateGiverId: null,
@@ -196,7 +205,7 @@ export const isReserved = (s: State, listingId: string): boolean =>
 /** Listings other users have posted, in the active location + radius, not taken or reserved. */
 export function browseListings(s: State): Listing[] {
   let list = s.listings.filter(
-    (l) => !l.taken && !isReserved(s, l.id) && !isDelisted(s, l.id) && l.ownerId !== s.currentUserId && !s.blocked[`${s.currentUserId}>${l.ownerId}`]
+    (l) => !l.taken && !isReserved(s, l.id) && !isDelisted(s, l.id) && l.ownerId !== s.currentUserId && !isBlocked(s, l.ownerId)
   );
   if (s.activeMode === 'city') list = list.filter((l) => l.cityId === s.activeCityId);
   list = list.filter((l) => distKm(s, l) <= s.radius);
@@ -215,7 +224,14 @@ export const myListings = (s: State): Listing[] =>
 export const savedListings = (s: State): Listing[] => s.listings.filter((l) => s.saved[l.id]);
 
 const blockKey = (blocker: UserId, blocked: UserId) => `${blocker}>${blocked}`;
-export const isBlocked = (s: State, otherId: UserId): boolean => !!s.blocked[blockKey(s.currentUserId, otherId)];
+/** The current user has blocked `otherId` (only the blocker can unblock). */
+export const iBlocked = (s: State, otherId: UserId): boolean => !!s.blocked[blockKey(s.currentUserId, otherId)];
+/** A block exists in EITHER direction — hides content and gates messaging both ways (WhatsApp-style). */
+export const isBlocked = (s: State, otherId: UserId): boolean =>
+  !!s.blocked[blockKey(s.currentUserId, otherId)] || !!s.blocked[blockKey(otherId, s.currentUserId)];
+/** Everyone the current user has blocked. */
+export const blockedUserIds = (s: State): UserId[] =>
+  (Object.keys(USERS) as UserId[]).filter((id) => id !== s.currentUserId && iBlocked(s, id));
 
 export const listingById = (s: State, id: string | null): Listing | null =>
   s.listings.find((l) => l.id === id) ?? null;
@@ -271,6 +287,16 @@ export function otherInThread(s: State, id: string): UserId {
   return s.currentUserId === a ? b : a;
 }
 
+/**
+ * True when the other person started this conversation (a cold DM) and the
+ * current user has not accepted it yet. The recipient sees accept / delete /
+ * block instead of a reply box until they accept.
+ */
+export const threadPendingForMe = (s: State, id: string): boolean => {
+  const starter = s.threadStarter?.[id];
+  return !!starter && starter !== s.currentUserId && !s.threadAccepted?.[id];
+};
+
 export type ThreadMeta = {
   id: string;
   listingId: string | null;
@@ -302,7 +328,9 @@ export const activeThreadMessages = (s: State): Message[] => threadMessages(s, s
 export type InboxRow = ThreadMeta & { last: string; time: string; unread: boolean; ts: number };
 
 export function inboxRows(s: State): InboxRow[] {
-  const ids = Object.keys(s.threads).filter((id) => id.startsWith('p:') && threadUsers(id).includes(s.currentUserId));
+  const ids = Object.keys(s.threads).filter(
+    (id) => id.startsWith('p:') && threadUsers(id).includes(s.currentUserId) && (s.threads[id]?.length ?? 0) > 0
+  );
   const unreadThreads = new Set(
     s.notifications.filter((n) => n.userId === s.currentUserId && !n.read && n.kind === 'message' && n.threadId).map((n) => n.threadId)
   );
@@ -435,11 +463,14 @@ type Store = {
   requestListing: (listingId: string, note: string) => void;
   acceptRequest: (requestId: string) => void;
   declineRequest: (requestId: string) => void;
-  cancelRequest: (requestId: string) => void;
+  cancelRequest: (requestId: string, reason?: string) => void;
+  openCancelReason: (requestId: string, role: 'owner' | 'client') => void;
+  closeCancelReason: () => void;
   openThreadFor: (listingId: string) => string;
   deleteThread: (id: string) => void;
+  acceptThread: (id: string) => void;
   openThread: (id: string) => void;
-  sendMsg: () => void;
+  sendMsg: (text: string) => void;
   sendImage: (uri: string) => void;
   shareLoc: () => Promise<void>;
   blockUser: (id: UserId) => void;
@@ -688,11 +719,18 @@ export function PassProvider({ children }: { children: ReactNode }) {
             ? { ...prev.threads, [tid]: [...prev.threads[tid], { id: uid('m'), from: prev.currentUserId, text, ts: now }] }
             : prev.threads;
           const threadListing = hasThread ? { ...prev.threadListing, [tid]: listingId } : prev.threadListing;
+          // engaging with someone's listing counts as accepting any chat they opened
+          const threadStarter = hasThread
+            ? { ...prev.threadStarter, [tid]: prev.threadStarter[tid] ?? prev.currentUserId }
+            : prev.threadStarter;
+          const threadAccepted = hasThread ? { ...prev.threadAccepted, [tid]: true } : prev.threadAccepted;
           return {
             ...prev,
             requests: [req, ...prev.requests],
             threads,
             threadListing,
+            threadStarter,
+            threadAccepted,
             notifications: [
               notify(prev, {
                 userId: l.ownerId,
@@ -729,6 +767,8 @@ export function PassProvider({ children }: { children: ReactNode }) {
             requests: prev.requests.map((r) => (r.id === requestId ? { ...r, status: 'accepted' } : r)),
             threads: { ...prev.threads, [id]: msgs },
             threadListing: { ...prev.threadListing, [id]: req.listingId },
+            threadStarter: { ...prev.threadStarter, [id]: prev.threadStarter[id] ?? req.fromUserId },
+            threadAccepted: { ...prev.threadAccepted, [id]: true },
             notifications: [
               notify(prev, { userId: req.fromUserId, kind: 'request', title: `${USERS[req.toUserId].name} accepted your request`, body: `You can now chat about ${l?.title ?? 'the item'}.`, threadId: id, listingId: req.listingId, route: '/thread' }),
               ...prev.notifications,
@@ -750,22 +790,29 @@ export function PassProvider({ children }: { children: ReactNode }) {
           };
         }),
 
-      cancelRequest: (requestId) =>
+      // remove a request (pending or accepted). Removing an accepted one un-reserves
+      // the listing, so it returns to the public feed. The other party gets a neutral
+      // notice — the reason is kept private (it drives the follow-up block prompt).
+      cancelRequest: (requestId, _reason) =>
         setS((prev) => {
           const req = prev.requests.find((r) => r.id === requestId);
           if (!req) return prev;
+          const other = prev.currentUserId === req.fromUserId ? req.toUserId : req.fromUserId;
+          const l = prev.listings.find((x) => x.id === req.listingId);
+          const title = `${USERS[prev.currentUserId].name} cancelled the request${l ? ` for ${l.title}` : ''}`;
           return {
             ...prev,
             requests: prev.requests.filter((r) => r.id !== requestId),
-            notifications:
-              req.status === 'pending'
-                ? [
-                    notify(prev, { userId: req.toUserId, kind: 'request', title: `${USERS[prev.currentUserId].name} cancelled their request`, body: '', listingId: req.listingId }),
-                    ...prev.notifications,
-                  ]
-                : prev.notifications,
+            cancelTarget: null,
+            notifications: [
+              notify(prev, { userId: other, kind: 'request', title, body: '', listingId: req.listingId }),
+              ...prev.notifications,
+            ],
           };
         }),
+
+      openCancelReason: (requestId, role) => setS((prev) => ({ ...prev, cancelTarget: { requestId, role } })),
+      closeCancelReason: () => setS((prev) => ({ ...prev, cancelTarget: null })),
 
       openThreadFor: (listingId) => {
         const l = s.listings.find((x) => x.id === listingId);
@@ -773,7 +820,11 @@ export function PassProvider({ children }: { children: ReactNode }) {
         const id = threadId(s.currentUserId, otherId);
         setS((prev) => {
           const { threads, threadListing } = ensurePairThread(prev, otherId, listingId);
-          return { ...prev, threads, threadListing, activeThreadId: id };
+          // remember who reached out first so the recipient can accept/decline the chat
+          const threadStarter = prev.threadStarter[id]
+            ? prev.threadStarter
+            : { ...prev.threadStarter, [id]: prev.currentUserId };
+          return { ...prev, threads, threadListing, threadStarter, activeThreadId: id };
         });
         return id;
       },
@@ -792,22 +843,35 @@ export function PassProvider({ children }: { children: ReactNode }) {
           ...prev,
           threads: Object.fromEntries(Object.entries(prev.threads).filter(([k]) => k !== id)),
           threadListing: Object.fromEntries(Object.entries(prev.threadListing).filter(([k]) => k !== id)),
+          threadStarter: Object.fromEntries(Object.entries(prev.threadStarter).filter(([k]) => k !== id)),
+          threadAccepted: Object.fromEntries(Object.entries(prev.threadAccepted).filter(([k]) => k !== id)),
           activeThreadId: prev.activeThreadId === id ? null : prev.activeThreadId,
           notifications: prev.notifications.filter((n) => n.threadId !== id),
         })),
 
-      sendMsg: () =>
+      acceptThread: (id) =>
+        setS((prev) => ({ ...prev, threadAccepted: { ...prev.threadAccepted, [id]: true } })),
+
+      // text is passed in from the composer's local state so typing never touches
+      // global state (which would re-render every screen on each keystroke)
+      sendMsg: (text) =>
         setS((prev) => {
           const id = prev.activeThreadId;
-          const text = prev.draft.trim();
-          if (!id || !text) return prev;
+          const body = text.trim();
+          if (!id || !body) return prev;
           const other = otherInThread(prev, id);
-          const msg: Message = { id: uid('m'), from: prev.currentUserId, text, ts: Date.now() };
+          const msg: Message = { id: uid('m'), from: prev.currentUserId, text: body, ts: Date.now() };
           const meta = threadMeta(prev, id);
+          const starter = prev.threadStarter[id] ?? prev.currentUserId;
+          const threadStarter = prev.threadStarter[id] ? prev.threadStarter : { ...prev.threadStarter, [id]: starter };
+          // replying to a chat someone else opened accepts it
+          const threadAccepted =
+            starter !== prev.currentUserId ? { ...prev.threadAccepted, [id]: true } : prev.threadAccepted;
           return {
             ...prev,
             threads: { ...prev.threads, [id]: [...(prev.threads[id] ?? []), msg] },
-            draft: '',
+            threadStarter,
+            threadAccepted,
             notifications: [
               notify(prev, { userId: other, kind: 'message', title: `New message from ${USERS[prev.currentUserId].name}`, body: text, threadId: id, listingId: meta.listingId ?? undefined, route: '/thread' }),
               ...prev.notifications,
@@ -1031,6 +1095,8 @@ export function PassProvider({ children }: { children: ReactNode }) {
       requests: s.requests,
       threads: s.threads,
       threadListing: s.threadListing,
+      threadStarter: s.threadStarter,
+      threadAccepted: s.threadAccepted,
       notifications: s.notifications,
       reviews: s.reviews,
       reportCounts: s.reportCounts,
@@ -1059,6 +1125,8 @@ export function PassProvider({ children }: { children: ReactNode }) {
     s.requests,
     s.threads,
     s.threadListing,
+    s.threadStarter,
+    s.threadAccepted,
     s.notifications,
     s.reviews,
     s.reportCounts,

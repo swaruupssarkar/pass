@@ -11,7 +11,7 @@ import type { Listing } from '@/pass/data';
 export default function Manage() {
   const router = useRouter();
   const tr = useT();
-  const { s, patch, startPost, startEdit, openTakenPicker, confirmTaken, deleteListing, acceptRequest, declineRequest, showConfirm, openListing, viewPerson } = usePass();
+  const { s, patch, startPost, startEdit, openTakenPicker, confirmTaken, deleteListing, acceptRequest, declineRequest, openCancelReason, showConfirm, openListing, viewPerson } = usePass();
   const [tab, setTab] = useState<'live' | 'given'>('live');
   const list = myListings(s);
   const live = list.filter((l) => !l.taken);
@@ -116,7 +116,7 @@ export default function Manage() {
                     {requestsFor(s, item.id).map(({ request, user }) => (
                       <View key={request.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: C.line, borderRadius: 14, padding: 10 }}>
                         <Pressable onPress={() => openPerson(request.fromUserId)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, opacity: pressed ? 0.7 : 1 })}>
-                          <Avatar name={user.name} size={36} color={C.ink} />
+                          <Avatar name={user.name} uri={s.dp[request.fromUserId]} size={36} color={C.ink} />
                           <View style={{ flex: 1 }}>
                             <Text style={{ fontSize: 13.5, fontWeight: '700', color: C.ink }} numberOfLines={1}>{user.name}</Text>
                             <Text style={{ fontSize: 12, color: C.muted }} numberOfLines={1}>{request.note}</Text>
@@ -130,11 +130,18 @@ export default function Manage() {
                             </Pressable>
                             <Btn label={tr('common.accept')} onPress={() => acceptRequest(request.id)} style={{ paddingVertical: 9, paddingHorizontal: 16 }} textStyle={{ fontSize: 13 }} />
                           </View>
+                        ) : request.status === 'accepted' ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <View style={{ backgroundColor: '#E4F0E9', borderRadius: radius.pill, paddingVertical: 5, paddingHorizontal: 11 }}>
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: C.free }}>{tr('manage.accepted')}</Text>
+                            </View>
+                            <Pressable onPress={() => openCancelReason(request.id, 'owner')} style={{ width: 38, height: 38, borderRadius: radius.md, borderWidth: 1.5, borderColor: C.dangerBorder, backgroundColor: C.dangerBg, alignItems: 'center', justifyContent: 'center' }}>
+                              <Icon name="close" size={16} color={C.dangerInk} />
+                            </Pressable>
+                          </View>
                         ) : (
-                          <View style={{ backgroundColor: request.status === 'accepted' ? '#E4F0E9' : C.bg, borderRadius: radius.pill, paddingVertical: 5, paddingHorizontal: 11 }}>
-                            <Text style={{ fontSize: 11, fontWeight: '700', color: request.status === 'accepted' ? C.free : C.muted }}>
-                              {request.status === 'accepted' ? tr('manage.accepted') : tr('manage.declined')}
-                            </Text>
+                          <View style={{ backgroundColor: C.bg, borderRadius: radius.pill, paddingVertical: 5, paddingHorizontal: 11 }}>
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: C.muted }}>{tr('manage.declined')}</Text>
                           </View>
                         )}
                       </View>
@@ -172,7 +179,7 @@ export default function Manage() {
             <View style={{ gap: 10, marginTop: 16 }}>
               {picker.map(({ request, user }) => (
                 <View key={request.id} style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start', borderWidth: 1, borderColor: C.line, borderRadius: 15, padding: 12 }}>
-                  <Avatar name={user.name} size={42} color={C.ink} />
+                  <Avatar name={user.name} uri={s.dp[request.fromUserId]} size={42} color={C.ink} />
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 14, fontWeight: '700', color: C.ink }}>{user.name}</Text>
                     <Text style={{ fontSize: 12.5, color: C.muted, marginTop: 4, lineHeight: 18 }}>{request.note}</Text>

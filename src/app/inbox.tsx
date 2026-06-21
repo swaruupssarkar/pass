@@ -4,7 +4,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 
 import { Icon } from '@/pass/icon';
-import { fmtAgo, inboxRows, incomingRequests, threadId, usePass, useT } from '@/pass/store';
+import { fmtAgo, inboxRows, incomingRequests, threadId, threadPendingForMe, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, BottomNav, Btn, PhotoTile, Screen, shadow, t } from '@/pass/ui';
 
@@ -80,10 +80,17 @@ export default function Inbox() {
                   </Pressable>
                 )}>
                 <Pressable onPress={() => openChatThread(row.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: C.surface, borderRadius: radius.lg, borderCurve: 'continuous', padding: 12, ...shadow(8, 20, 0.4) }}>
-                  <PhotoTile tint={row.tint} gap={12} style={{ width: 54, height: 54, borderRadius: 13 }} />
+                  <Avatar name={row.otherName} uri={s.dp[row.otherId]} size={54} square />
                   <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <Text style={{ fontSize: 15, fontWeight: row.unread ? '800' : '700', color: C.ink }}>{row.otherName}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, flex: 1 }}>
+                        <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: row.unread ? '800' : '700', color: C.ink, flexShrink: 1 }}>{row.otherName}</Text>
+                        {threadPendingForMe(s, row.id) ? (
+                          <View style={{ backgroundColor: C.accentSoft, borderRadius: radius.pill, paddingVertical: 2, paddingHorizontal: 8 }}>
+                            <Text style={{ fontSize: 10, fontWeight: '800', color: C.accent }}>{tr('inbox.pendingBadge')}</Text>
+                          </View>
+                        ) : null}
+                      </View>
                       <Text style={{ fontSize: 11, color: row.unread ? C.accent : C.muted, fontWeight: row.unread ? '700' : '400' }}>{row.time}</Text>
                     </View>
                     <Text style={{ fontSize: 11.5, color: C.accent, fontWeight: '700', marginTop: 2 }} numberOfLines={1}>{row.item}</Text>
@@ -102,7 +109,7 @@ export default function Inbox() {
               {/* requester + time */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11 }}>
                 <Pressable onPress={() => openPerson(request.fromUserId)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 11, flex: 1, opacity: pressed ? 0.7 : 1 })}>
-                  <Avatar name={user.name} size={42} color={C.ink} />
+                  <Avatar name={user.name} uri={s.dp[request.fromUserId]} size={42} color={C.ink} />
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 15, fontWeight: '700', color: C.ink }} numberOfLines={1}>{user.name}</Text>
                     <Text style={{ fontSize: 11.5, color: C.muted }}>{tr('inbox.requested')} · {fmtAgo(request.createdAt)}</Text>

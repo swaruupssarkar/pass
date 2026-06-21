@@ -1,8 +1,8 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { WebView } from 'react-native-webview';
 
 import { Icon } from '@/pass/icon';
 import { hasPlaces } from '@/pass/config';
@@ -11,12 +11,48 @@ import { activeOrigin, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Btn } from '@/pass/ui';
 
+// Leaflet + OpenStreetMap in a WebView. Works in Expo Go on both platforms,
+// needs no API key or billing (react-native-maps' Google provider is blank in
+// Expo Go on SDK 55). RN <-> map talk over postMessage / injectJavaScript.
+const buildHtml = (lat: number, lng: number, accent: string, bg: string) => `<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  html, body, #map { height: 100%; margin: 0; padding: 0; background: ${bg}; }
+  .leaflet-control-attribution { font-size: 9px; background: rgba(255,255,255,0.7); }
+  .pin { width: 22px; height: 22px; border-radius: 50%; background: ${accent};
+    border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  var map = L.map('map', { zoomControl: false }).setView([${lat}, ${lng}], 15);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '&copy; OpenStreetMap'
+  }).addTo(map);
+  var icon = L.divIcon({ className: '', html: '<div class="pin"></div>', iconSize: [22, 22], iconAnchor: [11, 11] });
+  var marker = L.marker([${lat}, ${lng}], { draggable: true, icon: icon }).addTo(map);
+  function post() {
+    var p = marker.getLatLng();
+    if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify({ lat: p.lat, lng: p.lng }));
+  }
+  marker.on('dragend', post);
+  map.on('click', function (e) { marker.setLatLng(e.latlng); post(); });
+  window.__setMarker = function (la, ln) { marker.setLatLng([la, ln]); map.setView([la, ln], 16); post(); };
+</script>
+</body>
+</html>`;
+
 export default function PickMap() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const tr = useT();
   const { s, setPickup, setNotifyAddress } = usePass();
-  const mapRef = useRef<MapView>(null);
+  const webRef = useRef<WebView>(null);
   const notifyMode = useLocalSearchParams().mode === 'notify';
 
   const start = notifyMode
@@ -26,12 +62,12 @@ export default function PickMap() {
   const [query, setQuery] = useState('');
   const [suggests, setSuggests] = useState<Suggestion[]>([]);
   const [busy, setBusy] = useState(false);
-
-  const region: Region = { latitude: start.lat, longitude: start.lng, latitudeDelta: 0.02, longitudeDelta: 0.02 };
+  const [mapLoading, setMapLoading] = useState(true);
+  const [html] = useState(() => buildHtml(start.lat, start.lng, C.accent, C.bg));
 
   const moveTo = (lat: number, lng: number) => {
     setCoords({ lat, lng });
-    mapRef.current?.animateToRegion({ latitude: lat, longitude: lng, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 400);
+    webRef.current?.injectJavaScript(`window.__setMarker(${lat}, ${lng}); true;`);
   };
 
   const onQuery = async (text: string) => {
@@ -66,21 +102,26 @@ export default function PickMap() {
   };
 
   return (
-    <View style={{ flex: 1 }}>
-      <MapView
-        ref={mapRef}
-        provider={PROVIDER_GOOGLE}
-        style={{ flex: 1 }}
-        initialRegion={region}
-        showsUserLocation
-        onPress={(e) => setCoords({ lat: e.nativeEvent.coordinate.latitude, lng: e.nativeEvent.coordinate.longitude })}>
-        <Marker
-          coordinate={{ latitude: coords.lat, longitude: coords.lng }}
-          draggable
-          onDragEnd={(e) => setCoords({ lat: e.nativeEvent.coordinate.latitude, lng: e.nativeEvent.coordinate.longitude })}
-          pinColor={C.accent}
-        />
-      </MapView>
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
+      <WebView
+        ref={webRef}
+        originWhitelist={['*']}
+        source={{ html }}
+        style={{ flex: 1, backgroundColor: C.bg }}
+        onLoadEnd={() => setMapLoading(false)}
+        onMessage={(e) => {
+          try {
+            const p = JSON.parse(e.nativeEvent.data);
+            if (typeof p.lat === 'number' && typeof p.lng === 'number') setCoords({ lat: p.lat, lng: p.lng });
+          } catch {}
+        }}
+      />
+
+      {mapLoading ? (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }} pointerEvents="none">
+          <ActivityIndicator size="large" color={C.accent} />
+        </View>
+      ) : null}
 
       {/* search */}
       <View style={{ position: 'absolute', top: insets.top + 10, left: 16, right: 16 }}>

@@ -52,7 +52,7 @@ export default function Impact() {
               const name = l.takenBy ? USERS[l.takenBy].name : tr('impact.someone');
               return (
                 <View key={l.id} style={{ flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: C.surface, borderRadius: radius.lg, padding: 14, ...shadow(8, 20, 0.35) }}>
-                  <Avatar name={name} size={40} tint={l.tint} color={C.ink} />
+                  <Avatar name={name} uri={l.takenBy ? s.dp[l.takenBy] : null} size={40} tint={l.tint} color={C.ink} />
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 13.5, color: C.ink, lineHeight: 19 }}>{tr('impact.received', { name, title: l.title })}</Text>
                   </View>

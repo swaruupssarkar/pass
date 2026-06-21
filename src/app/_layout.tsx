@@ -5,7 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { PassProvider } from '@/pass/store';
 import { C } from '@/pass/theme';
-import { PassDialog } from '@/pass/ui';
+import { CancelReasonSheet, PassDialog } from '@/pass/ui';
 
 export default function RootLayout() {
   return (
@@ -20,6 +20,7 @@ export default function RootLayout() {
             }}
           />
           <PassDialog />
+          <CancelReasonSheet />
         </PassProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

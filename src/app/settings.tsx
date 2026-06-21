@@ -71,9 +71,9 @@ export default function Settings() {
           </Pressable>
         </Section>
 
-        <Section title={tr('settings.privacy')}>
-          <Pressable onPress={() => router.push('/safety')} style={row}>
-            <Text style={{ flex: 1, fontSize: 14.5, color: C.ink }}>{tr('settings.safetyCenter')}</Text>
+        <Section title={tr('settings.safety')}>
+          <Pressable onPress={() => router.push('/blocked')} style={row}>
+            <Text style={{ flex: 1, fontSize: 14.5, color: C.ink }}>{tr('settings.blockedUsers')}</Text>
             <Icon name="forward" size={18} color={C.muted} />
           </Pressable>
         </Section>

@@ -10,7 +10,7 @@ import { BottomNav, Btn, FreeTag, PhotoTile, Screen, shadow, t } from '@/pass/ui
 export default function Saved() {
   const router = useRouter();
   const tr = useT();
-  const { s, openListing, toggleSave, openThreadFor, cancelRequest, showConfirm } = usePass();
+  const { s, openListing, toggleSave, openThreadFor, cancelRequest, openCancelReason, showConfirm } = usePass();
   const [tab, setTab] = useState<'saved' | 'requested'>('saved');
   const saved = savedListings(s);
   const requested = myRequests(s);
@@ -101,7 +101,7 @@ export default function Saved() {
               {request.status === 'accepted' && listing ? (
                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 11 }}>
                   <Btn icon="chat" label={tr('saved.chat')} onPress={() => chat(listing.id)} style={{ flex: 1, paddingVertical: 11 }} textStyle={{ fontSize: 14 }} />
-                  <Btn label={tr('common.cancel')} variant="outline" onPress={() => cancel(request.id, listing?.title)} style={{ paddingVertical: 11, borderColor: C.dangerBorder }} textStyle={{ fontSize: 14, color: C.dangerInk }} />
+                  <Btn label={tr('common.cancel')} variant="outline" onPress={() => openCancelReason(request.id, 'client')} style={{ paddingVertical: 11, borderColor: C.dangerBorder }} textStyle={{ fontSize: 14, color: C.dangerInk }} />
                 </View>
               ) : request.status === 'pending' ? (
                 <Btn icon="close" label={tr('saved.cancelRequest')} variant="outline" onPress={() => cancel(request.id, listing?.title)} block style={{ marginTop: 11, paddingVertical: 11, borderColor: C.dangerBorder }} textStyle={{ fontSize: 14, color: C.dangerInk }} />

@@ -1,22 +1,28 @@
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { Icon } from '@/pass/icon';
-import { activeThreadMessages, fmtTime, isBlocked, pendingIncomingFrom, threadMeta, usePass, useT } from '@/pass/store';
+import { activeThreadMessages, fmtTime, iBlocked, isBlocked, pendingIncomingFrom, threadMeta, threadPendingForMe, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, Btn, FreeTag, PhotoTile, Screen, VerifiedBadge } from '@/pass/ui';
 
 export default function Thread() {
   const router = useRouter();
   const tr = useT();
-  const { s, patch, sendMsg, sendImage, shareLoc, viewPerson, openListing, blockUser, unblockUser, showConfirm, acceptRequest, declineRequest } = usePass();
+  const { s, sendMsg, sendImage, shareLoc, viewPerson, openListing, blockUser, unblockUser, showConfirm, acceptRequest, declineRequest, acceptThread, deleteThread } = usePass();
+  const [draft, setDraft] = useState('');
+  const send = () => {
+    sendMsg(draft);
+    setDraft('');
+  };
   const id = s.activeThreadId;
   const meta = id ? threadMeta(s, id) : null;
   const msgs = activeThreadMessages(s);
   const blocked = meta ? isBlocked(s, meta.otherId) : false;
+  const iBlk = meta ? iBlocked(s, meta.otherId) : false; // I'm the blocker (can unblock)
   const incomingReq = meta ? pendingIncomingFrom(s, meta.otherId) : null;
   const reqListing = incomingReq ? s.listings.find((l) => l.id === incomingReq.listingId) : null;
   const locShared = msgs.some((m) => m.text.toLowerCase().includes('live location'));
@@ -54,7 +60,7 @@ export default function Thread() {
     if (!res.canceled && res.assets[0]) sendImage(res.assets[0].uri);
   };
   const toggleBlock = () => {
-    if (blocked) {
+    if (iBlk) {
       unblockUser(meta.otherId);
       return;
     }
@@ -64,6 +70,20 @@ export default function Thread() {
       confirmLabel: tr('thread.block'),
       destructive: true,
       onConfirm: () => blockUser(meta.otherId),
+    });
+  };
+  // cold DM the current user hasn't accepted yet -> show accept/delete/block instead of a reply box
+  const pendingChat = !incomingReq && msgs.length > 0 && threadPendingForMe(s, meta.id);
+  const confirmDeleteConv = () => {
+    showConfirm({
+      title: tr('inbox.deleteChatTitle'),
+      message: tr('inbox.deleteChatMsg', { name: meta.otherName }),
+      confirmLabel: tr('common.delete'),
+      destructive: true,
+      onConfirm: () => {
+        deleteThread(meta.id);
+        router.back();
+      },
     });
   };
 
@@ -77,7 +97,7 @@ export default function Thread() {
             <Icon name="back" size={22} color={C.ink} />
           </Pressable>
           <Pressable onPress={openPerson}>
-            <Avatar name={meta.otherName} size={40} />
+            <Avatar name={meta.otherName} uri={s.dp[meta.otherId]} size={40} />
           </Pressable>
           <View style={{ flex: 1 }}>
             <Pressable onPress={openPerson} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
@@ -85,10 +105,12 @@ export default function Thread() {
               <VerifiedBadge size={14} />
             </Pressable>
           </View>
-          <Pressable onPress={toggleBlock} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.pill, borderWidth: 1, borderColor: blocked ? C.accent : C.line }}>
-            <Icon name="shield" size={14} color={blocked ? C.accent : C.muted} />
-            <Text style={{ fontSize: 12, fontWeight: '700', color: blocked ? C.accent : C.muted }}>{blocked ? tr('thread.unblock') : tr('thread.block')}</Text>
-          </Pressable>
+          {!blocked || iBlk ? (
+            <Pressable onPress={toggleBlock} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.pill, borderWidth: 1, borderColor: iBlk ? C.accent : C.line }}>
+              <Icon name="shield" size={14} color={iBlk ? C.accent : C.muted} />
+              <Text style={{ fontSize: 12, fontWeight: '700', color: iBlk ? C.accent : C.muted }}>{iBlk ? tr('thread.unblock') : tr('thread.block')}</Text>
+            </Pressable>
+          ) : null}
         </View>
         <Pressable onPress={openItem} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.bg, borderRadius: 12, padding: 8, marginTop: 11, opacity: pressed ? 0.7 : 1 })}>
           <View style={{ width: 38, height: 38, borderRadius: 9, backgroundColor: meta.tint }} />
@@ -147,7 +169,7 @@ export default function Thread() {
             </View>
           );
         })}
-        {!locShared && !blocked && (
+        {!locShared && !blocked && !pendingChat && (
           <Btn icon="pin" label={tr('thread.shareLocation')} variant="accentOutline" onPress={shareLoc} style={{ alignSelf: 'flex-start', paddingVertical: 9, paddingHorizontal: 14 }} textStyle={{ fontSize: 12.5 }} />
         )}
       </ScrollView>
@@ -184,8 +206,23 @@ export default function Thread() {
       <View style={{ backgroundColor: C.surface, borderTopWidth: 1, borderTopColor: C.line, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 14 }}>
         {blocked ? (
           <View style={{ alignItems: 'center', gap: 10, paddingVertical: 6 }}>
-            <Text style={{ fontSize: 13, color: C.muted, textAlign: 'center' }}>{tr('thread.blockedNotice', { name: meta.otherName })}</Text>
-            <Btn icon="shield" label={tr('thread.unblock')} variant="outline" onPress={() => unblockUser(meta.otherId)} />
+            <Text style={{ fontSize: 13, color: C.muted, textAlign: 'center' }}>
+              {iBlk ? tr('thread.blockedNotice', { name: meta.otherName }) : tr('thread.blockedByOther', { name: meta.otherName })}
+            </Text>
+            {iBlk ? <Btn icon="shield" label={tr('thread.unblock')} variant="outline" onPress={() => unblockUser(meta.otherId)} /> : null}
+          </View>
+        ) : pendingChat ? (
+          <View style={{ gap: 10, paddingVertical: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Icon name="chat" size={16} color={C.accent} />
+              <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '800', color: C.ink }}>{tr('thread.pendingTitle', { name: meta.otherName })}</Text>
+            </View>
+            <Text style={{ fontSize: 12.5, color: C.muted, lineHeight: 18 }}>{tr('thread.pendingMsg')}</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Btn label={tr('thread.block')} variant="outline" onPress={toggleBlock} style={{ flex: 1, paddingVertical: 11, borderColor: C.dangerBorder }} textStyle={{ fontSize: 13, color: C.dangerInk }} />
+              <Btn label={tr('common.delete')} variant="outline" onPress={confirmDeleteConv} style={{ flex: 1, paddingVertical: 11 }} textStyle={{ fontSize: 13 }} />
+              <Btn icon="check" label={tr('common.accept')} onPress={() => acceptThread(meta.id)} style={{ flex: 1, paddingVertical: 11 }} textStyle={{ fontSize: 13 }} />
+            </View>
           </View>
         ) : (
           <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
@@ -193,13 +230,14 @@ export default function Thread() {
               <Icon name="image" size={20} color={C.accent} />
             </Pressable>
             <TextInput
-              value={s.draft}
-              onChangeText={(draft) => patch({ draft })}
+              value={draft}
+              onChangeText={setDraft}
+              onSubmitEditing={send}
               placeholder={tr('thread.messagePlaceholder')}
               placeholderTextColor={C.muted}
               style={{ flex: 1, height: 46, borderRadius: 23, backgroundColor: C.bg, borderWidth: 1, borderColor: C.line, paddingHorizontal: 16, fontSize: 13.5, color: C.ink }}
             />
-            <Pressable onPress={sendMsg} style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' }}>
+            <Pressable onPress={send} style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="send" size={18} color="#fff" />
             </Pressable>
           </View>

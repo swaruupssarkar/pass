@@ -1,12 +1,14 @@
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
-import { memo } from 'react';
+import { memo, useEffect, useState } from 'react';
 import {
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
+  type ImageStyle,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
@@ -14,7 +16,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets, type Edge } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/pass/icon';
-import { usePass, useT } from '@/pass/store';
+import { usePass, userName, useT } from '@/pass/store';
 import { C, hatch, radius } from '@/pass/theme';
 
 // ---------- screen scaffold ----------
@@ -219,7 +221,7 @@ export function Avatar({
     return (
       <Image
         source={{ uri }}
-        style={[{ width: size, height: size, borderRadius }, style]}
+        style={[{ width: size, height: size, borderRadius }, style as StyleProp<ImageStyle>]}
         contentFit="cover"
         transition={120}
       />
@@ -486,6 +488,96 @@ export function PassDialog() {
               </Pressable>
             );
           })}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const CLIENT_REASONS = ['cancel.reason.money', 'cancel.reason.privacy', 'cancel.reason.personal', 'cancel.reason.spam', 'cancel.reason.changedMind', 'cancel.reason.other'];
+const OWNER_REASONS = ['cancel.reason.scam', 'cancel.reason.money', 'cancel.reason.spam', 'cancel.reason.noshow', 'cancel.reason.unavailable', 'cancel.reason.other'];
+// reasons that imply a bad actor -> offer to block them after cancelling
+const SAFETY_REASONS = new Set(['cancel.reason.money', 'cancel.reason.privacy', 'cancel.reason.personal', 'cancel.reason.spam', 'cancel.reason.scam']);
+
+/** Bottom sheet to pick a reason when cancelling an accepted request. */
+export function CancelReasonSheet() {
+  const tr = useT();
+  const { s, cancelRequest, closeCancelReason, blockUser, showConfirm } = usePass();
+  const insets = useSafeAreaInsets();
+  const target = s.cancelTarget;
+  const [picked, setPicked] = useState<string | null>(null);
+  const [other, setOther] = useState('');
+
+  useEffect(() => {
+    setPicked(null);
+    setOther('');
+  }, [target?.requestId]);
+
+  if (!target) return null;
+  const reasons = target.role === 'owner' ? OWNER_REASONS : CLIENT_REASONS;
+  const isOther = picked === 'cancel.reason.other';
+  const canConfirm = !!picked && (!isOther || other.trim().length > 0);
+
+  const req = s.requests.find((r) => r.id === target.requestId);
+  const otherId = req ? (s.currentUserId === req.fromUserId ? req.toUserId : req.fromUserId) : null;
+
+  const confirm = () => {
+    if (!picked) return;
+    const reasonText = isOther ? other.trim() : tr(picked);
+    const safety = SAFETY_REASONS.has(picked);
+    cancelRequest(target.requestId, reasonText);
+    if (safety && otherId) {
+      showConfirm({
+        title: tr('cancel.blockToo', { name: userName(s, otherId) }),
+        message: tr('thread.blockMsg'),
+        confirmLabel: tr('thread.block'),
+        destructive: true,
+        onConfirm: () => blockUser(otherId),
+      });
+    }
+  };
+
+  return (
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(17,17,17,0.45)', justifyContent: 'flex-end' }]}>
+      <Pressable style={StyleSheet.absoluteFill} onPress={closeCancelReason} />
+      <View style={{ backgroundColor: C.surface, borderTopLeftRadius: 26, borderTopRightRadius: 26, borderCurve: 'continuous', padding: 22, paddingBottom: insets.bottom + 18 }}>
+        <View style={{ width: 44, height: 5, borderRadius: 3, backgroundColor: C.line, alignSelf: 'center', marginBottom: 16 }} />
+        <Text style={{ fontSize: 19, fontWeight: '800', color: C.ink, letterSpacing: -0.3 }}>{tr('cancel.title')}</Text>
+        <Text style={{ fontSize: 13.5, color: C.muted, lineHeight: 20, marginTop: 6 }}>{tr('cancel.subtitle')}</Text>
+        <View style={{ gap: 9, marginTop: 18 }}>
+          {reasons.map((k) => {
+            const on = picked === k;
+            return (
+              <Pressable
+                key={k}
+                onPress={() => setPicked(k)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 11, borderWidth: 1.5, borderColor: on ? C.accent : C.line, backgroundColor: on ? C.accentSoft : C.surface, borderRadius: radius.md, borderCurve: 'continuous', paddingVertical: 13, paddingHorizontal: 14 }}>
+                <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: on ? C.accent : C.line, alignItems: 'center', justifyContent: 'center' }}>
+                  {on ? <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: C.accent }} /> : null}
+                </View>
+                <Text style={{ flex: 1, fontSize: 14.5, fontWeight: on ? '700' : '600', color: C.ink }}>{tr(k)}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        {isOther ? (
+          <TextInput
+            value={other}
+            onChangeText={setOther}
+            placeholder={tr('cancel.otherPlaceholder')}
+            placeholderTextColor={C.muted}
+            multiline
+            style={{ marginTop: 12, minHeight: 64, borderWidth: 1.5, borderColor: C.line, borderRadius: radius.md, padding: 12, fontSize: 14, color: C.ink, textAlignVertical: 'top' }}
+          />
+        ) : null}
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+          <Btn label={tr('cancel.keep')} variant="outline" onPress={closeCancelReason} style={{ flex: 1, paddingVertical: 13 }} />
+          <Btn
+            label={tr('cancel.confirm')}
+            onPress={canConfirm ? confirm : undefined}
+            style={{ flex: 1, paddingVertical: 13, backgroundColor: canConfirm ? C.dangerInk : C.line }}
+            textStyle={{ color: '#fff' }}
+          />
         </View>
       </View>
     </View>
