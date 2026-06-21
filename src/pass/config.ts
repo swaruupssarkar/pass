@@ -11,3 +11,21 @@ export const GOOGLE_PLACES_KEY: string =
   '';
 
 export const hasPlaces = (): boolean => GOOGLE_PLACES_KEY.length > 0;
+
+// Moderation: a listing is automatically delisted (hidden from browse) once it
+// receives this many reports. Change this single value to tune the threshold.
+export const REPORT_DELIST_THRESHOLD = 5;
+
+// ---- listing reports → email ----
+// Reports are emailed to this address. A phone-only Expo app can't send mail by
+// itself, so delivery goes through a Formspree form (https://formspree.io):
+//   1. Sign up at formspree.io with REPORT_EMAIL below as the form's recipient.
+//   2. Create a form; copy its endpoint (looks like https://formspree.io/f/abcwxyz).
+//   3. Put it in a .env file as  EXPO_PUBLIC_REPORT_ENDPOINT=https://formspree.io/f/abcwxyz
+//      (or app.json -> expo.extra.reportEndpoint). Until set, no email is sent.
+export const REPORT_EMAIL = 'sarkarrup136@gmail.com';
+
+export const REPORT_ENDPOINT: string =
+  process.env.EXPO_PUBLIC_REPORT_ENDPOINT ??
+  (Constants.expoConfig?.extra?.reportEndpoint as string | undefined) ??
+  '';

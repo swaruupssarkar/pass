@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import MapView, { Marker, type Region } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/pass/icon';
@@ -69,6 +69,7 @@ export default function PickMap() {
     <View style={{ flex: 1 }}>
       <MapView
         ref={mapRef}
+        provider={PROVIDER_GOOGLE}
         style={{ flex: 1 }}
         initialRegion={region}
         showsUserLocation

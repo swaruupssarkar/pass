@@ -3,17 +3,19 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { CITIES, USERS } from '@/pass/data';
 import { Icon } from '@/pass/icon';
-import { distLabel, fmtAgo, otherOf, reviewsFor, usePass, useT } from '@/pass/store';
+import { distLabel, fmtAgo, otherOf, reviewsFor, userName, userRating, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, Btn, FreeTag, Header, PhotoTile, Screen, shadow, t, VerifiedBadge } from '@/pass/ui';
 
 export default function Giver() {
   const router = useRouter();
   const tr = useT();
-  const { s, openListing, openThreadFor } = usePass();
+  const { s, openListing, openThreadFor, toggleSave } = usePass();
 
   const id = s.activePersonId ?? otherOf(s.currentUserId).id;
   const person = USERS[id];
+  const name = userName(s, id);
+  const rating = userRating(s, id);
   const city = CITIES.find((c) => c.id === person.cityId);
 
   const live = s.listings.filter((l) => l.ownerId === id && !l.taken);
@@ -40,15 +42,15 @@ export default function Giver() {
         <View style={{ paddingHorizontal: 18 }}>
           <View style={{ backgroundColor: C.surface, borderRadius: 22, borderCurve: 'continuous', padding: 20, ...shadow(12, 30, 0.35) }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
-              <Avatar name={person.name} size={64} square />
+              <Avatar name={name} uri={s.dp[id]} size={64} square />
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                  <Text style={{ fontSize: 21, fontWeight: '800', color: C.ink, letterSpacing: -0.4 }}>{person.name}</Text>
+                  <Text style={{ fontSize: 21, fontWeight: '800', color: C.ink, letterSpacing: -0.4 }}>{name}</Text>
                   <VerifiedBadge size={18} />
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 }}>
                   <Icon name="star" size={12.5} color={C.star} />
-                  <Text style={{ fontSize: 12.5, color: C.muted }}>{person.rating} · {tr('giver.memberSince', { year: person.since })}</Text>
+                  <Text style={{ fontSize: 12.5, color: C.muted }}>{rating != null ? rating : tr('common.new')} · {tr('giver.memberSince', { year: person.since })}</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 }}>
                   <Icon name="pin" size={12.5} color={C.muted} />
@@ -62,10 +64,13 @@ export default function Giver() {
               <Stat n={given} label={tr('giver.given')} />
             </View>
           </View>
+
+          {/* message button — kept at the top so it's reachable immediately */}
+          <Btn icon="chat" label={tr('giver.message', { name })} onPress={message} block style={{ marginTop: 14 }} />
         </View>
 
         <View style={{ paddingHorizontal: 18, paddingTop: 22, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={[t.h3, { fontSize: 17 }]}>{tr('giver.giveaways', { name: person.name })}</Text>
+          <Text style={[t.h3, { fontSize: 17 }]}>{tr('giver.giveaways', { name })}</Text>
           {live.length > 0 && (
             <View style={{ backgroundColor: '#E4F0E9', borderRadius: radius.pill, paddingVertical: 5, paddingHorizontal: 11 }}>
               <Text style={{ fontSize: 11, fontWeight: '700', color: C.free }}>{tr('giver.liveCount', { count: live.length })}</Text>
@@ -86,6 +91,9 @@ export default function Giver() {
                 <View style={{ position: 'absolute', top: 8, left: 8, backgroundColor: 'rgba(28,24,22,0.6)', borderRadius: radius.pill, paddingVertical: 3, paddingHorizontal: 9 }}>
                   <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{distLabel(s, l)}</Text>
                 </View>
+                <Pressable onPress={() => toggleSave(l.id)} hitSlop={6} style={{ position: 'absolute', top: 6, right: 6, width: 30, height: 30, borderRadius: 15, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px -3px rgba(0,0,0,0.3)' }}>
+                  <Icon name={s.saved[l.id] ? 'heart' : 'heart-outline'} size={15} color={C.accent} />
+                </Pressable>
                 <FreeTag small style={{ position: 'absolute', bottom: 8, left: 8 }} />
               </PhotoTile>
               <View style={{ paddingHorizontal: 5, paddingTop: 10, paddingBottom: 5 }}>
@@ -123,10 +131,6 @@ export default function Giver() {
           )}
         </View>
       </ScrollView>
-
-      <View style={{ paddingHorizontal: 18, paddingVertical: 13, backgroundColor: C.bg, borderTopWidth: 1, borderTopColor: C.line }}>
-        <Btn label={tr('giver.message', { name: person.name })} onPress={message} block />
-      </View>
     </Screen>
   );
 }

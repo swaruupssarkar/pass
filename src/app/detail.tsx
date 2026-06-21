@@ -6,7 +6,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/pass/icon';
-import { activeListing, distLabel, fmtAgo, fmtDate, myRequestFor, USERS, usePass, useT } from '@/pass/store';
+import { activeListing, distLabel, fmtAgo, fmtDate, myRequestFor, userName, userRating, USERS, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, Btn, Hatch, Header, SafetyNote, Screen, VerifiedBadge, t } from '@/pass/ui';
 
@@ -34,6 +34,8 @@ export default function Detail() {
   }
 
   const owner = USERS[item.ownerId];
+  const ownerName = userName(s, item.ownerId);
+  const ownerRating = userRating(s, item.ownerId);
   const mine = item.ownerId === s.currentUserId;
   const myReq = myRequestFor(s, item.id);
   const saved = !!s.saved[item.id];
@@ -49,7 +51,7 @@ export default function Detail() {
   };
   const wantThis = () => {
     requestListing(item.id, '');
-    showAlert(tr('detail.requestSentTitle'), tr('detail.requestSentMsg', { name: owner.name }));
+    showAlert(tr('detail.requestSentTitle'), tr('detail.requestSentMsg', { name: ownerName }));
   };
   const messageGiver = () => {
     openThreadFor(item.id);
@@ -155,15 +157,15 @@ export default function Detail() {
           </View>
 
           <Pressable onPress={mine ? undefined : viewGiver} style={{ marginTop: 16, backgroundColor: C.bg, borderRadius: radius.lg, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 13 }}>
-            <Avatar name={owner.name} />
+            <Avatar name={ownerName} uri={s.dp[item.ownerId]} />
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={{ fontSize: 16, fontWeight: '800', color: C.ink }}>{owner.name}</Text>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: C.ink }}>{ownerName}</Text>
                 <VerifiedBadge />
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}>
                 <Icon name="star" size={12.5} color={C.star} />
-                <Text style={{ fontSize: 12.5, color: C.muted }}>{owner.rating} · Member since {owner.since}</Text>
+                <Text style={{ fontSize: 12.5, color: C.muted }}>{ownerRating != null ? ownerRating : tr('common.new')} · {tr('giver.memberSince', { year: owner.since })}</Text>
               </View>
             </View>
             {!mine && <Text style={{ color: C.accent, fontSize: 14, fontWeight: '800' }}>{tr('detail.view')}</Text>}
@@ -198,7 +200,7 @@ export default function Detail() {
                 <Btn label={tr('common.cancel')} onPress={cancel} variant="outline" style={{ borderColor: C.dangerBorder }} textStyle={{ color: C.dangerInk }} />
               </>
             ) : myReq.status === 'accepted' ? (
-              <Btn icon="mail" label={tr('detail.message', { name: owner.name })} onPress={messageGiver} style={{ flex: 1 }} />
+              <Btn icon="mail" label={tr('detail.message', { name: ownerName })} onPress={messageGiver} style={{ flex: 1 }} />
             ) : (
               <Btn label={tr('detail.requestDeclined')} onPress={undefined} style={{ flex: 1, opacity: 0.55 }} variant="outline" textStyle={{ color: C.muted }} />
             )}

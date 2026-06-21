@@ -199,6 +199,7 @@ export function FreeTag({ style, small }: { style?: StyleProp<ViewStyle>; small?
 
 export function Avatar({
   name,
+  uri,
   size = 48,
   tint = C.accentSoft,
   color = C.accent,
@@ -206,19 +207,31 @@ export function Avatar({
   style,
 }: {
   name: string;
+  uri?: string | null;
   size?: number;
   tint?: string;
   color?: string;
   square?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
+  const borderRadius = square ? size * 0.3 : size / 2;
+  if (uri) {
+    return (
+      <Image
+        source={{ uri }}
+        style={[{ width: size, height: size, borderRadius }, style]}
+        contentFit="cover"
+        transition={120}
+      />
+    );
+  }
   return (
     <View
       style={[
         {
           width: size,
           height: size,
-          borderRadius: square ? size * 0.3 : size / 2,
+          borderRadius,
           backgroundColor: tint,
           alignItems: 'center',
           justifyContent: 'center',

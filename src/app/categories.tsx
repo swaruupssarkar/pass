@@ -9,7 +9,7 @@ import { BottomNav, Btn, FreeTag, Header, PhotoTile, Screen, shadow, t } from '@
 export default function Categories() {
   const router = useRouter();
   const tr = useT();
-  const { s, patch, openListing } = usePass();
+  const { s, patch, openListing, toggleSave } = usePass();
   const selCat = CATS[s.catSel];
   const products = browseListings({ ...s, catFilter: selCat, q: '' });
 
@@ -74,6 +74,9 @@ export default function Categories() {
                     <View style={{ position: 'absolute', top: 9, left: 9, backgroundColor: 'rgba(28,24,22,0.62)', borderRadius: radius.pill, paddingVertical: 4, paddingHorizontal: 10 }}>
                       <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{distLabel(s, l)}</Text>
                     </View>
+                    <Pressable onPress={() => toggleSave(l.id)} hitSlop={6} style={{ position: 'absolute', top: 7, right: 7, width: 32, height: 32, borderRadius: 16, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px -3px rgba(0,0,0,0.3)' }}>
+                      <Icon name={s.saved[l.id] ? 'heart' : 'heart-outline'} size={16} color={C.accent} />
+                    </Pressable>
                     <FreeTag style={{ position: 'absolute', bottom: 9, left: 9 }} />
                   </PhotoTile>
                   <View style={{ paddingHorizontal: 6, paddingTop: 11, paddingBottom: 6 }}>

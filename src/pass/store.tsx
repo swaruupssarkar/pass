@@ -15,10 +15,12 @@ import {
   type Review,
   OTHER_USER,
   type Request,
+  REPORT_REASONS,
   SEED_LISTINGS,
   type UserId,
   USERS,
 } from '@/pass/data';
+import { REPORT_DELIST_THRESHOLD, REPORT_EMAIL, REPORT_ENDPOINT } from '@/pass/config';
 import { DEFAULT_LANG, type LangCode, translate } from '@/pass/i18n';
 import { reverseGeocode } from '@/pass/places';
 import { TINTS } from '@/pass/theme';
@@ -32,6 +34,15 @@ export type Dialog = { title: string; message?: string; actions: DialogAction[] 
 
 export type NotifyPrefs = { near: boolean; chat: boolean; addr: { lat: number; lng: number; label: string } | null };
 const NOTIFY_RADIUS_KM = 100;
+
+/** The report payload that gets emailed (see deliverReport). Nothing is stored. */
+export type ReportPayload = {
+  listingId: string;
+  listingTitle: string;
+  reason: string;
+  reportedBy: string;
+  ts: number;
+};
 
 const STORAGE_KEY = 'pass.state.v4';
 
@@ -84,11 +95,15 @@ type State = {
   // report
   reportReason: number | null;
   reportDone: boolean;
+  /** Per-listing report tally (count only, no log) — drives the auto-delist. */
+  reportCounts: Record<string, number>;
   // misc
   saved: Record<string, boolean>;
   blocked: Record<string, boolean>;
   notify: Record<UserId, NotifyPrefs>;
   dp: Record<UserId, string | null>;
+  /** Per-user display-name overrides (the user can rename their own profile). */
+  names: Record<string, string>;
   onboarded: boolean;
   hydrated: boolean;
   dialog: Dialog | null;
@@ -137,10 +152,12 @@ const INITIAL: State = {
   reviewDraft: '',
   reportReason: null,
   reportDone: false,
+  reportCounts: {},
   saved: {},
   blocked: {},
   notify: { u1: { near: true, chat: true, addr: null }, u2: { near: true, chat: true, addr: null } },
   dp: { u1: null, u2: null },
+  names: {},
   onboarded: false,
   hydrated: false,
   dialog: null,
@@ -179,7 +196,7 @@ export const isReserved = (s: State, listingId: string): boolean =>
 /** Listings other users have posted, in the active location + radius, not taken or reserved. */
 export function browseListings(s: State): Listing[] {
   let list = s.listings.filter(
-    (l) => !l.taken && !isReserved(s, l.id) && l.ownerId !== s.currentUserId && !s.blocked[`${s.currentUserId}>${l.ownerId}`]
+    (l) => !l.taken && !isReserved(s, l.id) && !isDelisted(s, l.id) && l.ownerId !== s.currentUserId && !s.blocked[`${s.currentUserId}>${l.ownerId}`]
   );
   if (s.activeMode === 'city') list = list.filter((l) => l.cityId === s.activeCityId);
   list = list.filter((l) => distKm(s, l) <= s.radius);
@@ -316,6 +333,24 @@ export const unreadCount = (s: State): number =>
 export const reviewsFor = (s: State, userId: UserId): Review[] =>
   (s.reviews ?? []).filter((r) => r.to === userId).sort((a, b) => b.ts - a.ts);
 
+/** Display name for a user, honouring any self-set override. */
+export const userName = (s: State, id: UserId): string => s.names?.[id] ?? USERS[id].name;
+
+/** Real average rating computed from received reviews; null when none yet. */
+export function userRating(s: State, id: UserId): number | null {
+  const rs = reviewsFor(s, id);
+  if (rs.length === 0) return null;
+  return Math.round((rs.reduce((a, r) => a + r.rating, 0) / rs.length) * 10) / 10;
+}
+
+/** How many reports a listing has received (this device). */
+export const reportCount = (s: State, listingId: string): number =>
+  s.reportCounts?.[listingId] ?? 0;
+
+/** A listing is auto-delisted once it crosses the report threshold. */
+export const isDelisted = (s: State, listingId: string): boolean =>
+  reportCount(s, listingId) >= REPORT_DELIST_THRESHOLD;
+
 // ---- time format ----
 
 export function fmtAgo(ts: number, now: number = Date.now()): string {
@@ -344,6 +379,33 @@ export function fmtDate(ts: number): string {
 
 let SEQ = 0;
 const uid = (p: string) => `${p}_${Date.now()}_${SEQ++}`;
+
+/**
+ * Emails a listing report to REPORT_EMAIL via the configured Formspree endpoint.
+ * No-op (with a dev warning) until EXPO_PUBLIC_REPORT_ENDPOINT is set. Fire-and-
+ * forget: failures are swallowed so the UI flow never blocks on the network.
+ */
+function deliverReport(payload: ReportPayload): void {
+  if (!REPORT_ENDPOINT) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('[report] No REPORT_ENDPOINT set — report not emailed. See src/pass/config.ts');
+    }
+    return;
+  }
+  fetch(REPORT_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({
+      email: REPORT_EMAIL,
+      _subject: `pass report: ${payload.listingTitle}`,
+      listing: payload.listingTitle,
+      listingId: payload.listingId,
+      reason: payload.reason,
+      reportedBy: payload.reportedBy,
+      at: new Date(payload.ts).toISOString(),
+    }),
+  }).catch(() => {});
+}
 
 // ---- store ----
 
@@ -396,6 +458,9 @@ type Store = {
   // report / onboarding
   submitReport: () => void;
   markOnboarded: () => void;
+  // profile editing
+  setName: (name: string) => void;
+  setDp: (uri: string | null) => void;
   setNotifyNear: (on: boolean) => void;
   setNotifyChat: (on: boolean) => void;
   setNotifyAddress: (coords: Coords, label: string) => void;
@@ -888,8 +953,28 @@ export function PassProvider({ children }: { children: ReactNode }) {
         return route;
       },
 
-      submitReport: () => setS((prev) => ({ ...prev, reportDone: true })),
+      submitReport: () =>
+        setS((prev) => {
+          const listingId = prev.activeListingId;
+          const l = listingId ? prev.listings.find((x) => x.id === listingId) : null;
+          if (!listingId || !l || prev.reportReason == null) return { ...prev, reportDone: true };
+          // email the report — nothing is stored except a per-listing tally
+          deliverReport({
+            listingId,
+            listingTitle: l.title,
+            reason: REPORT_REASONS[prev.reportReason] ?? `Reason #${prev.reportReason}`,
+            reportedBy: USERS[prev.currentUserId].name,
+            ts: Date.now(),
+          });
+          // count THIS listing only; it auto-delists once it crosses the threshold
+          const reportCounts = { ...prev.reportCounts, [listingId]: (prev.reportCounts[listingId] ?? 0) + 1 };
+          return { ...prev, reportCounts, reportDone: true };
+        }),
       markOnboarded: () => setS((prev) => (prev.onboarded ? prev : { ...prev, onboarded: true })),
+
+      setName: (name) =>
+        setS((prev) => ({ ...prev, names: { ...prev.names, [prev.currentUserId]: name.trim() || USERS[prev.currentUserId].name } })),
+      setDp: (uri) => setS((prev) => ({ ...prev, dp: { ...prev.dp, [prev.currentUserId]: uri } })),
 
       setNotifyNear: (on) =>
         setS((prev) => ({ ...prev, notify: { ...prev.notify, [prev.currentUserId]: { ...prev.notify[prev.currentUserId], near: on } } })),
@@ -948,10 +1033,12 @@ export function PassProvider({ children }: { children: ReactNode }) {
       threadListing: s.threadListing,
       notifications: s.notifications,
       reviews: s.reviews,
+      reportCounts: s.reportCounts,
       saved: s.saved,
       blocked: s.blocked,
       notify: s.notify,
       dp: s.dp,
+      names: s.names,
       radius: s.radius,
       activeMode: s.activeMode,
       activeCityId: s.activeCityId,
@@ -974,10 +1061,12 @@ export function PassProvider({ children }: { children: ReactNode }) {
     s.threadListing,
     s.notifications,
     s.reviews,
+    s.reportCounts,
     s.saved,
     s.blocked,
     s.notify,
     s.dp,
+    s.names,
     s.radius,
     s.activeMode,
     s.activeCityId,

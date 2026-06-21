@@ -41,7 +41,7 @@ export default function Report() {
 
   return (
     <Screen edges={['top', 'bottom']}>
-      <Header title="Report & block" />
+      <Header title={tr('report.title')} />
       <ScrollView contentContainerStyle={{ padding: 18, paddingTop: 4 }} showsVerticalScrollIndicator={false}>
         <Text style={[t.small, { marginBottom: 14 }]}>
           {tr('report.intro')}

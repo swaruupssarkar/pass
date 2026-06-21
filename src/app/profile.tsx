@@ -1,10 +1,12 @@
 import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { useState } from 'react';
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { Icon, type IconName } from '@/pass/icon';
-import { CITIES, me, myListings, USERS, usePass, useT } from '@/pass/store';
+import { CITIES, me, myListings, userName, userRating, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Avatar, BottomNav, Btn, Hatch, Screen, shadow, VerifiedBadge } from '@/pass/ui';
+import { Avatar, BottomNav, Btn, Screen, shadow, VerifiedBadge } from '@/pass/ui';
 import type { UserId } from '@/pass/data';
 
 const ROWS: { icon: IconName; labelKey: string; route: '/manage' | '/impact' | '/saved' | '/safety' | '/settings' }[] = [
@@ -20,12 +22,30 @@ const SWITCH_IDS: UserId[] = ['u1', 'u2'];
 export default function Profile() {
   const router = useRouter();
   const tr = useT();
-  const { s, switchUser, logout } = usePass();
+  const { s, switchUser, logout, setName, setDp } = usePass();
   const user = me(s);
   const mine = myListings(s);
   const givenCount = mine.filter((l) => l.taken).length;
   const cityName = CITIES.find((c) => c.id === user.cityId)?.name ?? CITIES[0].name;
   const dp = s.dp[s.currentUserId];
+  const name = userName(s, s.currentUserId);
+  const rating = userRating(s, s.currentUserId);
+
+  const [editing, setEditing] = useState(false);
+  const [draftName, setDraftName] = useState(name);
+
+  const changePhoto = async () => {
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.7 });
+    if (!res.canceled && res.assets[0]) setDp(res.assets[0].uri);
+  };
+  const startEditName = () => {
+    setDraftName(name);
+    setEditing(true);
+  };
+  const saveName = () => {
+    setName(draftName);
+    setEditing(false);
+  };
 
   return (
     <Screen>
@@ -33,23 +53,39 @@ export default function Profile() {
         {/* profile card */}
         <View style={{ backgroundColor: C.surface, borderRadius: 22, borderCurve: 'continuous', padding: 20, ...shadow(12, 30, 0.35) }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
-            <View style={{ width: 66, height: 66 }}>
-              {dp ? (
-                <View style={{ width: 66, height: 66, borderRadius: 20, backgroundColor: dp, overflow: 'hidden' }}>
-                  <Hatch gap={14} />
+            <Pressable onPress={changePhoto} style={{ width: 66, height: 66 }}>
+              <Avatar name={name} uri={dp} size={66} square />
+              <View style={{ position: 'absolute', bottom: -2, right: -2, width: 24, height: 24, borderRadius: 12, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: C.surface }}>
+                <Icon name="camera" size={12} color="#fff" />
+              </View>
+            </Pressable>
+            <View style={{ flex: 1 }}>
+              {editing ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <TextInput
+                    value={draftName}
+                    onChangeText={setDraftName}
+                    autoFocus
+                    onSubmitEditing={saveName}
+                    returnKeyType="done"
+                    style={{ flex: 1, fontSize: 19, fontWeight: '800', color: C.ink, borderBottomWidth: 1.5, borderBottomColor: C.accent, paddingVertical: 2 }}
+                  />
+                  <Pressable onPress={saveName} hitSlop={8} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon name="check" size={16} color="#fff" />
+                  </Pressable>
                 </View>
               ) : (
-                <Avatar name={user.name} size={66} square />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                  <Text style={{ fontSize: 21, fontWeight: '800', color: C.ink, letterSpacing: -0.4 }} numberOfLines={1}>{name}</Text>
+                  <VerifiedBadge size={18} />
+                  <Pressable onPress={startEditName} hitSlop={8}>
+                    <Icon name="pencil" size={15} color={C.muted} />
+                  </Pressable>
+                </View>
               )}
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                <Text style={{ fontSize: 21, fontWeight: '800', color: C.ink, letterSpacing: -0.4 }} numberOfLines={1}>{user.name}</Text>
-                <VerifiedBadge size={18} />
-              </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 }}>
                 <Icon name="star" size={12.5} color={C.star} />
-                <Text style={{ fontSize: 12.5, color: C.muted }}>{user.rating} · {cityName} · {tr('profile.verified')}</Text>
+                <Text style={{ fontSize: 12.5, color: C.muted }}>{rating != null ? rating : tr('common.new')} · {cityName} · {tr('profile.verified')}</Text>
               </View>
             </View>
           </View>
@@ -71,7 +107,6 @@ export default function Profile() {
           <Text style={{ fontSize: 11, fontWeight: '700', color: C.muted, letterSpacing: 0.3, marginBottom: 11 }}>{tr('profile.switchAccount')}</Text>
           <View style={{ flexDirection: 'row', gap: 10 }}>
             {SWITCH_IDS.map((id) => {
-              const u = USERS[id];
               const on = s.currentUserId === id;
               return (
                 <Pressable
@@ -90,9 +125,9 @@ export default function Profile() {
                     borderColor: on ? C.accent : C.line,
                     backgroundColor: on ? C.accentSoft : C.surface,
                   }}>
-                  <Avatar name={u.name} size={34} square tint={on ? C.surface : C.bg} />
+                  <Avatar name={userName(s, id)} uri={s.dp[id]} size={34} square tint={on ? C.surface : C.bg} />
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13.5, fontWeight: '800', color: C.ink }} numberOfLines={1}>{u.name}</Text>
+                    <Text style={{ fontSize: 13.5, fontWeight: '800', color: C.ink }} numberOfLines={1}>{userName(s, id)}</Text>
                     <Text style={{ fontSize: 11, color: C.muted }} numberOfLines={1}>{on ? tr('profile.active') : tr('profile.tapToSwitch')}</Text>
                   </View>
                   {on ? <Icon name="check-circle" size={17} color={C.accent} /> : null}
