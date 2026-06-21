@@ -10,7 +10,7 @@ import { BottomNav, Btn, FreeTag, PhotoTile, Screen, shadow, t } from '@/pass/ui
 export default function Saved() {
   const router = useRouter();
   const tr = useT();
-  const { s, openListing, toggleSave, openThreadFor, cancelRequest, openCancelReason, showConfirm } = usePass();
+  const { s, openListing, toggleSave, openThreadFor, cancelRequest, openCancelReason, removeRequest, showConfirm } = usePass();
   const [tab, setTab] = useState<'saved' | 'requested'>('saved');
   const saved = savedListings(s);
   const requested = myRequests(s);
@@ -87,7 +87,10 @@ export default function Saved() {
             onPress={() => router.navigate('/feed')}
           />
         ) : (
-          requested.map(({ request, listing }) => (
+          requested.map(({ request, listing }) => {
+            const taken = !!listing?.taken;
+            const gotByMe = taken && listing?.takenBy === s.currentUserId;
+            return (
             <View key={request.id} style={{ backgroundColor: C.surface, borderRadius: radius.xl, borderCurve: 'continuous', padding: 11, ...shadow(8, 20, 0.4) }}>
               <Pressable disabled={!listing} onPress={() => listing && open(listing.id)} style={{ flexDirection: 'row', gap: 13, alignItems: 'center' }}>
                 <PhotoTile tint={listing?.tint ?? C.bg} uri={listing?.photos?.[0]} style={{ width: 64, height: 64, borderRadius: radius.md }} />
@@ -96,9 +99,23 @@ export default function Saved() {
                   <Text style={[t.small, { marginTop: 4 }]} numberOfLines={1}>{request.note}</Text>
                   <Text style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{tr('saved.requestedLine', { ago: fmtAgo(request.createdAt), date: fmtDate(request.createdAt) })}</Text>
                 </View>
-                <StatusBadge status={request.status} tr={tr} />
+                {taken ? (
+                  <View style={{ backgroundColor: gotByMe ? '#E4F0E9' : C.bg, borderRadius: radius.pill, paddingVertical: 5, paddingHorizontal: 11 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: gotByMe ? C.free : C.muted }}>{gotByMe ? tr('saved.gotBadge') : tr('saved.givenBadge')}</Text>
+                  </View>
+                ) : (
+                  <StatusBadge status={request.status} tr={tr} />
+                )}
               </Pressable>
-              {request.status === 'accepted' && listing ? (
+              {taken ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 11 }}>
+                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                    <Icon name={gotByMe ? 'check-circle' : 'gift'} size={16} color={gotByMe ? C.free : C.muted} />
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: gotByMe ? C.free : C.muted }} numberOfLines={1}>{gotByMe ? tr('saved.received') : tr('saved.givenOther')}</Text>
+                  </View>
+                  <Btn icon="trash" label={tr('common.remove')} variant="outline" onPress={() => removeRequest(request.id)} style={{ paddingVertical: 11 }} textStyle={{ fontSize: 14, color: C.muted }} />
+                </View>
+              ) : request.status === 'accepted' && listing ? (
                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 11 }}>
                   <Btn icon="chat" label={tr('saved.chat')} onPress={() => chat(listing.id)} style={{ flex: 1, paddingVertical: 11 }} textStyle={{ fontSize: 14 }} />
                   <Btn label={tr('common.cancel')} variant="outline" onPress={() => openCancelReason(request.id, 'client')} style={{ paddingVertical: 11, borderColor: C.dangerBorder }} textStyle={{ fontSize: 14, color: C.dangerInk }} />
@@ -106,10 +123,11 @@ export default function Saved() {
               ) : request.status === 'pending' ? (
                 <Btn icon="close" label={tr('saved.cancelRequest')} variant="outline" onPress={() => cancel(request.id, listing?.title)} block style={{ marginTop: 11, paddingVertical: 11, borderColor: C.dangerBorder }} textStyle={{ fontSize: 14, color: C.dangerInk }} />
               ) : (
-                <Btn icon="trash" label={tr('common.remove')} variant="outline" onPress={() => cancelRequest(request.id)} block style={{ marginTop: 11, paddingVertical: 11 }} textStyle={{ fontSize: 14, color: C.muted }} />
+                <Btn icon="trash" label={tr('common.remove')} variant="outline" onPress={() => removeRequest(request.id)} block style={{ marginTop: 11, paddingVertical: 11 }} textStyle={{ fontSize: 14, color: C.muted }} />
               )}
             </View>
-          ))
+            );
+          })
         )}
       </ScrollView>
 

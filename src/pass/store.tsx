@@ -57,11 +57,15 @@ type State = {
   threadStarter: Record<string, UserId>;
   /** conversations the recipient has accepted (or that came from an accepted request) */
   threadAccepted: Record<string, boolean>;
+  /** last time each user viewed a thread — powers read receipts (single/double tick) */
+  threadRead: Record<string, Record<UserId, number>>;
   notifications: Notification[];
   reviews: Review[];
   // browsing location
   activeMode: LocMode;
   activeCityId: string;
+  /** each user's last-chosen city, so switching accounts restores their pick */
+  userCity: Record<UserId, string>;
   userLoc: Coords | null;
   userLocLabel: string | null;
   locStatus: LocStatus;
@@ -124,10 +128,12 @@ const INITIAL: State = {
   threadListing: {},
   threadStarter: {},
   threadAccepted: {},
+  threadRead: {},
   notifications: [],
   reviews: [],
   activeMode: 'city',
   activeCityId: USERS.u1.cityId,
+  userCity: { u1: USERS.u1.cityId, u2: USERS.u2.cityId },
   userLoc: null,
   userLocLabel: null,
   locStatus: 'undetermined',
@@ -405,6 +411,19 @@ export function fmtDate(ts: number): string {
   return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+const MS_DAY = 86400000;
+/** Midnight (local) of the day containing `ts` — used to group chat messages by day. */
+export const dayStamp = (ts: number): number => {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+};
+/** today / yesterday / formatted date — for WhatsApp-style chat day separators. */
+export function chatDay(ts: number): { today: boolean; yesterday: boolean; date: string } {
+  const today = dayStamp(Date.now());
+  return { today: dayStamp(ts) === today, yesterday: dayStamp(ts) === dayStamp(today - MS_DAY), date: fmtDate(ts) };
+}
+
 let SEQ = 0;
 const uid = (p: string) => `${p}_${Date.now()}_${SEQ++}`;
 
@@ -466,9 +485,11 @@ type Store = {
   cancelRequest: (requestId: string, reason?: string) => void;
   openCancelReason: (requestId: string, role: 'owner' | 'client') => void;
   closeCancelReason: () => void;
+  removeRequest: (requestId: string) => void;
   openThreadFor: (listingId: string) => string;
   deleteThread: (id: string) => void;
   acceptThread: (id: string) => void;
+  markThreadRead: (id: string) => void;
   openThread: (id: string) => void;
   sendMsg: (text: string) => void;
   sendImage: (uri: string) => void;
@@ -539,7 +560,8 @@ export function PassProvider({ children }: { children: ReactNode }) {
           ...prev,
           currentUserId: id,
           activeMode: 'city',
-          activeCityId: USERS[id].cityId,
+          // restore this user's last-chosen city instead of forcing their home city
+          activeCityId: prev.userCity?.[id] ?? USERS[id].cityId,
           activeThreadId: null,
           activeListingId: null,
           activePersonId: null,
@@ -550,7 +572,13 @@ export function PassProvider({ children }: { children: ReactNode }) {
 
       logout: () => setS((prev) => ({ ...prev, onboarded: false })),
 
-      setCity: (cityId) => setS((prev) => ({ ...prev, activeMode: 'city', activeCityId: cityId })),
+      setCity: (cityId) =>
+        setS((prev) => ({
+          ...prev,
+          activeMode: 'city',
+          activeCityId: cityId,
+          userCity: { ...prev.userCity, [prev.currentUserId]: cityId },
+        })),
 
       useCurrentLocation: async () => {
         const { status } = await Location.requestForegroundPermissionsAsync();
@@ -814,6 +842,11 @@ export function PassProvider({ children }: { children: ReactNode }) {
       openCancelReason: (requestId, role) => setS((prev) => ({ ...prev, cancelTarget: { requestId, role } })),
       closeCancelReason: () => setS((prev) => ({ ...prev, cancelTarget: null })),
 
+      // silently drop a request from my list (no notification) — used once a deal is
+      // settled (item given) or already declined, just to clear it off the screen
+      removeRequest: (requestId) =>
+        setS((prev) => ({ ...prev, requests: prev.requests.filter((r) => r.id !== requestId) })),
+
       openThreadFor: (listingId) => {
         const l = s.listings.find((x) => x.id === listingId);
         const otherId = l ? l.ownerId : OTHER_USER[s.currentUserId];
@@ -845,12 +878,20 @@ export function PassProvider({ children }: { children: ReactNode }) {
           threadListing: Object.fromEntries(Object.entries(prev.threadListing).filter(([k]) => k !== id)),
           threadStarter: Object.fromEntries(Object.entries(prev.threadStarter).filter(([k]) => k !== id)),
           threadAccepted: Object.fromEntries(Object.entries(prev.threadAccepted).filter(([k]) => k !== id)),
+          threadRead: Object.fromEntries(Object.entries(prev.threadRead).filter(([k]) => k !== id)),
           activeThreadId: prev.activeThreadId === id ? null : prev.activeThreadId,
           notifications: prev.notifications.filter((n) => n.threadId !== id),
         })),
 
       acceptThread: (id) =>
         setS((prev) => ({ ...prev, threadAccepted: { ...prev.threadAccepted, [id]: true } })),
+
+      // stamp that the current user has seen this thread up to now (for read receipts)
+      markThreadRead: (id) =>
+        setS((prev) => ({
+          ...prev,
+          threadRead: { ...prev.threadRead, [id]: { ...(prev.threadRead[id] ?? {}), [prev.currentUserId]: Date.now() } },
+        })),
 
       // text is passed in from the composer's local state so typing never touches
       // global state (which would re-render every screen on each keystroke)
@@ -1097,6 +1138,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
       threadListing: s.threadListing,
       threadStarter: s.threadStarter,
       threadAccepted: s.threadAccepted,
+      threadRead: s.threadRead,
       notifications: s.notifications,
       reviews: s.reviews,
       reportCounts: s.reportCounts,
@@ -1108,6 +1150,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
       radius: s.radius,
       activeMode: s.activeMode,
       activeCityId: s.activeCityId,
+      userCity: s.userCity,
       onboarded: s.onboarded,
     };
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -1127,6 +1170,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
     s.threadListing,
     s.threadStarter,
     s.threadAccepted,
+    s.threadRead,
     s.notifications,
     s.reviews,
     s.reportCounts,
@@ -1138,6 +1182,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
     s.radius,
     s.activeMode,
     s.activeCityId,
+    s.userCity,
     s.onboarded,
   ]);
 

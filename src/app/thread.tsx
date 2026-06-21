@@ -1,18 +1,18 @@
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { Icon } from '@/pass/icon';
-import { activeThreadMessages, fmtTime, iBlocked, isBlocked, pendingIncomingFrom, threadMeta, threadPendingForMe, usePass, useT } from '@/pass/store';
+import { activeThreadMessages, chatDay, dayStamp, fmtTime, iBlocked, isBlocked, pendingIncomingFrom, threadMeta, threadPendingForMe, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, Btn, FreeTag, PhotoTile, Screen, VerifiedBadge } from '@/pass/ui';
 
 export default function Thread() {
   const router = useRouter();
   const tr = useT();
-  const { s, sendMsg, sendImage, shareLoc, viewPerson, openListing, blockUser, unblockUser, showConfirm, acceptRequest, declineRequest, acceptThread, deleteThread } = usePass();
+  const { s, sendMsg, sendImage, shareLoc, viewPerson, openListing, blockUser, unblockUser, showConfirm, acceptRequest, declineRequest, acceptThread, deleteThread, markThreadRead } = usePass();
   const [draft, setDraft] = useState('');
   const send = () => {
     sendMsg(draft);
@@ -39,6 +39,12 @@ export default function Thread() {
     const tid = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60);
     return () => clearTimeout(tid);
   }, [msgs.length]);
+
+  // viewing the thread marks it read for the current user (drives the other side's ticks)
+  useEffect(() => {
+    if (id) markThreadRead(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, msgs.length]);
 
   if (!meta) {
     return (
@@ -74,6 +80,8 @@ export default function Thread() {
   };
   // cold DM the current user hasn't accepted yet -> show accept/delete/block instead of a reply box
   const pendingChat = !incomingReq && msgs.length > 0 && threadPendingForMe(s, meta.id);
+  // my messages are "read" once the other person viewed the thread after they were sent
+  const otherLastRead = s.threadRead[meta.id]?.[meta.otherId] ?? 0;
   const confirmDeleteConv = () => {
     showConfirm({
       title: tr('inbox.deleteChatTitle'),
@@ -134,12 +142,25 @@ export default function Thread() {
 
       {/* messages */}
       <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 10 }}>
-        {msgs.map((m) => {
+        {msgs.map((m, i) => {
           const mine = m.from === s.currentUserId;
           const url = m.text.match(/https?:\/\/\S+/)?.[0];
           const fg = mine ? '#fff' : C.ink;
+          const prev = msgs[i - 1];
+          const showDay = !prev || dayStamp(prev.ts) !== dayStamp(m.ts);
+          const day = showDay ? chatDay(m.ts) : null;
+          const dayLbl = day ? (day.today ? tr('common.today') : day.yesterday ? tr('common.yesterday') : day.date) : '';
+          const read = mine && otherLastRead >= m.ts;
           return (
-            <View key={m.id} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '80%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
+            <Fragment key={m.id}>
+            {showDay ? (
+              <View style={{ alignItems: 'center', marginVertical: 2 }}>
+                <View style={{ backgroundColor: C.surface, borderRadius: radius.pill, paddingVertical: 4, paddingHorizontal: 12, boxShadow: '0 2px 6px -4px rgba(0,0,0,0.3)' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: C.muted }}>{dayLbl}</Text>
+                </View>
+              </View>
+            ) : null}
+            <View style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '80%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
               {m.image ? (
                 <Image source={{ uri: m.image }} style={{ width: 200, height: 200, borderRadius: 18, backgroundColor: C.bg }} contentFit="cover" transition={150} />
               ) : (
@@ -165,8 +186,12 @@ export default function Thread() {
                   )}
                 </Pressable>
               )}
-              <Text style={{ fontSize: 10, color: C.muted, marginTop: 3, marginHorizontal: 4 }}>{fmtTime(m.ts)}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 3, marginHorizontal: 4 }}>
+                <Text style={{ fontSize: 10, color: C.muted }}>{fmtTime(m.ts)}</Text>
+                {mine ? <Icon name={read ? 'tickRead' : 'tickSent'} size={13} color={read ? '#34B7F1' : C.muted} /> : null}
+              </View>
             </View>
+            </Fragment>
           );
         })}
         {!locShared && !blocked && !pendingChat && (

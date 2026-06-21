@@ -48,6 +48,8 @@ export type IconName =
   // status / affect
   | 'check'
   | 'check-circle'
+  | 'tickSent'
+  | 'tickRead'
   | 'warning'
   | 'star'
   | 'star-outline'
@@ -94,6 +96,8 @@ const MAP: Record<IconName, Glyph> = {
   play: 'play',
   check: 'checkmark',
   'check-circle': 'checkmark-circle',
+  tickSent: 'checkmark',
+  tickRead: 'checkmark-done',
   warning: 'warning',
   star: 'star',
   'star-outline': 'star-outline',
