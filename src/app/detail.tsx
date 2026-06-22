@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { StatusBar } from 'expo-status-bar';
+import { useState } from 'react';
 import { Linking, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,7 +17,8 @@ export default function Detail() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const tr = useT();
-  const { height } = useWindowDimensions();
+  const { height, width } = useWindowDimensions();
+  const [idx, setIdx] = useState(0);
   const { s, patch, toggleSave, viewPerson, requestListing, openThreadFor, openTakenPicker, showAlert, cancelRequest, showConfirm } = usePass();
   const item = activeListing(s);
 
@@ -44,11 +46,10 @@ export default function Detail() {
   const saved = !!s.saved[item.id];
   const photos = item.photos ?? [];
   const count = photos.length > 0 ? photos.length : 1;
-  const gal = Math.min(s.galleryIdx, count - 1);
+  const gal = Math.min(idx, count - 1);
   const sheetTop = height * (s.sheetExpanded ? 0.07 : 0.46);
   const galleryH = height * 0.46; // image band sits above the (collapsed) sheet
 
-  const step = (dir: number) => patch({ galleryIdx: (gal + dir + count) % count });
   const viewGiver = () => {
     viewPerson(item.ownerId);
     router.push('/giver');
@@ -88,35 +89,38 @@ export default function Detail() {
   return (
     <View style={{ flex: 1, backgroundColor: item.tint }}>
       <StatusBar style="dark" />
-      {/* gallery */}
-      <View style={{ height: galleryH }}>
+      {/* gallery — swipeable pager, uniform images, dots at the bottom */}
+      <View style={{ height: galleryH, backgroundColor: item.tint }}>
         {photos.length > 0 ? (
-          <Image source={{ uri: photos[gal] }} style={StyleAbs} contentFit="contain" transition={150} />
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={(e) => setIdx(Math.round(e.nativeEvent.contentOffset.x / width))}>
+            {photos.map((p) => (
+              <Image key={p} source={{ uri: p }} style={{ width, height: galleryH }} contentFit="cover" transition={150} />
+            ))}
+          </ScrollView>
         ) : (
           <View style={[StyleAbs, { alignItems: 'center', justifyContent: 'center' }]}>
             <Icon name={catIcon(item.cat)} size={88} color={C.accent} />
           </View>
         )}
-        {/* tap zones */}
-        <Pressable onPress={() => step(-1)} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '35%' }} />
-        <Pressable onPress={() => step(1)} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '35%' }} />
 
         <Pressable onPress={() => router.back()} style={[galBtn, { top: insets.top + 6, left: 16 }]}>
           <Icon name="back" size={22} color={C.ink} />
         </Pressable>
-        <View style={{ position: 'absolute', top: insets.top + 12, left: 0, right: 0, alignItems: 'center' }}>
-          <View style={{ backgroundColor: 'rgba(28,24,22,0.6)', borderRadius: radius.pill, paddingVertical: 6, paddingHorizontal: 14 }}>
-            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{gal + 1} / {count}</Text>
-          </View>
-        </View>
         <Pressable onPress={() => toggleSave(item.id)} style={[galBtn, { top: insets.top + 6, right: 16 }]}>
           <Icon name={saved ? 'heart' : 'heart-outline'} size={20} color={C.accent} />
         </Pressable>
-        <View style={{ position: 'absolute', top: '36%', left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
-          {Array.from({ length: count }).map((_, i) => (
-            <View key={i} style={{ width: i === gal ? 22 : 7, height: 6, borderRadius: 3, backgroundColor: i === gal ? '#fff' : 'rgba(255,255,255,0.55)' }} />
-          ))}
-        </View>
+
+        {count > 1 ? (
+          <View style={{ position: 'absolute', bottom: 12, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
+            {Array.from({ length: count }).map((_, i) => (
+              <View key={i} style={{ width: i === gal ? 22 : 7, height: 6, borderRadius: 3, backgroundColor: i === gal ? '#fff' : 'rgba(255,255,255,0.6)' }} />
+            ))}
+          </View>
+        ) : null}
       </View>
 
       {/* bottom sheet */}
