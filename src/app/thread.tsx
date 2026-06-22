@@ -4,15 +4,15 @@ import * as ImagePicker from 'expo-image-picker';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
-import { Icon } from '@/pass/icon';
-import { activeThreadMessages, chatDay, dayStamp, fmtTime, iBlocked, isBlocked, pendingIncomingFrom, threadMeta, threadPendingForMe, usePass, useT } from '@/pass/store';
+import { catIcon, Icon } from '@/pass/icon';
+import { activeThreadMessages, chatDay, dayStamp, fmtTime, iBlocked, isBlocked, listingById, pendingIncomingFrom, pendingReviewFrom, threadMeta, threadPendingForMe, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, Btn, FreeTag, PhotoTile, Screen, VerifiedBadge } from '@/pass/ui';
 
 export default function Thread() {
   const router = useRouter();
   const tr = useT();
-  const { s, sendMsg, sendImage, shareLoc, viewPerson, openListing, blockUser, unblockUser, showConfirm, acceptRequest, declineRequest, acceptThread, deleteThread, markThreadRead } = usePass();
+  const { s, sendMsg, sendImage, shareLoc, viewPerson, openListing, blockUser, unblockUser, showConfirm, acceptRequest, declineRequest, acceptThread, deleteThread, markThreadRead, startRateForListing } = usePass();
   const [draft, setDraft] = useState('');
   const send = () => {
     sendMsg(draft);
@@ -82,6 +82,14 @@ export default function Thread() {
   const pendingChat = !incomingReq && msgs.length > 0 && threadPendingForMe(s, meta.id);
   // my messages are "read" once the other person viewed the thread after they were sent
   const otherLastRead = s.threadRead[meta.id]?.[meta.otherId] ?? 0;
+  const headerListing = meta.listingId ? listingById(s, meta.listingId) : null;
+  // an item this person handed me that I haven't reviewed yet -> show an in-chat rate prompt
+  const reviewListing = blocked ? null : pendingReviewFrom(s, meta.otherId);
+  const rate = (n: number) => {
+    if (!reviewListing) return;
+    startRateForListing(reviewListing.id, n);
+    router.push('/rate');
+  };
   const confirmDeleteConv = () => {
     showConfirm({
       title: tr('inbox.deleteChatTitle'),
@@ -121,7 +129,7 @@ export default function Thread() {
           ) : null}
         </View>
         <Pressable onPress={openItem} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.bg, borderRadius: 12, padding: 8, marginTop: 11, opacity: pressed ? 0.7 : 1 })}>
-          <View style={{ width: 38, height: 38, borderRadius: 9, backgroundColor: meta.tint }} />
+          <PhotoTile tint={meta.tint} uri={headerListing?.photos?.[0]} icon={headerListing ? catIcon(headerListing.cat) : undefined} iconSize={18} style={{ width: 38, height: 38, borderRadius: 9 }} />
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 13, fontWeight: '700', color: C.ink }} numberOfLines={1}>{meta.item}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -198,6 +206,20 @@ export default function Thread() {
           <Btn icon="pin" label={tr('thread.shareLocation')} variant="accentOutline" onPress={shareLoc} style={{ alignSelf: 'flex-start', paddingVertical: 9, paddingHorizontal: 14 }} textStyle={{ fontSize: 12.5 }} />
         )}
       </ScrollView>
+
+      {/* in-chat rate prompt — recipient rates the giver for the item handed over */}
+      {reviewListing ? (
+        <View style={{ backgroundColor: C.surface, borderTopWidth: 1, borderTopColor: C.line, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 6, gap: 10, alignItems: 'center' }}>
+          <Text style={{ fontSize: 12.5, color: C.muted, textAlign: 'center' }}>{tr('thread.ratePrompt', { name: meta.otherName, title: reviewListing.title })}</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <Pressable key={n} onPress={() => rate(n)} hitSlop={4}>
+                <Icon name="star-outline" size={32} color={C.star} />
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
 
       {/* incoming request: product + accept / reject inline */}
       {incomingReq && !blocked ? (

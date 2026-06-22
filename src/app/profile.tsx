@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { Icon, type IconName } from '@/pass/icon';
-import { CITIES, me, myListings, reviewsFor, userName, userRating, usePass, useT } from '@/pass/store';
+import { CITIES, handoffsTo, me, myHandoffs, myListings, reviewsFor, userName, userRating, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, BottomNav, Btn, Screen, shadow, VerifiedBadge } from '@/pass/ui';
 import type { UserId } from '@/pass/data';
@@ -25,8 +25,8 @@ export default function Profile() {
   const { s, switchUser, logout, setName, setDp } = usePass();
   const user = me(s);
   const mine = myListings(s);
-  const givenCount = mine.filter((l) => l.taken).length;
-  const receivedCount = s.listings.filter((l) => l.takenBy === s.currentUserId).length;
+  const givenCount = myHandoffs(s).length;
+  const receivedCount = handoffsTo(s, s.currentUserId).length;
   const cityName = CITIES.find((c) => c.id === user.cityId)?.name ?? CITIES[0].name;
   const dp = s.dp[s.currentUserId];
   const name = userName(s, s.currentUserId);

@@ -120,7 +120,7 @@ export default function Saved() {
                   <Btn label={tr('common.cancel')} variant="outline" onPress={() => openCancelReason(request.id, 'client')} style={{ paddingVertical: 11, borderColor: C.dangerBorder }} textStyle={{ fontSize: 14, color: C.dangerInk }} />
                 </View>
               ) : request.status === 'pending' ? (
-                <Btn icon="close" label={tr('saved.cancelRequest')} variant="outline" onPress={() => cancel(request.id, listing?.title)} block style={{ marginTop: 11, paddingVertical: 11, borderColor: C.dangerBorder }} textStyle={{ fontSize: 14, color: C.dangerInk }} />
+                <Btn label={tr('saved.cancelRequest')} variant="outline" onPress={() => cancel(request.id, listing?.title)} block style={{ marginTop: 11, paddingVertical: 11, borderColor: C.dangerBorder }} textStyle={{ fontSize: 14, color: C.dangerInk }} />
               ) : (
                 <Btn icon="trash" label={tr('common.remove')} variant="outline" onPress={() => removeRequest(request.id)} block style={{ marginTop: 11, paddingVertical: 11 }} textStyle={{ fontSize: 14, color: C.muted }} />
               )}

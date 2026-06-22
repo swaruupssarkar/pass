@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { Icon } from '@/pass/icon';
 import { autocomplete, geocodeAddress, placeDetails, type Suggestion } from '@/pass/places';
@@ -75,7 +75,8 @@ export default function Post() {
         <Header title={editing ? tr('post.editTitle') : tr('post.postTitle')} />
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 28 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 28 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {/* photos */}
         <Section title={tr('post.photos')} hint={`${photos.length}/4`}>
           <View style={{ flexDirection: 'row', gap: 11, flexWrap: 'wrap' }}>
@@ -192,6 +193,7 @@ export default function Post() {
       <View style={{ padding: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.surface }}>
         <Btn label={editing ? tr('post.saveChanges') : tr('post.postForFree')} onPress={submit} block />
       </View>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }

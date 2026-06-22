@@ -1,10 +1,10 @@
 import { useRouter } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 
-import { Icon } from '@/pass/icon';
-import { fmtAgo, myListings, reviewsFor, USERS, usePass, useT } from '@/pass/store';
+import { catIcon, Icon } from '@/pass/icon';
+import { fmtAgo, fmtDate, listingById, myHandoffs, reviewsFor, userName, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Avatar, Header, ReviewCard, Screen, shadow, t } from '@/pass/ui';
+import { Avatar, Header, PhotoTile, ReviewCard, Screen, shadow, t } from '@/pass/ui';
 
 export default function Impact() {
   const router = useRouter();
@@ -14,8 +14,8 @@ export default function Impact() {
     viewPerson(id);
     router.push('/giver');
   };
-  const given = myListings(s).filter((l) => l.taken);
-  const n = given.length;
+  const handoffs = myHandoffs(s);
+  const n = handoffs.length;
   const reviews = reviewsFor(s, s.currentUserId);
   const avg = reviews.length ? (reviews.reduce((a, r) => a + r.rating, 0) / reviews.length).toFixed(1) : '—';
 
@@ -48,13 +48,20 @@ export default function Impact() {
           </View>
         ) : (
           <View style={{ gap: 11 }}>
-            {given.map((l) => {
-              const name = l.takenBy ? USERS[l.takenBy].name : tr('impact.someone');
+            {handoffs.map((h) => {
+              const name = userName(s, h.recipientId);
               return (
-                <View key={l.id} style={{ flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: C.surface, borderRadius: radius.lg, padding: 14, ...shadow(8, 20, 0.35) }}>
-                  <Avatar name={name} uri={l.takenBy ? s.dp[l.takenBy] : null} size={40} tint={l.tint} color={C.ink} />
+                <View key={h.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.surface, borderRadius: radius.lg, borderCurve: 'continuous', padding: 13, ...shadow(8, 20, 0.35) }}>
+                  <PhotoTile tint={h.tint} uri={h.photo} icon={catIcon(h.cat)} iconSize={20} style={{ width: 50, height: 50, borderRadius: 13 }} />
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13.5, color: C.ink, lineHeight: 19 }}>{tr('impact.received', { name, title: l.title })}</Text>
+                    <Text style={{ fontSize: 14.5, fontWeight: '800', color: C.ink }} numberOfLines={1}>{h.title}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                      <Avatar name={name} uri={s.dp[h.recipientId]} size={18} color={C.ink} />
+                      <Text style={{ fontSize: 12.5, color: C.muted }} numberOfLines={1}>{tr('manage.givenTo', { name })}</Text>
+                    </View>
+                  </View>
+                  <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: '#E4F0E9', alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon name="check" size={16} color={C.free} />
                   </View>
                 </View>
               );
@@ -70,7 +77,17 @@ export default function Impact() {
         ) : (
           <View style={{ gap: 11 }}>
             {reviews.map((r) => (
-              <ReviewCard key={r.id} rating={r.rating} tags={r.tags} text={r.text} author={USERS[r.from].name} time={fmtAgo(r.ts)} onAuthorPress={() => openPerson(r.from)} />
+              <ReviewCard
+                key={r.id}
+                rating={r.rating}
+                tags={r.tags}
+                text={r.text}
+                authorName={userName(s, r.from)}
+                authorUri={s.dp[r.from]}
+                date={`${fmtDate(r.ts)} · ${fmtAgo(r.ts)}`}
+                product={listingById(s, r.listingId ?? null)?.title}
+                onAuthorPress={() => openPerson(r.from)}
+              />
             ))}
           </View>
         )}

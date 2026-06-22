@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { RATE_TAGS, USERS } from '@/pass/data';
 import { Icon } from '@/pass/icon';
@@ -23,6 +23,7 @@ export default function Rate() {
 
   return (
     <Screen edges={['top', 'bottom']}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 30, paddingBottom: 28 }}>
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 12 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
@@ -69,6 +70,7 @@ export default function Rate() {
         />
         <Btn label={tr('rate.maybeLater')} onPress={skip} variant="ghost" block style={{ marginTop: 4 }} />
       </View>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }

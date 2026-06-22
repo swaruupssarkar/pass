@@ -3,8 +3,8 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Icon } from '@/pass/icon';
-import { fmtAgo, fmtDate, myListings, requestsFor, USERS, usePass, useT } from '@/pass/store';
+import { catIcon, Icon, type IconName } from '@/pass/icon';
+import { fmtAgo, fmtDate, myListings, requestsFor, userName, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, Btn, Header, PhotoTile, Screen, shadow, t } from '@/pass/ui';
 import type { Listing } from '@/pass/data';
@@ -15,6 +15,7 @@ export default function Manage() {
   const { s, patch, startPost, startEdit, openTakenPicker, confirmTaken, deleteListing, acceptRequest, declineRequest, openCancelReason, showConfirm, openListing, viewPerson } = usePass();
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<'live' | 'given'>('live');
+  const [reqListId, setReqListId] = useState<string | null>(null);
   const list = myListings(s);
   const live = list.filter((l) => !l.taken);
   const given = list.filter((l) => l.taken);
@@ -46,6 +47,8 @@ export default function Manage() {
     });
 
   const picker = s.takenPickerId ? requestsFor(s, s.takenPickerId) : [];
+  const sheetReqs = reqListId ? requestsFor(s, reqListId) : [];
+  const reqItem = reqListId ? list.find((l) => l.id === reqListId) : null;
 
   return (
     <Screen>
@@ -93,77 +96,68 @@ export default function Manage() {
           ) : null}
 
           <View style={{ gap: 16 }}>
-            {shown.map((item) => (
-              <View key={item.id} style={{ backgroundColor: C.surface, borderRadius: radius.xl, borderCurve: 'continuous', padding: 15, ...shadow(10, 26, 0.4) }}>
-                <Pressable onPress={() => openItem(item.id)} style={({ pressed }) => ({ flexDirection: 'row', gap: 12, alignItems: 'center', opacity: pressed ? 0.7 : 1 })}>
-                  <PhotoTile tint={item.tint} uri={item.photos?.[0]} style={{ width: 52, height: 52, borderRadius: 13 }} />
+            {shown.map((item) => {
+              const reqs = requestsFor(s, item.id);
+              const pending = reqs.filter((r) => r.request.status === 'pending').length;
+              return (
+              <View key={item.id} style={{ backgroundColor: C.surface, borderRadius: 20, borderCurve: 'continuous', padding: 16, ...shadow(10, 26, 0.4) }}>
+                {/* header */}
+                <Pressable onPress={() => openItem(item.id)} style={({ pressed }) => ({ flexDirection: 'row', gap: 13, alignItems: 'center', opacity: pressed ? 0.7 : 1 })}>
+                  <PhotoTile tint={item.tint} uri={item.photos?.[0]} icon={catIcon(item.cat)} iconSize={24} style={{ width: 58, height: 58, borderRadius: 15 }} />
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 15, fontWeight: '700', color: C.ink }} numberOfLines={1}>{item.title}</Text>
-                    <Text style={{ fontSize: 12, color: C.muted, marginTop: 2 }} numberOfLines={1}>{tr('cat.' + item.cat)} · {tr('cond.' + item.cond)}</Text>
-                    <Text style={{ fontSize: 11, color: C.muted, marginTop: 3 }} numberOfLines={1}>{tr('manage.posted', { date: fmtDate(item.createdAt) })}</Text>
-                    {item.updatedAt ? (
-                      <Text style={{ fontSize: 11, color: C.muted, marginTop: 1 }} numberOfLines={1}>{tr('manage.lastUpdated', { date: fmtDate(item.updatedAt) })}</Text>
-                    ) : null}
+                    <Text style={{ fontSize: 15.5, fontWeight: '800', color: C.ink, letterSpacing: -0.2 }} numberOfLines={1}>{item.title}</Text>
+                    <Text style={{ fontSize: 12, color: C.muted, marginTop: 3 }} numberOfLines={1}>{tr('cat.' + item.cat)} · {tr('cond.' + item.cond)}</Text>
+                    <Text style={{ fontSize: 11, color: C.muted, marginTop: 2 }} numberOfLines={1}>{tr('manage.posted', { date: fmtDate(item.createdAt) })}</Text>
                   </View>
                   <View style={{ backgroundColor: item.taken ? C.bg : '#E4F0E9', borderRadius: radius.pill, paddingVertical: 5, paddingHorizontal: 11 }}>
                     <Text style={{ fontSize: 11, fontWeight: '700', color: item.taken ? C.muted : C.free }} numberOfLines={1}>
-                      {item.taken ? tr('manage.givenTo', { name: item.takenBy ? USERS[item.takenBy].name : tr('manage.someone') }) : tr('manage.badgeLive')}
+                      {item.taken ? tr('manage.badgeGiven') : tr('manage.badgeLive')}
                     </Text>
                   </View>
                 </Pressable>
 
-                {!item.taken && requestsFor(s, item.id).length > 0 ? (
-                  <View style={{ marginTop: 14, gap: 8 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: C.muted, letterSpacing: 0.3 }}>{tr('manage.requests')}</Text>
-                    {requestsFor(s, item.id).map(({ request, user }) => (
-                      <View key={request.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: C.line, borderRadius: 14, padding: 10 }}>
-                        <Pressable onPress={() => openPerson(request.fromUserId)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, opacity: pressed ? 0.7 : 1 })}>
-                          <Avatar name={user.name} uri={s.dp[request.fromUserId]} size={36} color={C.ink} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={{ fontSize: 13.5, fontWeight: '700', color: C.ink }} numberOfLines={1}>{user.name}</Text>
-                            <Text style={{ fontSize: 12, color: C.muted }} numberOfLines={1}>{request.note}</Text>
-                            <Text style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{tr('manage.requestedLine', { ago: fmtAgo(request.createdAt), date: fmtDate(request.createdAt) })}</Text>
-                          </View>
-                        </Pressable>
-                        {request.status === 'pending' ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            <Pressable onPress={() => declineRequest(request.id)} style={{ width: 38, height: 38, borderRadius: radius.md, borderWidth: 1.5, borderColor: C.line, alignItems: 'center', justifyContent: 'center' }}>
-                              <Icon name="close" size={16} color={C.muted} />
-                            </Pressable>
-                            <Btn label={tr('common.accept')} onPress={() => acceptRequest(request.id)} style={{ paddingVertical: 9, paddingHorizontal: 16 }} textStyle={{ fontSize: 13 }} />
-                          </View>
-                        ) : request.status === 'accepted' ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            <View style={{ backgroundColor: '#E4F0E9', borderRadius: radius.pill, paddingVertical: 5, paddingHorizontal: 11 }}>
-                              <Text style={{ fontSize: 11, fontWeight: '700', color: C.free }}>{tr('manage.accepted')}</Text>
-                            </View>
-                            <Pressable onPress={() => openCancelReason(request.id, 'owner')} style={{ width: 38, height: 38, borderRadius: radius.md, borderWidth: 1.5, borderColor: C.dangerBorder, backgroundColor: C.dangerBg, alignItems: 'center', justifyContent: 'center' }}>
-                              <Icon name="close" size={16} color={C.dangerInk} />
-                            </Pressable>
-                          </View>
-                        ) : (
-                          <View style={{ backgroundColor: C.bg, borderRadius: radius.pill, paddingVertical: 5, paddingHorizontal: 11 }}>
-                            <Text style={{ fontSize: 11, fontWeight: '700', color: C.muted }}>{tr('manage.declined')}</Text>
-                          </View>
-                        )}
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
-
-                {!item.taken ? (
-                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
-                    <Btn icon="pencil" label={tr('common.edit')} variant="outline" onPress={() => edit(item.id)} style={{ flex: 1, paddingVertical: 11 }} textStyle={{ fontSize: 14 }} />
-                    <Btn icon="check" label={tr('manage.markTaken')} onPress={() => openTakenPicker(item.id)} style={{ flex: 1, paddingVertical: 11 }} textStyle={{ fontSize: 14 }} />
-                    <Pressable onPress={() => remove(item)} style={{ width: 46, height: 46, borderRadius: radius.md, borderCurve: 'continuous', borderWidth: 1.5, borderColor: C.dangerBorder, backgroundColor: C.dangerBg, alignItems: 'center', justifyContent: 'center' }}>
-                      <Icon name="trash" size={18} color={C.dangerInk} />
+                {item.taken ? (
+                  /* given banner — circular check + recipient + round delete (matches Saved) */
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11, marginTop: 13, backgroundColor: '#E8F3EC', borderRadius: radius.lg, borderCurve: 'continuous', paddingVertical: 10, paddingHorizontal: 12 }}>
+                    <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: C.free, alignItems: 'center', justifyContent: 'center' }}>
+                      <Icon name="check" size={19} color="#fff" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '800', color: C.free }} numberOfLines={1}>{tr('manage.givenTo', { name: item.takenBy ? userName(s, item.takenBy) : tr('manage.someone') })}</Text>
+                      <Text style={{ fontSize: 11.5, color: C.muted, marginTop: 1 }}>{tr('manage.deleteHint')}</Text>
+                    </View>
+                    <Pressable onPress={() => remove(item)} hitSlop={8} style={{ width: 38, height: 38, borderRadius: 19, borderWidth: 1.5, borderColor: 'rgba(46,125,50,0.25)', backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center' }}>
+                      <Icon name="trash" size={16} color={C.muted} />
                     </Pressable>
                   </View>
                 ) : (
-                  <Btn icon="trash" label={tr('manage.deleteListing')} variant="outline" onPress={() => remove(item)} block style={{ marginTop: 14, paddingVertical: 11, borderColor: C.dangerBorder }} textStyle={{ fontSize: 14, color: C.dangerInk }} />
+                  <>
+                    {/* requests — compact pill opening the sheet */}
+                    {reqs.length > 0 ? (
+                      <Pressable
+                        onPress={() => setReqListId(item.id)}
+                        style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', marginTop: 12, paddingVertical: 7, paddingHorizontal: 12, borderRadius: radius.pill, backgroundColor: pending > 0 ? C.accentSoft : C.bg, opacity: pressed ? 0.8 : 1 })}>
+                        <Icon name="person" size={14} color={pending > 0 ? C.accent : C.muted} />
+                        <Text style={{ fontSize: 12.5, fontWeight: '800', color: pending > 0 ? C.accent : C.muted }}>
+                          {pending > 0 ? tr('manage.newRequests', { n: pending }) : tr('manage.requestsCount', { n: reqs.length })}
+                        </Text>
+                        <Icon name="forward" size={15} color={pending > 0 ? C.accent : C.muted} />
+                      </Pressable>
+                    ) : null}
+
+                    {/* actions — segmented footer */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, borderTopWidth: 1, borderTopColor: C.line, paddingTop: 4 }}>
+                      <ActionBtn icon="pencil" label={tr('common.edit')} color={C.ink} onPress={() => edit(item.id)} />
+                      <View style={{ width: 1, height: 26, backgroundColor: C.line }} />
+                      <ActionBtn icon="check" label={tr('manage.markTakenShort')} color={C.accent} onPress={() => openTakenPicker(item.id)} />
+                      <View style={{ width: 1, height: 26, backgroundColor: C.line }} />
+                      <ActionBtn icon="trash" label={tr('common.delete')} color={C.dangerInk} onPress={() => remove(item)} />
+                    </View>
+                  </>
                 )}
               </View>
-            ))}
+              );
+            })}
           </View>
         </ScrollView>
       )}
@@ -199,6 +193,60 @@ export default function Manage() {
           </View>
         </View>
       ) : null}
+
+      {/* requests sheet — every requester for one listing; scrolls to any count */}
+      {reqListId !== null ? (
+        <View style={StyleSheet.absoluteFill}>
+          <Pressable onPress={() => setReqListId(null)} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(17,17,17,0.45)' }]} />
+          <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: C.surface, borderTopLeftRadius: 26, borderTopRightRadius: 26, borderCurve: 'continuous', padding: 22, paddingTop: 8, paddingBottom: insets.bottom + 18 }}>
+            <View style={{ width: 44, height: 5, borderRadius: 3, backgroundColor: C.line, alignSelf: 'center', marginBottom: 16 }} />
+            <Text style={t.h3} numberOfLines={1}>{tr('manage.requestsFor', { title: reqItem?.title ?? '' })}</Text>
+            <ScrollView style={{ maxHeight: 420, marginTop: 14 }} contentContainerStyle={{ gap: 10 }} showsVerticalScrollIndicator={false}>
+              {sheetReqs.map(({ request, user }) => (
+                <View key={request.id} style={{ borderWidth: 1, borderColor: C.line, borderRadius: 15, borderCurve: 'continuous', padding: 12, gap: 11 }}>
+                  <Pressable onPress={() => { setReqListId(null); openPerson(request.fromUserId); }} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 11, opacity: pressed ? 0.7 : 1 })}>
+                    <Avatar name={user.name} uri={s.dp[request.fromUserId]} size={40} color={C.ink} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '800', color: C.ink }} numberOfLines={1}>{user.name}</Text>
+                      <Text style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }} numberOfLines={2}>{request.note}</Text>
+                      <Text style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>{tr('manage.requestedLine', { ago: fmtAgo(request.createdAt), date: fmtDate(request.createdAt) })}</Text>
+                    </View>
+                  </Pressable>
+                  {request.status === 'pending' ? (
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      <Btn label={tr('inbox.reject')} variant="outline" onPress={() => declineRequest(request.id)} style={{ flex: 1, paddingVertical: 10, borderColor: C.dangerBorder }} textStyle={{ fontSize: 13.5, color: C.dangerInk }} />
+                      <Btn icon="check" label={tr('common.accept')} onPress={() => acceptRequest(request.id)} style={{ flex: 1, paddingVertical: 10 }} textStyle={{ fontSize: 13.5 }} />
+                    </View>
+                  ) : request.status === 'accepted' ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Icon name="check-circle" size={15} color={C.free} />
+                        <Text style={{ fontSize: 12.5, fontWeight: '700', color: C.free }}>{tr('manage.accepted')}</Text>
+                      </View>
+                      <Btn label={tr('common.cancel')} variant="outline" onPress={() => openCancelReason(request.id, 'owner')} style={{ paddingVertical: 9, paddingHorizontal: 16, borderColor: C.dangerBorder }} textStyle={{ fontSize: 13, color: C.dangerInk }} />
+                    </View>
+                  ) : (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Icon name="close-circle" size={15} color={C.muted} />
+                      <Text style={{ fontSize: 12.5, fontWeight: '700', color: C.muted }}>{tr('manage.declined')}</Text>
+                    </View>
+                  )}
+                </View>
+              ))}
+            </ScrollView>
+            <Btn label={tr('common.close')} variant="ghost" onPress={() => setReqListId(null)} block style={{ marginTop: 16 }} />
+          </View>
+        </View>
+      ) : null}
     </Screen>
+  );
+}
+
+function ActionBtn({ icon, label, color, onPress }: { icon: IconName; label: string; color: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => ({ flex: 1, alignItems: 'center', gap: 5, paddingVertical: 9, opacity: pressed ? 0.5 : 1 })}>
+      <Icon name={icon} size={19} color={color} />
+      <Text style={{ fontSize: 11.5, fontWeight: '700', color }}>{label}</Text>
+    </Pressable>
   );
 }

@@ -66,6 +66,19 @@ export type Review = {
   ts: number;
 };
 
+// a persistent record of a hand-off — snapshots title/photo so it survives the listing being deleted
+export type Handoff = {
+  id: string;
+  listingId: string;
+  giverId: UserId;
+  recipientId: UserId;
+  title: string;
+  photo?: string;
+  tint: string;
+  cat: string;
+  ts: number;
+};
+
 export type Notification = {
   id: string;
   userId: UserId; // recipient

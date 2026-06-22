@@ -8,6 +8,7 @@ import {
   cityById,
   type Coords,
   fmtKm,
+  type Handoff,
   haversineKm,
   type Listing,
   type Message,
@@ -61,6 +62,8 @@ type State = {
   threadRead: Record<string, Record<UserId, number>>;
   notifications: Notification[];
   reviews: Review[];
+  /** persistent hand-off log — survives the listing being deleted */
+  handoffs: Handoff[];
   // browsing location
   activeMode: LocMode;
   activeCityId: string;
@@ -131,6 +134,7 @@ const INITIAL: State = {
   threadRead: {},
   notifications: [],
   reviews: [],
+  handoffs: [],
   activeMode: 'city',
   activeCityId: USERS.u1.cityId,
   userCity: { u1: USERS.u1.cityId, u2: USERS.u2.cityId },
@@ -385,8 +389,28 @@ export const notificationsFor = (s: State): Notification[] =>
 export const unreadCount = (s: State): number =>
   s.notifications.filter((n) => n.userId === s.currentUserId && !n.read).length;
 
+/** Any unread chat message for the current user (drives the Chats tab dot). */
+export const hasUnreadChats = (s: State): boolean =>
+  s.notifications.some((n) => n.userId === s.currentUserId && !n.read && n.kind === 'message');
+
 export const reviewsFor = (s: State, userId: UserId): Review[] =>
   (s.reviews ?? []).filter((r) => r.to === userId).sort((a, b) => b.ts - a.ts);
+
+/** Has the current user already reviewed this listing? (one review per item) */
+export const hasReviewed = (s: State, listingId: string | null | undefined): boolean =>
+  !!listingId && (s.reviews ?? []).some((r) => r.from === s.currentUserId && r.listingId === listingId);
+
+/** An item `giverId` handed to the current user that still needs a review (drives the in-chat rate prompt). */
+export const pendingReviewFrom = (s: State, giverId: UserId): Listing | null =>
+  s.listings.find((l) => l.ownerId === giverId && l.takenBy === s.currentUserId && !hasReviewed(s, l.id)) ?? null;
+
+/** Persistent hand-off records by a user (survive listing deletion). */
+export const handoffsBy = (s: State, userId: UserId): Handoff[] =>
+  (s.handoffs ?? []).filter((h) => h.giverId === userId).sort((a, b) => b.ts - a.ts);
+export const myHandoffs = (s: State): Handoff[] => handoffsBy(s, s.currentUserId);
+/** Hand-offs received by a user (also survive listing deletion). */
+export const handoffsTo = (s: State, userId: UserId): Handoff[] =>
+  (s.handoffs ?? []).filter((h) => h.recipientId === userId).sort((a, b) => b.ts - a.ts);
 
 /** Display name for a user, honouring any self-set override. */
 export const userName = (s: State, id: UserId): string => s.names?.[id] ?? USERS[id].name;
@@ -521,6 +545,7 @@ type Store = {
   openTakenPicker: (listingId: string) => void;
   confirmTaken: (listingId: string, recipientId: UserId) => void;
   openRate: (notif: Notification) => void;
+  startRateForListing: (listingId: string, rating?: number) => void;
   submitRate: () => void;
   toggleRateTag: (t: string) => void;
   // notifications
@@ -995,9 +1020,12 @@ export function PassProvider({ children }: { children: ReactNode }) {
           const l = prev.listings.find((x) => x.id === listingId);
           if (!l) return prev;
           const listings = prev.listings.map((x) => (x.id === listingId ? { ...x, taken: true, takenBy: recipientId } : x));
+          // snapshot the hand-off so it persists even if the listing is later deleted
+          const handoff: Handoff = { id: uid('h'), listingId, giverId: prev.currentUserId, recipientId, title: l.title, photo: l.photos?.[0], tint: l.tint, cat: l.cat, ts: Date.now() };
           return {
             ...prev,
             listings,
+            handoffs: [handoff, ...(prev.handoffs ?? [])],
             takenPickerId: null,
             notifications: [
               notify(prev, {
@@ -1027,23 +1055,34 @@ export function PassProvider({ children }: { children: ReactNode }) {
           };
         }),
 
+      startRateForListing: (listingId, rating = 0) =>
+        setS((prev) => {
+          const l = prev.listings.find((x) => x.id === listingId);
+          return { ...prev, rateListingId: listingId, rateGiverId: l?.ownerId ?? null, rating, rateTags: [], reviewDraft: '' };
+        }),
+
       submitRate: () =>
         setS((prev) => {
-          const reviews = prev.rateGiverId
-            ? [
-                {
-                  id: uid('rv'),
-                  from: prev.currentUserId,
-                  to: prev.rateGiverId,
-                  listingId: prev.rateListingId ?? undefined,
-                  rating: prev.rating,
-                  tags: prev.rateTags,
-                  text: prev.reviewDraft.trim(),
-                  ts: Date.now(),
-                },
-                ...(prev.reviews ?? []),
-              ]
-            : (prev.reviews ?? []);
+          // one review per listing — never add a duplicate for the same item
+          const dup = prev.rateListingId
+            ? (prev.reviews ?? []).some((r) => r.from === prev.currentUserId && r.listingId === prev.rateListingId)
+            : false;
+          const reviews =
+            prev.rateGiverId && !dup
+              ? [
+                  {
+                    id: uid('rv'),
+                    from: prev.currentUserId,
+                    to: prev.rateGiverId,
+                    listingId: prev.rateListingId ?? undefined,
+                    rating: prev.rating,
+                    tags: prev.rateTags,
+                    text: prev.reviewDraft.trim(),
+                    ts: Date.now(),
+                  },
+                  ...(prev.reviews ?? []),
+                ]
+              : (prev.reviews ?? []);
           return { ...prev, reviews, rateListingId: null, rateGiverId: null, rating: 0, rateTags: [], reviewDraft: '' };
         }),
 
@@ -1065,9 +1104,15 @@ export function PassProvider({ children }: { children: ReactNode }) {
         setS((prev) => ({ ...prev, notifications: prev.notifications.filter((n) => n.userId !== prev.currentUserId) })),
 
       openNotif: (n) => {
-        let route: string | null = n.route ?? null;
+        // already reviewed this item -> show the review on the giver's profile, don't re-open the form
+        const reviewedTaken = n.kind === 'taken' && hasReviewed(s, n.listingId);
+        const route: string | null = reviewedTaken ? '/giver' : n.route ?? null;
         setS((prev) => {
           const upd = prev.notifications.map((x) => (x.id === n.id ? { ...x, read: true } : x));
+          if (reviewedTaken) {
+            const l = prev.listings.find((x) => x.id === n.listingId);
+            return { ...prev, notifications: upd, activePersonId: l?.ownerId ?? null };
+          }
           if (n.kind === 'taken') {
             const l = prev.listings.find((x) => x.id === n.listingId);
             return { ...prev, notifications: upd, rateListingId: n.listingId ?? null, rateGiverId: l?.ownerId ?? null, rating: 0, rateTags: [], reviewDraft: '' };
@@ -1141,6 +1186,12 @@ export function PassProvider({ children }: { children: ReactNode }) {
         if (saved.listings) {
           const seedById = new Map(SEED_LISTINGS.map((l) => [l.id, l]));
           saved.listings = saved.listings.map((l) => (seedById.has(l.id) ? { ...l, photos: seedById.get(l.id)!.photos } : l));
+          // backfill hand-off records for already-given listings that predate the log
+          const logged = new Set((saved.handoffs ?? []).map((h) => h.listingId));
+          const backfill: Handoff[] = saved.listings
+            .filter((l) => l.taken && l.takenBy && !logged.has(l.id))
+            .map((l) => ({ id: `h_${l.id}`, listingId: l.id, giverId: l.ownerId, recipientId: l.takenBy as UserId, title: l.title, photo: l.photos?.[0], tint: l.tint, cat: l.cat, ts: l.createdAt }));
+          if (backfill.length) saved.handoffs = [...backfill, ...(saved.handoffs ?? [])];
         }
         if (alive) setS((prev) => ({ ...prev, ...saved, hydrated: true }));
       } catch {
@@ -1168,6 +1219,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
       threadRead: s.threadRead,
       notifications: s.notifications,
       reviews: s.reviews,
+      handoffs: s.handoffs,
       reportCounts: s.reportCounts,
       saved: s.saved,
       blocked: s.blocked,
@@ -1200,6 +1252,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
     s.threadRead,
     s.notifications,
     s.reviews,
+    s.handoffs,
     s.reportCounts,
     s.saved,
     s.blocked,

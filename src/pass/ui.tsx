@@ -16,7 +16,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets, type Edge } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/pass/icon';
-import { usePass, userName, useT } from '@/pass/store';
+import { hasUnreadChats, usePass, userName, useT } from '@/pass/store';
 import { C, hatch, radius } from '@/pass/theme';
 
 // ---------- screen scaffold ----------
@@ -367,38 +367,71 @@ export function ReviewCard({
   rating,
   tags,
   text,
-  author,
-  time,
+  authorName,
+  authorUri,
+  date,
+  product,
   onAuthorPress,
 }: {
   rating: number;
   tags: string[];
   text: string;
-  author: string;
-  time: string;
+  authorName: string;
+  authorUri?: string | null;
+  date: string;
+  /** the listing this review is for */
+  product?: string;
   onAuthorPress?: () => void;
 }) {
+  const tr = useT();
   return (
-    <View style={{ backgroundColor: C.surface, borderRadius: radius.lg, borderCurve: 'continuous', padding: 14, ...shadow(8, 20, 0.35) }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-        <View style={{ flexDirection: 'row' }}>
+    <View style={{ backgroundColor: C.surface, borderRadius: 18, borderCurve: 'continuous', padding: 16, ...shadow(8, 20, 0.35) }}>
+      {/* rating + decorative quote */}
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <View style={{ flexDirection: 'row', gap: 2 }}>
           {[1, 2, 3, 4, 5].map((n) => (
-            <Icon key={n} name={n <= rating ? 'star' : 'star-outline'} size={13} color={C.star} />
+            <Icon key={n} name={n <= rating ? 'star' : 'star-outline'} size={16} color={C.star} />
           ))}
         </View>
-        {onAuthorPress ? (
-          <Pressable onPress={onAuthorPress} hitSlop={6}>
-            <Text style={{ fontSize: 11, color: C.accent, fontWeight: '700', textDecorationLine: 'underline' }}>{author}</Text>
-          </Pressable>
-        ) : (
-          <Text style={{ fontSize: 11, color: C.accent, fontWeight: '700' }}>{author}</Text>
-        )}
-        <Text style={{ fontSize: 11, color: C.muted, fontWeight: '600' }}>· {time}</Text>
+        <Text style={{ fontSize: 42, lineHeight: 34, color: C.accent, opacity: 0.18, fontWeight: '900' }}>”</Text>
       </View>
-      {tags.length > 0 ? (
-        <Text style={{ fontSize: 12, color: C.muted, marginBottom: text ? 6 : 0 }}>{tags.join(' · ')}</Text>
+
+      {/* which product */}
+      {product ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 }}>
+          <Icon name="cart" size={13} color={C.muted} />
+          <Text style={{ flex: 1, fontSize: 12, color: C.muted, fontWeight: '600' }} numberOfLines={1}>{tr('review.forProduct', { title: product })}</Text>
+        </View>
       ) : null}
-      {text ? <Text style={{ fontSize: 13.5, color: C.ink, lineHeight: 19 }}>{text}</Text> : null}
+
+      {/* tags as chips */}
+      {tags.length > 0 ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+          {tags.map((tag) => (
+            <View key={tag} style={{ backgroundColor: C.accentSoft, borderRadius: radius.pill, paddingVertical: 4, paddingHorizontal: 11 }}>
+              <Text style={{ fontSize: 11.5, fontWeight: '700', color: C.accent }}>{tr('rate.tag.' + tag)}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {/* review text — hero, with accent bar */}
+      {text ? (
+        <View style={{ flexDirection: 'row', gap: 11, marginTop: tags.length > 0 || product ? 12 : 14 }}>
+          <View style={{ width: 3, borderRadius: 2, backgroundColor: C.accentSoft }} />
+          <Text style={{ flex: 1, fontSize: 15, color: C.ink, lineHeight: 22, fontWeight: '500' }}>{text}</Text>
+        </View>
+      ) : null}
+
+      {/* reviewer footer */}
+      <Pressable onPress={onAuthorPress} disabled={!onAuthorPress} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14, paddingTop: 13, borderTopWidth: 1, borderTopColor: C.line, opacity: pressed && onAuthorPress ? 0.7 : 1 })}>
+        <Avatar name={authorName} uri={authorUri} size={34} color={C.ink} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 13.5, fontWeight: '800', color: C.ink }} numberOfLines={1}>{authorName}</Text>
+          <Text style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{date}</Text>
+        </View>
+        {onAuthorPress ? <Icon name="forward" size={18} color={C.muted} /> : null}
+      </Pressable>
     </View>
   );
 }
@@ -434,6 +467,8 @@ export function BottomNav({ active }: { active: NavKey }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const tr = useT();
+  const { s } = usePass();
+  const unreadChats = hasUnreadChats(s);
   const go = (k: NavKey) => () => router.navigate(NAV_ROUTE[k]);
   const col = (k: NavKey) => (active === k ? C.accent : '#B6ADA2');
   return (
@@ -446,16 +481,21 @@ export function BottomNav({ active }: { active: NavKey }) {
         </View>
         <Text style={{ fontSize: 10, fontWeight: '700', color: C.accent, marginTop: 5 }}>{tr('nav.give')}</Text>
       </Pressable>
-      <NavItem icon={active === 'inbox' ? 'chat' : 'chat-outline'} label={tr('nav.chats')} color={col('inbox')} onPress={go('inbox')} />
+      <NavItem icon={active === 'inbox' ? 'chat' : 'chat-outline'} label={tr('nav.chats')} color={col('inbox')} onPress={go('inbox')} dot={unreadChats} />
       <NavItem icon={active === 'profile' ? 'person' : 'person-outline'} label={tr('nav.profile')} color={col('profile')} onPress={go('profile')} />
     </View>
   );
 }
 
-function NavItem({ icon, label, color, onPress }: { icon: IconName; label: string; color: string; onPress: () => void }) {
+function NavItem({ icon, label, color, onPress, dot }: { icon: IconName; label: string; color: string; onPress: () => void; dot?: boolean }) {
   return (
     <Pressable onPress={onPress} hitSlop={6} style={({ pressed }) => [styles.navItem, pressed && { opacity: 0.5 }]}>
-      <Icon name={icon} size={22} color={color} />
+      <View>
+        <Icon name={icon} size={22} color={color} />
+        {dot ? (
+          <View style={{ position: 'absolute', top: -3, right: -5, width: 9, height: 9, borderRadius: 5, backgroundColor: C.accent, borderWidth: 1.5, borderColor: C.surface }} />
+        ) : null}
+      </View>
       <Text style={{ fontSize: 10, fontWeight: '700', color }}>{label}</Text>
     </Pressable>
   );

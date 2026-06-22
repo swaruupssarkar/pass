@@ -80,6 +80,7 @@ const TR: Record<string, Entry> = {
   'common.new': { en: 'New', hi: 'नया', bn: 'নতুন', mr: 'नवीन', gu: 'નવું', kn: 'ಹೊಸ', ta: 'புதியது' },
   'common.today': { en: 'Today', hi: 'आज', bn: 'আজ', mr: 'आज', gu: 'આજે', kn: 'ಇಂದು', ta: 'இன்று' },
   'common.reviewsN': { en: '{n} reviews', hi: '{n} समीक्षाएं', bn: '{n} রিভিউ', mr: '{n} पुनरावलोकने', gu: '{n} સમીક્ષાઓ', kn: '{n} ವಿಮರ್ಶೆಗಳು', ta: '{n} மதிப்புரைகள்' },
+  'review.forProduct': { en: 'for {title}', hi: '{title} के लिए', bn: '{title} এর জন্য', mr: '{title} साठी', gu: '{title} માટે', kn: '{title} ಗಾಗಿ', ta: '{title}க்காக' },
   'common.yesterday': { en: 'Yesterday', hi: 'कल', bn: 'গতকাল', mr: 'काल', gu: 'ગઈકાલે', kn: 'ನಿನ್ನೆ', ta: 'நேற்று' },
 
   // ---- categories (display only; the English value stays the filter key) ----
@@ -192,6 +193,7 @@ const TR: Record<string, Entry> = {
   'thread.safety': { en: 'Free means free — never pay or share an OTP.', hi: 'मुफ़्त का मतलब मुफ़्त — कभी भुगतान न करें या OTP साझा न करें।', bn: 'বিনামূল্যে মানে বিনামূল্যে — কখনও অর্থ দেবেন না বা OTP শেয়ার করবেন না।', mr: 'मोफत म्हणजे मोफत — कधीही पैसे देऊ नका किंवा OTP शेअर करू नका.', gu: 'મફત એટલે મફત — ક્યારેય ચૂકવણી ન કરો કે OTP શેર ન કરો.', kn: 'ಉಚಿತ ಎಂದರೆ ಉಚಿತ — ಎಂದಿಗೂ ಪಾವತಿಸಬೇಡಿ ಅಥವಾ OTP ಹಂಚಿಕೊಳ್ಳಬೇಡಿ.', ta: 'இலவசம் என்றால் இலவசம் — ஒருபோதும் பணம் செலுத்தவோ OTP பகிரவோ வேண்டாம்.' },
   'thread.openLiveLocation': { en: 'Open live location', hi: 'लाइव लोकेशन खोलें', bn: 'লাইভ লোকেশন খুলুন', mr: 'लाइव्ह स्थान उघडा', gu: 'લાઇવ લોકેશન ખોલો', kn: 'ಲೈವ್ ಸ್ಥಳ ತೆರೆಯಿರಿ', ta: 'நேரடி இருப்பிடத்தைத் திற' },
   'thread.shareLocation': { en: 'Share my live location for the meetup', hi: 'मीटअप के लिए मेरी लाइव लोकेशन साझा करें', bn: 'মিটআপের জন্য আমার লাইভ লোকেশন শেয়ার করুন', mr: 'भेटीसाठी माझे लाइव्ह स्थान शेअर करा', gu: 'મીટઅપ માટે મારું લાઇવ લોકેશન શેર કરો', kn: 'ಭೇಟಿಗಾಗಿ ನನ್ನ ಲೈವ್ ಸ್ಥಳವನ್ನು ಹಂಚಿಕೊಳ್ಳಿ', ta: 'சந்திப்புக்காக எனது நேரடி இருப்பிடத்தைப் பகிர்' },
+  'thread.ratePrompt': { en: '{name} gave you the {title}. Tap a star to rate the pickup:', hi: '{name} ने आपको {title} दिया। पिकअप को रेट करने के लिए स्टार टैप करें:', bn: '{name} আপনাকে {title} দিয়েছেন। পিকআপ রেট করতে স্টার ট্যাপ করুন:', mr: '{name} ने तुम्हाला {title} दिले. पिकअप रेट करण्यासाठी स्टार टॅप करा:', gu: '{name} એ તમને {title} આપ્યું. પિકઅપ રેટ કરવા સ્ટાર ટૅપ કરો:', kn: '{name} ನಿಮಗೆ {title} ನೀಡಿದರು. ಪಿಕಪ್ ರೇಟ್ ಮಾಡಲು ಸ್ಟಾರ್ ಟ್ಯಾಪ್ ಮಾಡಿ:', ta: '{name} உங்களுக்கு {title} வழங்கினார். பிக்கப்பை மதிப்பிட நட்சத்திரத்தைத் தட்டவும்:' },
   'thread.requestedThisItem': { en: 'requested this item', hi: 'ने यह वस्तु मांगी', bn: 'এই আইটেমটি অনুরোধ করেছেন', mr: 'ने ही वस्तू मागितली', gu: 'આ વસ્તુ માટે વિનંતી કરી', kn: 'ಈ ವಸ್ತುವನ್ನು ವಿನಂತಿಸಿದ್ದಾರೆ', ta: 'இந்தப் பொருளைக் கோரியுள்ளார்' },
   'thread.viewProduct': { en: 'View product', hi: 'उत्पाद देखें', bn: 'পণ্য দেখুন', mr: 'उत्पादन पहा', gu: 'ઉત્પાદન જુઓ', kn: 'ಉತ್ಪನ್ನ ನೋಡಿ', ta: 'பொருளைக் காண்க' },
   'thread.reject': { en: 'Reject', hi: 'अस्वीकारें', bn: 'প্রত্যাখ্যান', mr: 'नाकारा', gu: 'નકારો', kn: 'ತಿರಸ್ಕರಿಸಿ', ta: 'நிராகரி' },
@@ -267,6 +269,12 @@ const TR: Record<string, Entry> = {
   'manage.someone': { en: 'someone', hi: 'किसी को', bn: 'কাউকে', mr: 'कोणालातरी', gu: 'કોઈને', kn: 'ಯಾರಿಗಾದರೂ', ta: 'யாரோ' },
   'manage.badgeLive': { en: 'Live', hi: 'लाइव', bn: 'লাইভ', mr: 'लाइव्ह', gu: 'લાઇવ', kn: 'ಲೈವ್', ta: 'நேரலை' },
   'manage.requests': { en: 'REQUESTS', hi: 'अनुरोध', bn: 'অনুরোধ', mr: 'विनंत्या', gu: 'વિનંતીઓ', kn: 'ವಿನಂತಿಗಳು', ta: 'கோரிக்கைகள்' },
+  'manage.requestsCount': { en: '{n} requests', hi: '{n} अनुरोध', bn: '{n}টি অনুরোধ', mr: '{n} विनंत्या', gu: '{n} વિનંતીઓ', kn: '{n} ವಿನಂತಿಗಳು', ta: '{n} கோரிக்கைகள்' },
+  'manage.newRequests': { en: '{n} new request(s)', hi: '{n} नए अनुरोध', bn: '{n}টি নতুন অনুরোধ', mr: '{n} नवीन विनंत्या', gu: '{n} નવી વિનંતીઓ', kn: '{n} ಹೊಸ ವಿನಂತಿಗಳು', ta: '{n} புதிய கோரிக்கைகள்' },
+  'manage.requestsFor': { en: 'Requests for {title}', hi: '{title} के लिए अनुरोध', bn: '{title} এর জন্য অনুরোধ', mr: '{title} साठी विनंत्या', gu: '{title} માટે વિનંતીઓ', kn: '{title} ಗಾಗಿ ವಿನಂತಿಗಳು', ta: '{title}க்கான கோரிக்கைகள்' },
+  'manage.markTakenShort': { en: 'Mark taken', hi: 'दिया गया', bn: 'দেওয়া হয়েছে', mr: 'दिले', gu: 'આપ્યું', kn: 'ನೀಡಲಾಗಿದೆ', ta: 'வழங்கப்பட்டது' },
+  'manage.badgeGiven': { en: 'Given', hi: 'दिया', bn: 'দেওয়া', mr: 'दिले', gu: 'આપ્યું', kn: 'ನೀಡಲಾಗಿದೆ', ta: 'வழங்கியது' },
+  'manage.deleteHint': { en: 'Tap to delete this listing', hi: 'सूची हटाने के लिए टैप करें', bn: 'তালিকা মুছতে ট্যাপ করুন', mr: 'यादी हटवण्यासाठी टॅप करा', gu: 'યાદી કાઢી નાખવા ટૅપ કરો', kn: 'ಪಟ್ಟಿ ಅಳಿಸಲು ಟ್ಯಾಪ್ ಮಾಡಿ', ta: 'பட்டியலை நீக்க தட்டவும்' },
   'manage.requestedLine': { en: 'Requested {ago} ago · {date}', hi: '{ago} पहले अनुरोध किया · {date}', bn: '{ago} আগে অনুরোধ করা হয়েছে · {date}', mr: '{ago} पूर्वी विनंती केली · {date}', gu: '{ago} પહેલાં વિનંતી કરી · {date}', kn: '{ago} ಹಿಂದೆ ವಿನಂತಿಸಲಾಗಿದೆ · {date}', ta: '{ago} முன்பு கோரப்பட்டது · {date}' },
   'manage.accepted': { en: 'Accepted', hi: 'स्वीकृत', bn: 'গৃহীত', mr: 'स्वीकारले', gu: 'સ્વીકાર્યું', kn: 'ಸ್ವೀಕರಿಸಲಾಗಿದೆ', ta: 'ஏற்கப்பட்டது' },
   'manage.declined': { en: 'Declined', hi: 'अस्वीकृत', bn: 'প্রত্যাখ্যাত', mr: 'नाकारले', gu: 'નકાર્યું', kn: 'ತಿರಸ್ಕರಿಸಲಾಗಿದೆ', ta: 'நிராகரிக்கப்பட்டது' },

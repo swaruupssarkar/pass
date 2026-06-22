@@ -4,9 +4,9 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { CITIES, USERS } from '@/pass/data';
 import { catIcon, Icon } from '@/pass/icon';
-import { distLabel, fmtAgo, fmtDate, otherOf, reviewsFor, userName, userRating, usePass, useT } from '@/pass/store';
+import { distLabel, fmtAgo, fmtDate, handoffsBy, handoffsTo, listingById, otherOf, reviewsFor, userName, userRating, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Avatar, Btn, FreeTag, Header, PhotoTile, Screen, shadow, t, VerifiedBadge } from '@/pass/ui';
+import { Avatar, Btn, FreeTag, Header, PhotoTile, ReviewCard, Screen, shadow, t, VerifiedBadge } from '@/pass/ui';
 
 export default function Giver() {
   const router = useRouter();
@@ -21,8 +21,8 @@ export default function Giver() {
   const city = CITIES.find((c) => c.id === (s.userCity?.[id] ?? person.cityId));
 
   const live = s.listings.filter((l) => l.ownerId === id && !l.taken);
-  const given = s.listings.filter((l) => l.ownerId === id && l.taken).length;
-  const received = s.listings.filter((l) => l.takenBy === id).length;
+  const given = handoffsBy(s, id).length;
+  const received = handoffsTo(s, id).length;
   const reviews = reviewsFor(s, id);
   const [reviewLimit, setReviewLimit] = useState(5);
 
@@ -127,36 +127,17 @@ export default function Giver() {
           ) : (
             <>
             {reviews.slice(0, reviewLimit).map((r) => (
-              <View key={r.id} style={{ backgroundColor: C.surface, borderRadius: radius.lg, borderCurve: 'continuous', padding: 15, ...shadow(8, 20, 0.35) }}>
-                {/* reviewer — tap to open their profile */}
-                <Pressable onPress={() => openPerson(r.from)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 11, opacity: pressed ? 0.7 : 1 })}>
-                  <Avatar name={userName(s, r.from)} uri={s.dp[r.from]} size={40} color={C.ink} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 15, fontWeight: '800', color: C.ink }} numberOfLines={1}>{userName(s, r.from)}</Text>
-                    <View style={{ flexDirection: 'row', marginTop: 3 }}>
-                      {[1, 2, 3, 4, 5].map((n) => (
-                        <Icon key={n} name={n <= r.rating ? 'star' : 'star-outline'} size={13} color={C.star} />
-                      ))}
-                    </View>
-                  </View>
-                  <Icon name="forward" size={18} color={C.muted} />
-                </Pressable>
-
-                {/* what they said — tags as chips */}
-                {r.tags.length > 0 ? (
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
-                    {r.tags.map((tag) => (
-                      <View key={tag} style={{ backgroundColor: C.accentSoft, borderRadius: radius.pill, paddingVertical: 4, paddingHorizontal: 11 }}>
-                        <Text style={{ fontSize: 11.5, fontWeight: '700', color: C.accent }}>{tr('rate.tag.' + tag)}</Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
-                {r.text ? <Text style={{ fontSize: 14, color: C.ink, lineHeight: 20, marginTop: r.tags.length > 0 ? 10 : 12 }}>{r.text}</Text> : null}
-
-                {/* when */}
-                <Text style={{ fontSize: 11, color: C.muted, marginTop: 12 }}>{fmtDate(r.ts)} · {fmtAgo(r.ts)}</Text>
-              </View>
+              <ReviewCard
+                key={r.id}
+                rating={r.rating}
+                tags={r.tags}
+                text={r.text}
+                authorName={userName(s, r.from)}
+                authorUri={s.dp[r.from]}
+                date={`${fmtDate(r.ts)} · ${fmtAgo(r.ts)}`}
+                product={listingById(s, r.listingId ?? null)?.title}
+                onAuthorPress={() => openPerson(r.from)}
+              />
             ))}
             {reviews.length > reviewLimit ? (
               <Btn
