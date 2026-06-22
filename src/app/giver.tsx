@@ -6,7 +6,7 @@ import { CITIES, USERS } from '@/pass/data';
 import { catIcon, Icon } from '@/pass/icon';
 import { distLabel, fmtAgo, fmtDate, handoffsBy, handoffsTo, listingById, otherOf, reviewsFor, userName, userRating, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Avatar, Btn, FreeTag, Header, PhotoTile, ReviewCard, Screen, shadow, t, VerifiedBadge } from '@/pass/ui';
+import { Avatar, Btn, EmptyState, FreeTag, Header, PhotoTile, ReviewCard, Screen, shadow, t, VerifiedBadge } from '@/pass/ui';
 
 export default function Giver() {
   const router = useRouter();
@@ -89,13 +89,7 @@ export default function Giver() {
             </View>
           )}
         </View>
-        {live.length === 0 && (
-          <View style={{ paddingHorizontal: 18 }}>
-            <View style={{ backgroundColor: C.surface, borderRadius: radius.lg, padding: 16 }}>
-              <Text style={{ fontSize: 13.5, color: C.muted, lineHeight: 19 }}>{tr('giver.noGiveaways')}</Text>
-            </View>
-          </View>
-        )}
+        {live.length === 0 && <EmptyState compact icon="gift" title={tr('giver.noGiveaways')} />}
         <View style={{ paddingHorizontal: 18, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
           {live.map((l) => (
             <Pressable key={l.id} onPress={() => open(l.id)} style={{ width: '48%', backgroundColor: C.surface, borderRadius: 18, borderCurve: 'continuous', padding: 8, marginBottom: 13, ...shadow(10, 26, 0.4) }}>
@@ -121,9 +115,7 @@ export default function Giver() {
         <Text style={[t.title, { paddingHorizontal: 18, paddingTop: 22 }]}>{tr('giver.whatPeopleSay')}</Text>
         <View style={{ paddingHorizontal: 18, paddingTop: 10, gap: 11 }}>
           {reviews.length === 0 ? (
-            <View style={{ backgroundColor: C.surface, borderRadius: radius.lg, padding: 16 }}>
-              <Text style={{ fontSize: 13.5, color: C.muted, lineHeight: 19 }}>{tr('giver.noReviews')}</Text>
-            </View>
+            <EmptyState compact icon="star" title={tr('giver.noReviews')} />
           ) : (
             <>
             {reviews.slice(0, reviewLimit).map((r) => (

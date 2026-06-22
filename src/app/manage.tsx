@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { catIcon, Icon, type IconName } from '@/pass/icon';
 import { fmtAgo, fmtDate, myListings, requestsFor, userName, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Avatar, Btn, Header, PhotoTile, Screen, shadow, t } from '@/pass/ui';
+import { Avatar, Btn, EmptyState, Header, PhotoTile, Screen, shadow, t } from '@/pass/ui';
 import type { Listing } from '@/pass/data';
 
 export default function Manage() {
@@ -55,14 +55,7 @@ export default function Manage() {
       <Header title={tr('manage.title')} />
 
       {list.length === 0 ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 }}>
-          <View style={{ width: 78, height: 78, borderRadius: 39, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="gift" size={32} color={C.accent} />
-          </View>
-          <Text style={[t.h3, { marginTop: 16 }]}>{tr('manage.emptyTitle')}</Text>
-          <Text style={[t.small, { marginTop: 8, textAlign: 'center' }]}>{tr('manage.emptyBody')}</Text>
-          <Btn icon="add" label={tr('manage.postItem')} onPress={newListing} style={{ marginTop: 18, paddingVertical: 12, paddingHorizontal: 22 }} textStyle={{ fontSize: 14 }} />
-        </View>
+        <EmptyState icon="gift" title={tr('manage.emptyTitle')} body={tr('manage.emptyBody')} ctaIcon="add" ctaLabel={tr('manage.postItem')} onCta={newListing} />
       ) : (
         <ScrollView contentContainerStyle={{ padding: 18, paddingTop: 0, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
           {/* Live / Given filter */}
@@ -81,18 +74,15 @@ export default function Manage() {
           </View>
 
           {shown.length === 0 ? (
-            <View style={{ alignItems: 'center', paddingVertical: 60 }}>
-              <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-                <Icon name={tab === 'live' ? 'gift' : 'check-circle'} size={30} color={C.accent} />
-              </View>
-              <Text style={[t.h3, { marginTop: 16 }]}>{tab === 'live' ? tr('manage.emptyLiveTitle') : tr('manage.emptyGivenTitle')}</Text>
-              <Text style={[t.small, { marginTop: 8, textAlign: 'center', maxWidth: 280 }]}>
-                {tab === 'live' ? tr('manage.emptyLiveBody') : tr('manage.emptyGivenBody')}
-              </Text>
-              {tab === 'live' ? (
-                <Btn icon="add" label={tr('manage.postItem')} onPress={newListing} style={{ marginTop: 18, paddingVertical: 12, paddingHorizontal: 22 }} textStyle={{ fontSize: 14 }} />
-              ) : null}
-            </View>
+            <EmptyState
+              compact
+              icon={tab === 'live' ? 'gift' : 'check-circle'}
+              title={tab === 'live' ? tr('manage.emptyLiveTitle') : tr('manage.emptyGivenTitle')}
+              body={tab === 'live' ? tr('manage.emptyLiveBody') : tr('manage.emptyGivenBody')}
+              ctaIcon={tab === 'live' ? 'add' : undefined}
+              ctaLabel={tab === 'live' ? tr('manage.postItem') : undefined}
+              onCta={tab === 'live' ? newListing : undefined}
+            />
           ) : null}
 
           <View style={{ gap: 16 }}>

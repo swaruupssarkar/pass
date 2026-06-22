@@ -6,7 +6,7 @@ import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeabl
 import { Icon } from '@/pass/icon';
 import { fmtAgo, inboxRows, incomingRequests, threadId, threadPendingForMe, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Avatar, BottomNav, Btn, PhotoTile, Screen, shadow, t } from '@/pass/ui';
+import { Avatar, BottomNav, Btn, EmptyState, PhotoTile, Screen, shadow, t } from '@/pass/ui';
 
 export default function Inbox() {
   const router = useRouter();
@@ -150,13 +150,5 @@ export default function Inbox() {
 }
 
 function Empty({ icon, title, body }: { icon: 'chat' | 'clipboard'; title: string; body: string }) {
-  return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60 }}>
-      <View style={{ width: 78, height: 78, borderRadius: 39, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-        <Icon name={icon} size={32} color={C.accent} />
-      </View>
-      <Text style={[t.h3, { marginTop: 16 }]}>{title}</Text>
-      <Text style={[t.small, { marginTop: 8, textAlign: 'center', maxWidth: 280 }]}>{body}</Text>
-    </View>
-  );
+  return <EmptyState icon={icon} title={title} body={body} />;
 }

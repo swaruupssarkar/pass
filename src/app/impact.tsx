@@ -4,7 +4,7 @@ import { ScrollView, Text, View } from 'react-native';
 import { catIcon, Icon } from '@/pass/icon';
 import { fmtAgo, fmtDate, listingById, myHandoffs, reviewsFor, userName, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Avatar, Header, PhotoTile, ReviewCard, Screen, shadow, t } from '@/pass/ui';
+import { Avatar, EmptyState, Header, PhotoTile, ReviewCard, Screen, shadow, t } from '@/pass/ui';
 
 export default function Impact() {
   const router = useRouter();
@@ -43,9 +43,7 @@ export default function Impact() {
 
         <Text style={[t.title, { marginTop: 24, marginBottom: 12 }]}>{tr('impact.recentHandoffs')}</Text>
         {n === 0 ? (
-          <View style={{ backgroundColor: C.surface, borderRadius: radius.lg, padding: 18, ...shadow(8, 20, 0.35) }}>
-            <Text style={[t.muted, { textAlign: 'center' }]}>{tr('impact.noHandoffs')}</Text>
-          </View>
+          <EmptyState compact icon="gift" title={tr('impact.noHandoffs')} />
         ) : (
           <View style={{ gap: 11 }}>
             {handoffs.map((h) => {
@@ -71,9 +69,7 @@ export default function Impact() {
 
         <Text style={[t.title, { marginTop: 24, marginBottom: 12 }]}>{tr('impact.reviews')}</Text>
         {reviews.length === 0 ? (
-          <View style={{ backgroundColor: C.surface, borderRadius: radius.lg, padding: 18, ...shadow(8, 20, 0.35) }}>
-            <Text style={[t.muted, { textAlign: 'center' }]}>{tr('impact.noReviews')}</Text>
-          </View>
+          <EmptyState compact icon="star" title={tr('impact.noReviews')} />
         ) : (
           <View style={{ gap: 11 }}>
             {reviews.map((r) => (

@@ -1,10 +1,9 @@
 import { ScrollView, Text, View } from 'react-native';
 
 import { USERS } from '@/pass/data';
-import { Icon } from '@/pass/icon';
 import { blockedUserIds, CITIES, userName, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Avatar, Btn, Header, Screen, shadow } from '@/pass/ui';
+import { Avatar, Btn, EmptyState, Header, Screen, shadow } from '@/pass/ui';
 
 export default function Blocked() {
   const tr = useT();
@@ -18,12 +17,7 @@ export default function Blocked() {
         <Text style={{ fontSize: 13, color: C.muted, lineHeight: 19, marginBottom: 16 }}>{tr('blocked.subtitle')}</Text>
 
         {blocked.length === 0 ? (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 70 }}>
-            <View style={{ width: 78, height: 78, borderRadius: 39, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="shield" size={32} color={C.accent} />
-            </View>
-            <Text style={{ fontSize: 14, color: C.muted, marginTop: 16, textAlign: 'center' }}>{tr('blocked.none')}</Text>
-          </View>
+          <EmptyState icon="shield" title={tr('blocked.none')} />
         ) : (
           <View style={{ gap: 11 }}>
             {blocked.map((id) => {

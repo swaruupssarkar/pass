@@ -3,7 +3,7 @@ import { ScrollView, Text, View } from 'react-native';
 import { Icon } from '@/pass/icon';
 import { USERS, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Header, PhotoTile, Screen, shadow } from '@/pass/ui';
+import { EmptyState, Header, PhotoTile, Screen, shadow } from '@/pass/ui';
 
 export default function GivenPast() {
   const { s } = usePass();
@@ -20,7 +20,7 @@ export default function GivenPast() {
           <Icon name="gift" size={13} color={C.muted} />
         </View>
         {list.length === 0 ? (
-          <Text style={{ fontSize: 13, color: C.muted, marginLeft: 52 }}>{tr('givenpast.empty')}</Text>
+          <EmptyState compact icon="gift" title={tr('givenpast.empty')} />
         ) : (
           <View style={{ gap: 11 }}>
             {list.map((l) => (

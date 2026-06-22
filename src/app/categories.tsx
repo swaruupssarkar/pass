@@ -4,7 +4,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { catIcon, Icon } from '@/pass/icon';
 import { browseListings, CATS, distLabel, usePass, useT } from '@/pass/store';
 import { C, radius, TINTS } from '@/pass/theme';
-import { BottomNav, Btn, FreeTag, Header, PhotoTile, Screen, shadow, t } from '@/pass/ui';
+import { BottomNav, Btn, EmptyState, FreeTag, Header, PhotoTile, Screen, shadow, t } from '@/pass/ui';
 
 export default function Categories() {
   const router = useRouter();
@@ -64,12 +64,7 @@ export default function Categories() {
 
           {/* products */}
           {products.length === 0 ? (
-            <View style={{ alignItems: 'center', paddingVertical: 50 }}>
-              <View style={{ width: 70, height: 70, borderRadius: 35, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-                <Icon name="search" size={28} color={C.accent} />
-              </View>
-              <Text style={[t.small, { marginTop: 14, textAlign: 'center' }]}>{tr('categories.emptyCat', { cat: tr('cat.' + selCat) })}</Text>
-            </View>
+            <EmptyState compact icon="search" title={tr('categories.emptyCat', { cat: tr('cat.' + selCat) })} />
           ) : (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 16 }}>
               {products.map((l) => (

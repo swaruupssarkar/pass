@@ -11,7 +11,7 @@ import { fmtKm, haversineKm, type Coords, type Listing } from '@/pass/data';
 import { catIcon, Icon } from '@/pass/icon';
 import { activeListing, distLabel, fmtAgo, fmtDate, myRequestFor, reviewsFor, userName, userPoint, userRating, USERS, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Avatar, Btn, Header, SafetyNote, Screen, VerifiedBadge, t } from '@/pass/ui';
+import { Avatar, Btn, EmptyState, Header, SafetyNote, Screen, VerifiedBadge, t } from '@/pass/ui';
 
 export default function Detail() {
   const router = useRouter();
@@ -26,13 +26,7 @@ export default function Detail() {
     return (
       <Screen>
         <Header title={tr('detail.listing')} />
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
-          <View style={{ width: 78, height: 78, borderRadius: 39, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="search" size={32} color={C.accent} />
-          </View>
-          <Text style={[t.h3, { marginTop: 16 }]}>{tr('detail.notFound')}</Text>
-          <Btn label={tr('common.back')} onPress={() => router.back()} style={{ marginTop: 18, paddingVertical: 12, paddingHorizontal: 22 }} textStyle={{ fontSize: 14 }} />
-        </View>
+        <EmptyState icon="search" title={tr('detail.notFound')} ctaLabel={tr('common.back')} onCta={() => router.back()} />
       </Screen>
     );
   }
@@ -157,7 +151,6 @@ export default function Detail() {
           <View style={{ flexDirection: 'row', gap: 9, marginTop: 14, flexWrap: 'wrap' }}>
             <Chip text={tr('cat.' + item.cat)} accent />
             <Chip text={tr('detail.conditionChip', { cond: tr('cond.' + item.cond) })} />
-            <Chip text={tr('detail.pickupChip', { area: item.area })} />
           </View>
 
           <Pressable onPress={mine ? undefined : viewGiver} style={{ marginTop: 16, backgroundColor: C.bg, borderRadius: radius.lg, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 13 }}>
@@ -189,25 +182,15 @@ export default function Detail() {
           <View style={{ marginTop: 18 }}>
             <SafetyNote text={tr('detail.safetyNote')} />
           </View>
-          <Pressable
-            onPress={() => router.push('/report')}
-            style={({ pressed }) => ({
-              alignSelf: 'center',
-              marginTop: 14,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 7,
-              paddingVertical: 9,
-              paddingHorizontal: 16,
-              borderRadius: radius.pill,
-              borderWidth: 1,
-              borderColor: C.line,
-              backgroundColor: C.bg,
-              opacity: pressed ? 0.6 : 1,
-            })}>
-            <Icon name="flag" size={13} color={C.muted} />
-            <Text style={{ fontSize: 12.5, fontWeight: '700', color: C.muted }}>{tr('detail.report')}</Text>
-          </Pressable>
+          <View style={{ marginTop: 20, borderTopWidth: 1, borderTopColor: C.line, paddingTop: 14, alignItems: 'center' }}>
+            <Pressable
+              onPress={() => router.push('/report')}
+              hitSlop={10}
+              style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, opacity: pressed ? 0.5 : 1 })}>
+              <Icon name="flag" size={12} color={C.muted} />
+              <Text style={{ fontSize: 12.5, fontWeight: '600', color: C.muted, textDecorationLine: 'underline' }}>{tr('detail.report')}</Text>
+            </Pressable>
+          </View>
         </ScrollView>
 
         {!item.taken ? (

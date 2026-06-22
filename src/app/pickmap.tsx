@@ -5,7 +5,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
 import { Icon } from '@/pass/icon';
-import { hasPlaces } from '@/pass/config';
 import { autocomplete, geocodeAddress, placeDetails, reverseGeocode, type Suggestion } from '@/pass/places';
 import { activeOrigin, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
@@ -70,14 +69,31 @@ export default function PickMap() {
     webRef.current?.injectJavaScript(`window.__setMarker(${lat}, ${lng}); true;`);
   };
 
-  const onQuery = async (text: string) => {
+  // debounce keystrokes so we don't hit the geocoder on every letter
+  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onQuery = (text: string) => {
     setQuery(text);
-    setSuggests(await autocomplete(text));
+    if (debounce.current) clearTimeout(debounce.current);
+    if (text.trim().length < 2) {
+      setSuggests([]);
+      return;
+    }
+    const near = coords;
+    debounce.current = setTimeout(async () => {
+      const r = await autocomplete(text, near);
+      setSuggests(r);
+    }, 250);
   };
 
   const pickSuggestion = async (sug: Suggestion) => {
+    if (debounce.current) clearTimeout(debounce.current);
     setSuggests([]);
     setQuery(sug.label);
+    // Photon suggestions carry coords — move straight to them, no extra lookup.
+    if (sug.lat != null && sug.lng != null) {
+      moveTo(sug.lat, sug.lng);
+      return;
+    }
     setBusy(true);
     const place = await placeDetails(sug.id);
     setBusy(false);
@@ -86,8 +102,10 @@ export default function PickMap() {
 
   const searchPlain = async () => {
     if (!query.trim()) return;
+    if (debounce.current) clearTimeout(debounce.current);
+    setSuggests([]);
     setBusy(true);
-    const place = await geocodeAddress(query);
+    const place = await geocodeAddress(query, coords);
     setBusy(false);
     if (place) moveTo(place.lat, place.lng);
   };
@@ -154,9 +172,9 @@ export default function PickMap() {
             </ScrollView>
           </View>
         ) : null}
-        {!hasPlaces() ? (
+        {suggests.length === 0 && query.trim().length >= 2 && !busy ? (
           <Text style={{ marginTop: 8, marginLeft: 52, fontSize: 11.5, color: C.muted, backgroundColor: C.surface, borderRadius: 10, padding: 8 }}>
-            {tr('pickmap.placesTip')}
+            {tr('pickmap.noMatch')}
           </Text>
         ) : null}
       </View>

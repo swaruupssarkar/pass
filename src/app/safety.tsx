@@ -1,14 +1,12 @@
-import { useRouter } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 
 import { useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Btn, Header, Screen, t } from '@/pass/ui';
+import { Header, Screen, t } from '@/pass/ui';
 
 const TIPS = ['1', '2', '3'];
 
 export default function Safety() {
-  const router = useRouter();
   const tr = useT();
   return (
     <Screen>
@@ -41,7 +39,6 @@ export default function Safety() {
           <Text style={{ fontSize: 12.5, color: C.muted, marginTop: 5, lineHeight: 19 }}>
             {tr('safety.moneyBody')}
           </Text>
-          <Btn label={tr('safety.reportBlock')} onPress={() => router.push('/report')} style={{ alignSelf: 'flex-start', marginTop: 12, paddingVertical: 12, paddingHorizontal: 18 }} textStyle={{ fontSize: 14 }} />
         </View>
       </ScrollView>
     </Screen>

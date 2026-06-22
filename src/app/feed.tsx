@@ -14,7 +14,7 @@ import {
   useT,
 } from '@/pass/store';
 import { C, radius, TINTS } from '@/pass/theme';
-import { BottomNav, Btn, FreeTag, PhotoTile, Pill, Screen, shadow, t } from '@/pass/ui';
+import { BottomNav, Btn, EmptyState, FreeTag, PhotoTile, Pill, Screen, shadow, t } from '@/pass/ui';
 
 const RADIUS_PRESETS = [3, 5, 10, 20, 100];
 
@@ -153,16 +153,13 @@ export default function Feed() {
         </View>
 
         {items.length === 0 ? (
-          <View style={{ padding: 40, paddingTop: 50, alignItems: 'center' }}>
-            <View style={{ width: 78, height: 78, borderRadius: 39, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="search" size={32} color={C.accent} />
-            </View>
-            <Text style={[t.h3, { marginTop: 16 }]}>{tr('feed.nothingIn', { loc })}</Text>
-            <Text style={[t.small, { marginTop: 8, textAlign: 'center' }]}>{tr('feed.nothingHint')}</Text>
-            {s.catFilter || s.q ? (
-              <Btn label={tr('feed.clearFilters')} onPress={() => patch({ q: '', catFilter: null })} style={{ marginTop: 18, paddingVertical: 12, paddingHorizontal: 22 }} textStyle={{ fontSize: 14 }} />
-            ) : null}
-          </View>
+          <EmptyState
+            icon="search"
+            title={tr('feed.nothingIn', { loc })}
+            body={tr('feed.nothingHint')}
+            ctaLabel={s.catFilter || s.q ? tr('feed.clearFilters') : undefined}
+            onCta={s.catFilter || s.q ? () => patch({ q: '', catFilter: null }) : undefined}
+          />
         ) : (
           <View style={{ paddingHorizontal: 18, paddingTop: 12, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
             {items.map((it) => {

@@ -14,6 +14,14 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets, type Edge } from 'react-native-safe-area-context';
+import Animated, {
+  Easing,
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { Icon, type IconName } from '@/pass/icon';
 import { hasUnreadChats, usePass, userName, useT } from '@/pass/store';
@@ -357,6 +365,61 @@ export function SafetyNote({ text, danger }: { text: string; danger?: boolean })
       <Text style={{ flex: 1, fontSize: 12.5, lineHeight: 18, fontWeight: '600', color: danger ? C.dangerInk : C.warnInk }}>
         {text}
       </Text>
+    </View>
+  );
+}
+
+// ---------- animated empty state ----------
+// Shared blank-screen placeholder: a softly floating icon inside a pulsing
+// ring, plus optional title/body/CTA. Used on every "nothing here yet" screen
+// so empties feel alive instead of static.
+
+export function EmptyState({
+  icon,
+  title,
+  body,
+  ctaLabel,
+  ctaIcon,
+  onCta,
+  compact,
+}: {
+  icon: IconName;
+  title: string;
+  body?: string;
+  ctaLabel?: string;
+  ctaIcon?: IconName;
+  onCta?: () => void;
+  compact?: boolean;
+}) {
+  const float = useSharedValue(0);
+  const pulse = useSharedValue(0);
+
+  useEffect(() => {
+    float.value = withRepeat(withTiming(1, { duration: 2200, easing: Easing.inOut(Easing.quad) }), -1, true);
+    pulse.value = withRepeat(withTiming(1, { duration: 2400, easing: Easing.out(Easing.quad) }), -1, false);
+  }, [float, pulse]);
+
+  const iconStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -7 * float.value }] }));
+  const ringStyle = useAnimatedStyle(() => ({ transform: [{ scale: 1 + pulse.value * 0.6 }], opacity: 0.26 * (1 - pulse.value) }));
+
+  const disc = compact ? 70 : 84;
+  return (
+    <View style={{ flex: 1, minHeight: compact ? 260 : 340, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36, paddingVertical: compact ? 40 : 50 }}>
+      <View style={{ width: disc + 36, height: disc + 36, alignItems: 'center', justifyContent: 'center' }}>
+        <Animated.View style={[{ position: 'absolute', width: disc, height: disc, borderRadius: disc / 2, backgroundColor: C.accent }, ringStyle]} />
+        <Animated.View style={[{ width: disc, height: disc, borderRadius: disc / 2, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }, iconStyle]}>
+          <Icon name={icon} size={compact ? 30 : 34} color={C.accent} />
+        </Animated.View>
+      </View>
+      <Animated.Text entering={FadeInDown.delay(80).springify()} style={[t.h3, { marginTop: 16, textAlign: 'center' }]}>{title}</Animated.Text>
+      {body ? (
+        <Animated.Text entering={FadeInDown.delay(150)} style={[t.small, { marginTop: 8, textAlign: 'center', maxWidth: 290 }]}>{body}</Animated.Text>
+      ) : null}
+      {ctaLabel && onCta ? (
+        <Animated.View entering={FadeInDown.delay(220)} style={{ marginTop: 18 }}>
+          <Btn icon={ctaIcon} label={ctaLabel} onPress={onCta} style={{ paddingVertical: 12, paddingHorizontal: 22 }} textStyle={{ fontSize: 14 }} />
+        </Animated.View>
+      ) : null}
     </View>
   );
 }

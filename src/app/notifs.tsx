@@ -6,7 +6,7 @@ import type { Notification } from '@/pass/data';
 import { Icon } from '@/pass/icon';
 import { fmtAgo, notificationsFor, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Header, Screen, shadow } from '@/pass/ui';
+import { EmptyState, Header, Screen, shadow } from '@/pass/ui';
 
 const ICON_FOR = (kind: Notification['kind']) => (kind === 'taken' ? 'gift' : 'chat');
 
@@ -50,12 +50,7 @@ export default function Notifs() {
         }
       />
       {list.length === 0 ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 }}>
-          <View style={{ width: 78, height: 78, borderRadius: 39, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="bell" size={32} color={C.accent} />
-          </View>
-          <Text style={{ fontSize: 18, fontWeight: '800', color: C.ink, marginTop: 16 }}>{tr('notifs.empty')}</Text>
-        </View>
+        <EmptyState icon="bell" title={tr('notifs.empty')} />
       ) : (
         <ScrollView contentContainerStyle={{ padding: 18, paddingTop: 4, paddingBottom: 24, gap: 10 }}>
           {list.map((n) => (

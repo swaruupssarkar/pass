@@ -5,7 +5,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { catIcon, Icon } from '@/pass/icon';
 import { distLabel, fmtAgo, fmtDate, myRequests, savedListings, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { BottomNav, Btn, FreeTag, PhotoTile, Screen, shadow, t } from '@/pass/ui';
+import { BottomNav, Btn, EmptyState, FreeTag, PhotoTile, Screen, shadow, t } from '@/pass/ui';
 
 export default function Saved() {
   const router = useRouter();
@@ -150,14 +150,5 @@ function StatusBadge({ status, tr }: { status: 'pending' | 'accepted' | 'decline
 }
 
 function Empty({ icon, title, body, cta, onPress }: { icon: 'heart-outline' | 'time'; title: string; body: string; cta: string; onPress: () => void }) {
-  return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60 }}>
-      <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-        <Icon name={icon} size={34} color={C.accent} />
-      </View>
-      <Text style={[t.h3, { marginTop: 18 }]}>{title}</Text>
-      <Text style={[t.small, { marginTop: 8, textAlign: 'center', maxWidth: 280 }]}>{body}</Text>
-      <Btn label={cta} onPress={onPress} style={{ marginTop: 18, paddingVertical: 12, paddingHorizontal: 22 }} textStyle={{ fontSize: 14 }} />
-    </View>
-  );
+  return <EmptyState icon={icon} title={title} body={body} ctaLabel={cta} onCta={onPress} />;
 }
