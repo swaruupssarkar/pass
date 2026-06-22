@@ -49,6 +49,7 @@ export default function Detail() {
   const gal = Math.min(idx, count - 1);
   const sheetTop = height * (s.sheetExpanded ? 0.07 : 0.46);
   const galleryH = height * 0.46; // image band sits above the (collapsed) sheet
+  const bandH = galleryH + 26; // tuck under the sheet's rounded corners so no tint shows through
 
   const viewGiver = () => {
     viewPerson(item.ownerId);
@@ -90,7 +91,7 @@ export default function Detail() {
     <View style={{ flex: 1, backgroundColor: item.tint }}>
       <StatusBar style="dark" />
       {/* gallery — swipeable pager, uniform images, dots at the bottom */}
-      <View style={{ height: galleryH, backgroundColor: item.tint }}>
+      <View style={{ height: bandH, backgroundColor: item.tint }}>
         {photos.length > 0 ? (
           <ScrollView
             horizontal
@@ -98,7 +99,7 @@ export default function Detail() {
             showsHorizontalScrollIndicator={false}
             onMomentumScrollEnd={(e) => setIdx(Math.round(e.nativeEvent.contentOffset.x / width))}>
             {photos.map((p) => (
-              <Image key={p} source={{ uri: p }} style={{ width, height: galleryH }} contentFit="cover" transition={150} />
+              <Image key={p} source={{ uri: p }} style={{ width, height: bandH }} contentFit="cover" transition={150} />
             ))}
           </ScrollView>
         ) : (
@@ -115,7 +116,7 @@ export default function Detail() {
         </Pressable>
 
         {count > 1 ? (
-          <View style={{ position: 'absolute', bottom: 12, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
+          <View style={{ position: 'absolute', bottom: 38, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
             {Array.from({ length: count }).map((_, i) => (
               <View key={i} style={{ width: i === gal ? 22 : 7, height: 6, borderRadius: 3, backgroundColor: i === gal ? '#fff' : 'rgba(255,255,255,0.6)' }} />
             ))}
