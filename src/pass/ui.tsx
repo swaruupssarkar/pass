@@ -62,6 +62,8 @@ export function PhotoTile({
   tint,
   caption,
   uri,
+  icon,
+  iconSize = 40,
   gap = 16,
   style,
   children,
@@ -70,6 +72,9 @@ export function PhotoTile({
   caption?: string;
   /** real photo to show; falls back to the tinted placeholder when absent */
   uri?: string;
+  /** branded placeholder icon shown (centered) when there is no photo */
+  icon?: IconName;
+  iconSize?: number;
   gap?: number;
   style?: StyleProp<ViewStyle>;
   children?: React.ReactNode;
@@ -78,6 +83,10 @@ export function PhotoTile({
     <View style={[{ backgroundColor: tint, overflow: 'hidden' }, style]}>
       {uri ? (
         <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={150} />
+      ) : icon ? (
+        <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
+          <Icon name={icon} size={iconSize} color={C.accent} />
+        </View>
       ) : (
         <>
           <Hatch gap={gap} />

@@ -201,8 +201,23 @@ export function activeLocationLabel(s: State): string {
   return cityById(s.activeCityId).name;
 }
 
-export const distKm = (s: State, l: Listing): number => haversineKm(activeOrigin(s), { lat: l.lat, lng: l.lng });
-export const distLabel = (s: State, l: Listing): string => fmtKm(distKm(s, l));
+/**
+ * A real, precise origin for the current user: live GPS when browsing by current
+ * location, otherwise their saved notify address. null = only a city is selected,
+ * so distance to a listing is unknowable and must not be shown.
+ */
+export function userPoint(s: State): Coords | null {
+  if (s.activeMode === 'gps' && s.userLoc) return s.userLoc;
+  const addr = s.notify?.[s.currentUserId]?.addr;
+  return addr ? { lat: addr.lat, lng: addr.lng } : null;
+}
+export const hasUserPoint = (s: State): boolean => userPoint(s) !== null;
+
+/** Distance label from the user's real point, or null when only a city is set. */
+export const distLabel = (s: State, l: Listing): string | null => {
+  const p = userPoint(s);
+  return p ? fmtKm(haversineKm(p, { lat: l.lat, lng: l.lng })) : null;
+};
 
 /** A listing is reserved once its owner has accepted someone's request. */
 export const isReserved = (s: State, listingId: string): boolean =>
@@ -214,13 +229,19 @@ export function browseListings(s: State): Listing[] {
     (l) => !l.taken && !isReserved(s, l.id) && !isDelisted(s, l.id) && l.ownerId !== s.currentUserId && !isBlocked(s, l.ownerId)
   );
   if (s.activeMode === 'city') list = list.filter((l) => l.cityId === s.activeCityId);
-  list = list.filter((l) => distKm(s, l) <= s.radius);
+  // radius only makes sense from a live GPS location; a city alone has no precise origin
+  const gps = s.activeMode === 'gps' && s.userLoc ? s.userLoc : null;
+  if (gps) list = list.filter((l) => haversineKm(gps, { lat: l.lat, lng: l.lng }) <= s.radius);
   if (s.catFilter) list = list.filter((l) => l.cat === s.catFilter);
   const q = s.q.trim().toLowerCase();
   if (q) list = list.filter((l) => `${l.title} ${l.blurb} ${l.cat}`.toLowerCase().includes(q));
   list = list.slice();
-  if (s.sortMode === 'Nearest') list.sort((a, b) => distKm(s, a) - distKm(s, b));
-  else list.sort((a, b) => b.createdAt - a.createdAt);
+  const sortPoint = userPoint(s);
+  if (sortPoint && s.sortMode === 'Nearest') {
+    list.sort((a, b) => haversineKm(sortPoint, { lat: a.lat, lng: a.lng }) - haversineKm(sortPoint, { lat: b.lat, lng: b.lng }));
+  } else {
+    list.sort((a, b) => b.createdAt - a.createdAt);
+  }
   return list;
 }
 
@@ -1115,6 +1136,12 @@ export function PassProvider({ children }: { children: ReactNode }) {
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         const saved = raw ? (JSON.parse(raw) as Partial<State>) : {};
+        // sync seed listings' photos with the current seed (clears any old stock URLs);
+        // user-posted listings keep their own uploaded photos
+        if (saved.listings) {
+          const seedById = new Map(SEED_LISTINGS.map((l) => [l.id, l]));
+          saved.listings = saved.listings.map((l) => (seedById.has(l.id) ? { ...l, photos: seedById.get(l.id)!.photos } : l));
+        }
         if (alive) setS((prev) => ({ ...prev, ...saved, hydrated: true }));
       } catch {
         if (alive) setS((prev) => ({ ...prev, hydrated: true }));

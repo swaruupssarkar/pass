@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { Icon, type IconName } from '@/pass/icon';
-import { CITIES, me, myListings, userName, userRating, usePass, useT } from '@/pass/store';
+import { CITIES, me, myListings, reviewsFor, userName, userRating, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, BottomNav, Btn, Screen, shadow, VerifiedBadge } from '@/pass/ui';
 import type { UserId } from '@/pass/data';
@@ -26,10 +26,12 @@ export default function Profile() {
   const user = me(s);
   const mine = myListings(s);
   const givenCount = mine.filter((l) => l.taken).length;
+  const receivedCount = s.listings.filter((l) => l.takenBy === s.currentUserId).length;
   const cityName = CITIES.find((c) => c.id === user.cityId)?.name ?? CITIES[0].name;
   const dp = s.dp[s.currentUserId];
   const name = userName(s, s.currentUserId);
   const rating = userRating(s, s.currentUserId);
+  const reviewCount = reviewsFor(s, s.currentUserId).length;
 
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(name);
@@ -85,7 +87,7 @@ export default function Profile() {
               )}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 }}>
                 <Icon name="star" size={12.5} color={C.star} />
-                <Text style={{ fontSize: 12.5, color: C.muted }}>{rating != null ? rating : tr('common.new')} · {cityName} · {tr('profile.verified')}</Text>
+                <Text style={{ fontSize: 12.5, color: C.muted }}>{rating != null ? rating : tr('common.new')}{reviewCount > 0 ? ` · ${tr('common.reviewsN', { n: reviewCount })}` : ''} · {cityName} · {tr('profile.verified')}</Text>
               </View>
             </View>
           </View>
@@ -95,10 +97,15 @@ export default function Profile() {
               <Text style={{ fontSize: 12, color: C.muted }}>{tr('profile.given')}</Text>
             </Pressable>
             <View style={{ width: 1, backgroundColor: C.line, marginVertical: 2 }} />
-            <View style={{ flex: 1, alignItems: 'center', gap: 3 }}>
+            <Pressable onPress={() => router.push('/saved')} style={{ flex: 1, alignItems: 'center', gap: 3 }}>
+              <Text style={{ fontSize: 25, fontWeight: '800', color: C.ink }}>{receivedCount}</Text>
+              <Text style={{ fontSize: 12, color: C.muted }}>{tr('profile.received')}</Text>
+            </Pressable>
+            <View style={{ width: 1, backgroundColor: C.line, marginVertical: 2 }} />
+            <Pressable onPress={() => router.push('/manage')} style={{ flex: 1, alignItems: 'center', gap: 3 }}>
               <Text style={{ fontSize: 25, fontWeight: '800', color: C.ink }}>{mine.length}</Text>
               <Text style={{ fontSize: 12, color: C.muted }}>{tr('profile.listings')}</Text>
-            </View>
+            </Pressable>
           </View>
         </View>
 

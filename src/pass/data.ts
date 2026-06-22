@@ -15,7 +15,7 @@ export type User = {
   since: string;
 };
 
-export type City = { id: string; name: string; initial: string; lat: number; lng: number };
+export type City = { id: string; name: string; initial: string; lat: number; lng: number; landmark: string; img: string };
 
 export type Listing = {
   id: string;
@@ -82,11 +82,11 @@ export type Notification = {
 // ---- cities ----
 
 export const CITIES: City[] = [
-  { id: 'kol', name: 'Kolkata', initial: 'K', lat: 22.5726, lng: 88.3639 },
-  { id: 'ban', name: 'Bangalore', initial: 'B', lat: 12.9716, lng: 77.5946 },
-  { id: 'mum', name: 'Mumbai', initial: 'M', lat: 19.076, lng: 72.8777 },
-  { id: 'pun', name: 'Pune', initial: 'P', lat: 18.5204, lng: 73.8567 },
-  { id: 'che', name: 'Chennai', initial: 'C', lat: 13.0827, lng: 80.2707 },
+  { id: 'kol', name: 'Kolkata', initial: 'K', lat: 22.5726, lng: 88.3639, landmark: 'Victoria Memorial', img: 'https://loremflickr.com/600/400/victoria,memorial,kolkata?lock=21' },
+  { id: 'ban', name: 'Bangalore', initial: 'B', lat: 12.9716, lng: 77.5946, landmark: 'Vidhana Soudha', img: 'https://loremflickr.com/600/400/vidhana,soudha,bengaluru?lock=22' },
+  { id: 'mum', name: 'Mumbai', initial: 'M', lat: 19.076, lng: 72.8777, landmark: 'Gateway of India', img: 'https://loremflickr.com/600/400/gateway,of,india,mumbai?lock=23' },
+  { id: 'pun', name: 'Pune', initial: 'P', lat: 18.5204, lng: 73.8567, landmark: 'Shaniwar Wada', img: 'https://loremflickr.com/600/400/shaniwar,wada,pune?lock=24' },
+  { id: 'che', name: 'Chennai', initial: 'C', lat: 13.0827, lng: 80.2707, landmark: 'Marina Beach', img: 'https://loremflickr.com/600/400/marina,beach,chennai?lock=25' },
 ];
 
 export const cityById = (id: string): City => CITIES.find((c) => c.id === id) ?? CITIES[0];
@@ -129,7 +129,31 @@ export const OTHER_USER: Record<UserId, UserId> = { u1: 'u2', u2: 'u1' };
 const T = ['#E5D9C9', '#D9E0DC', '#E6DCEA', '#E3DBC8', '#DEDCD2', '#E7DAC6', '#DCE6E2', '#EFE7DC'];
 const BASE = 1_750_000_000_000;
 
-export const SEED_LISTINGS: Listing[] = [
+// real, relevant product photos (Pexels CDN — stable, no API key). 2 per item.
+const PEXELS = (id: number) =>
+  `https://images.pexels.com/photos/${id}/pexels-photo-${id}.jpeg?auto=compress&cs=tinysrgb&w=1000`;
+const PH_PHOTOS: Record<string, number[]> = {
+  sofa: [1571468, 3614086],
+  books: [185764, 5009158],
+  lamp: [2876787, 1907784],
+  fridge: [2343467, 6835104],
+  chairs: [3968056, 8113036],
+  crib: [2253894, 5217121],
+  microwave: [9462228],
+  'study table': [21325131, 928804],
+  'office chair': [1957477, 8546651],
+  'table lamp': [4577650, 189333],
+  tricycle: [13455394, 1605943],
+  cookware: [4007057, 12168340],
+  monitor: [2565919, 7862505],
+  jackets: [6500181, 10322552],
+  bookshelf: [3646172, 2943603],
+  mirror: [2442904, 298857],
+  textbooks: [185764, 5009158],
+};
+const seedPhotos = (ph: string): string[] => (PH_PHOTOS[ph] ?? []).map(PEXELS);
+
+const BASE_LISTINGS: Listing[] = [
   // Riya (u1) — Kolkata
   { id: 'l1', ownerId: 'u1', title: '3-seater fabric sofa', blurb: 'Gently used · grey fabric', cat: 'Furniture', cond: 'Good', desc: 'Comfortable grey 3-seater, minor wear on one arm. Pickup from ground floor.', cityId: 'kol', lat: 22.5802, lng: 88.4094, address: 'Salt Lake, Sector 2, Kolkata', area: 'Salt Lake', tint: T[0], ph: 'sofa', createdAt: BASE - 1 * 3_600_000, taken: false },
   { id: 'l2', ownerId: 'u1', title: 'Box of novels (~30)', blurb: 'Mixed fiction · whole box', cat: 'Books', cond: 'Good', desc: 'Mostly paperback, a few hardcovers. Take the whole box.', cityId: 'kol', lat: 22.5641, lng: 88.3548, address: 'Jadavpur, Kolkata', area: 'Jadavpur', tint: T[3], ph: 'books', createdAt: BASE - 5 * 3_600_000, taken: false },
@@ -157,6 +181,13 @@ export const SEED_LISTINGS: Listing[] = [
   { id: 'l16', ownerId: 'u2', title: 'Wall mirror', blurb: 'Framed · large', cat: 'Home & Decor', cond: 'Like new', desc: 'Large framed wall mirror, no cracks. Pickup with care.', cityId: 'kol', lat: 22.576, lng: 88.318, address: 'Howrah, Kolkata', area: 'Howrah', tint: T[5], ph: 'mirror', createdAt: BASE - 18 * 3_600_000, taken: false },
   { id: 'l17', ownerId: 'u2', title: 'Textbooks bundle', blurb: 'Class 11–12 · science', cat: 'Books', cond: 'Good', desc: 'Science textbooks for class 11–12. Take the whole bundle.', cityId: 'kol', lat: 22.463, lng: 88.392, address: 'Garia, Kolkata', area: 'Garia', tint: T[6], ph: 'textbooks', createdAt: BASE - 19 * 3_600_000, taken: false },
 ];
+
+// attach 2 real photos to each seed listing; the branded icon placeholder remains
+// the fallback for anything without photos (e.g. user posts with no upload).
+export const SEED_LISTINGS: Listing[] = BASE_LISTINGS.map((l) => {
+  const photos = seedPhotos(l.ph);
+  return photos.length ? { ...l, photos } : l;
+});
 
 // ---- onboarding + misc copy ----
 

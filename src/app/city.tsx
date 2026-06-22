@@ -4,7 +4,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Icon } from '@/pass/icon';
 import { CITIES, usePass, useT } from '@/pass/store';
 import { C } from '@/pass/theme';
-import { Avatar, Header, Screen, t } from '@/pass/ui';
+import { Header, PhotoTile, Screen, t } from '@/pass/ui';
 
 export default function City() {
   const router = useRouter();
@@ -76,12 +76,18 @@ export default function City() {
                   borderWidth: 2,
                   borderColor: sel ? C.accent : 'transparent',
                   backgroundColor: sel ? C.accentSoft : C.surface,
-                  padding: 13,
+                  padding: 11,
                   borderRadius: 18,
                   borderCurve: 'continuous',
                 }}>
-                <Avatar name={c.name} />
-                <Text style={{ flex: 1, fontSize: 16, fontWeight: '700', color: C.ink }}>{c.name}</Text>
+                <PhotoTile tint={C.bg} uri={c.img} gap={12} style={{ width: 58, height: 58, borderRadius: 14 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: C.ink }}>{c.name}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}>
+                    <Icon name="pin" size={12} color={C.muted} />
+                    <Text style={{ fontSize: 12.5, color: C.muted }} numberOfLines={1}>{c.landmark}</Text>
+                  </View>
+                </View>
                 <View
                   style={{
                     width: 22,

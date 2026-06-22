@@ -58,7 +58,17 @@ export type IconName =
   | 'celebrate'
   | 'clipboard'
   | 'trash'
-  | 'image';
+  | 'image'
+  // categories
+  | 'cat-furniture'
+  | 'cat-appliances'
+  | 'cat-electronics'
+  | 'cat-baby'
+  | 'cat-books'
+  | 'cat-kitchen'
+  | 'cat-clothes'
+  | 'cat-decor'
+  | 'cat-other';
 
 const MAP: Record<IconName, Glyph> = {
   home: 'home',
@@ -107,7 +117,29 @@ const MAP: Record<IconName, Glyph> = {
   clipboard: 'reader-outline',
   trash: 'trash-outline',
   image: 'image-outline',
+  'cat-furniture': 'bed-outline',
+  'cat-appliances': 'snow-outline',
+  'cat-electronics': 'laptop-outline',
+  'cat-baby': 'balloon-outline',
+  'cat-books': 'book-outline',
+  'cat-kitchen': 'restaurant-outline',
+  'cat-clothes': 'shirt-outline',
+  'cat-decor': 'color-palette-outline',
+  'cat-other': 'cube-outline',
 };
+
+const CAT_ICON: Record<string, IconName> = {
+  Furniture: 'cat-furniture',
+  Appliances: 'cat-appliances',
+  Electronics: 'cat-electronics',
+  'Baby & Kids': 'cat-baby',
+  Books: 'cat-books',
+  Kitchen: 'cat-kitchen',
+  Clothes: 'cat-clothes',
+  'Home & Decor': 'cat-decor',
+  Other: 'cat-other',
+};
+export const catIcon = (cat: string): IconName => CAT_ICON[cat] ?? 'cat-other';
 
 export function Icon({
   name,

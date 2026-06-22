@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/pass/icon';
 import { fmtAgo, fmtDate, myListings, requestsFor, USERS, usePass, useT } from '@/pass/store';
@@ -12,6 +13,7 @@ export default function Manage() {
   const router = useRouter();
   const tr = useT();
   const { s, patch, startPost, startEdit, openTakenPicker, confirmTaken, deleteListing, acceptRequest, declineRequest, openCancelReason, showConfirm, openListing, viewPerson } = usePass();
+  const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<'live' | 'given'>('live');
   const list = myListings(s);
   const live = list.filter((l) => !l.taken);
@@ -166,34 +168,37 @@ export default function Manage() {
         </ScrollView>
       )}
 
-      {/* taken picker */}
-      <Modal visible={s.takenPickerId !== null} transparent animationType="slide" onRequestClose={() => patch({ takenPickerId: null })}>
-        <Pressable onPress={() => patch({ takenPickerId: null })} style={{ flex: 1, backgroundColor: 'rgba(17,17,17,0.35)' }} />
-        <View style={{ backgroundColor: C.surface, borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 22, paddingTop: 8 }}>
-          <View style={{ width: 44, height: 5, borderRadius: 3, backgroundColor: C.line, alignSelf: 'center', marginBottom: 16 }} />
-          <Text style={t.h3}>{tr('manage.whoPicked')}</Text>
+      {/* taken picker — in-screen overlay so the rounded corners sit on the dim layer
+          and the sheet fills through the bottom gesture area */}
+      {s.takenPickerId !== null ? (
+        <View style={StyleSheet.absoluteFill}>
+          <Pressable onPress={() => patch({ takenPickerId: null })} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(17,17,17,0.45)' }]} />
+          <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: C.surface, borderTopLeftRadius: 26, borderTopRightRadius: 26, borderCurve: 'continuous', padding: 22, paddingTop: 8, paddingBottom: insets.bottom + 22 }}>
+            <View style={{ width: 44, height: 5, borderRadius: 3, backgroundColor: C.line, alignSelf: 'center', marginBottom: 16 }} />
+            <Text style={t.h3}>{tr('manage.whoPicked')}</Text>
 
-          {picker.length === 0 ? (
-            <Text style={[t.small, { marginTop: 14 }]}>{tr('manage.noRequestsYet')}</Text>
-          ) : (
-            <View style={{ gap: 10, marginTop: 16 }}>
-              {picker.map(({ request, user }) => (
-                <View key={request.id} style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start', borderWidth: 1, borderColor: C.line, borderRadius: 15, padding: 12 }}>
-                  <Avatar name={user.name} uri={s.dp[request.fromUserId]} size={42} color={C.ink} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: C.ink }}>{user.name}</Text>
-                    <Text style={{ fontSize: 12.5, color: C.muted, marginTop: 4, lineHeight: 18 }}>{request.note}</Text>
-                    <Text style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{tr('manage.requestedLine', { ago: fmtAgo(request.createdAt), date: fmtDate(request.createdAt) })}</Text>
+            {picker.length === 0 ? (
+              <Text style={[t.small, { marginTop: 14 }]}>{tr('manage.noRequestsYet')}</Text>
+            ) : (
+              <ScrollView style={{ maxHeight: 360, marginTop: 16 }} contentContainerStyle={{ gap: 10 }} showsVerticalScrollIndicator={false}>
+                {picker.map(({ request, user }) => (
+                  <View key={request.id} style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start', borderWidth: 1, borderColor: C.line, borderRadius: 15, padding: 12 }}>
+                    <Avatar name={user.name} uri={s.dp[request.fromUserId]} size={42} color={C.ink} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: C.ink }}>{user.name}</Text>
+                      <Text style={{ fontSize: 12.5, color: C.muted, marginTop: 4, lineHeight: 18 }}>{request.note}</Text>
+                      <Text style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{tr('manage.requestedLine', { ago: fmtAgo(request.createdAt), date: fmtDate(request.createdAt) })}</Text>
+                    </View>
+                    <Btn label={tr('manage.choose')} onPress={() => confirmTaken(s.takenPickerId!, request.fromUserId)} style={{ paddingVertical: 9, paddingHorizontal: 16 }} textStyle={{ fontSize: 12.5 }} />
                   </View>
-                  <Btn label={tr('manage.choose')} onPress={() => confirmTaken(s.takenPickerId!, request.fromUserId)} style={{ paddingVertical: 9, paddingHorizontal: 16 }} textStyle={{ fontSize: 12.5 }} />
-                </View>
-              ))}
-            </View>
-          )}
+                ))}
+              </ScrollView>
+            )}
 
-          <Btn label={tr('common.cancel')} variant="ghost" onPress={() => patch({ takenPickerId: null })} block style={{ marginTop: 18 }} />
+            <Btn label={tr('common.cancel')} variant="ghost" onPress={() => patch({ takenPickerId: null })} block style={{ marginTop: 18 }} />
+          </View>
         </View>
-      </Modal>
+      ) : null}
     </Screen>
   );
 }

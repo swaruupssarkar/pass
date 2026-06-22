@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Keyboard, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Icon } from '@/pass/icon';
+import { catIcon, Icon } from '@/pass/icon';
 import {
   activeLocationLabel,
   browseListings,
@@ -133,12 +133,9 @@ export default function Feed() {
             const sel = s.catFilter === c;
             return (
               <Pressable key={c} onPress={() => patch({ catFilter: sel ? null : c, q: '' })} style={{ alignItems: 'center', gap: 8, width: 72 }}>
-                <PhotoTile
-                  tint={TINTS[i % 9]}
-                  caption={c.toLowerCase()}
-                  gap={16}
-                  style={{ width: 72, height: 72, borderRadius: 20, borderCurve: 'continuous', borderWidth: sel ? 2 : 0, borderColor: C.accent, ...shadow(8, 18, 0.45) }}
-                />
+                <View style={{ width: 72, height: 72, borderRadius: 20, borderCurve: 'continuous', backgroundColor: sel ? C.accentSoft : C.surface, borderWidth: 1.5, borderColor: sel ? C.accent : C.line, alignItems: 'center', justifyContent: 'center', ...shadow(8, 18, 0.4) }}>
+                  <Icon name={catIcon(c)} size={30} color={C.accent} />
+                </View>
                 <Text numberOfLines={2} style={{ fontSize: 11, fontWeight: sel ? '800' : '600', color: sel ? C.accent : C.ink, textAlign: 'center' }}>{tr('cat.' + c)}</Text>
               </Pressable>
             );
@@ -170,12 +167,15 @@ export default function Feed() {
           <View style={{ paddingHorizontal: 18, paddingTop: 12, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
             {items.map((it) => {
               const saved = !!s.saved[it.id];
+              const d = distLabel(s, it);
               return (
                 <Pressable key={it.id} onPress={() => open(it.id)} style={{ width: '48%', backgroundColor: C.surface, borderRadius: radius.xl, borderCurve: 'continuous', padding: 9, marginBottom: 14, ...shadow(10, 26, 0.4) }}>
-                  <PhotoTile tint={it.tint} caption={it.ph} uri={it.photos?.[0]} gap={20} style={{ aspectRatio: 1, borderRadius: radius.md }}>
-                    <View style={{ position: 'absolute', top: 9, left: 9, backgroundColor: 'rgba(28,24,22,0.62)', borderRadius: radius.pill, paddingVertical: 4, paddingHorizontal: 10 }}>
-                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{distLabel(s, it)}</Text>
-                    </View>
+                  <PhotoTile tint={it.tint} uri={it.photos?.[0]} icon={catIcon(it.cat)} iconSize={50} gap={20} style={{ aspectRatio: 1, borderRadius: radius.md }}>
+                    {d ? (
+                      <View style={{ position: 'absolute', top: 9, left: 9, backgroundColor: 'rgba(28,24,22,0.62)', borderRadius: radius.pill, paddingVertical: 4, paddingHorizontal: 10 }}>
+                        <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{d}</Text>
+                      </View>
+                    ) : null}
                     <Pressable onPress={() => toggleSave(it.id)} style={{ position: 'absolute', top: 7, right: 7, width: 32, height: 32, borderRadius: 16, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px -3px rgba(0,0,0,0.3)' }}>
                       <Icon name={saved ? 'heart' : 'heart-outline'} size={16} color={C.accent} />
                     </Pressable>

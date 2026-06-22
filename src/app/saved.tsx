@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
-import { Icon } from '@/pass/icon';
+import { catIcon, Icon } from '@/pass/icon';
 import { distLabel, fmtAgo, fmtDate, myRequests, savedListings, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { BottomNav, Btn, FreeTag, PhotoTile, Screen, shadow, t } from '@/pass/ui';
@@ -66,10 +66,10 @@ export default function Saved() {
           ) : (
             saved.map((it) => (
               <Pressable key={it.id} onPress={() => open(it.id)} style={{ flexDirection: 'row', gap: 13, alignItems: 'center', backgroundColor: C.surface, borderRadius: radius.xl, borderCurve: 'continuous', padding: 11, ...shadow(8, 20, 0.4) }}>
-                <PhotoTile tint={it.tint} uri={it.photos?.[0]} style={{ width: 76, height: 76, borderRadius: radius.md }} />
+                <PhotoTile tint={it.tint} uri={it.photos?.[0]} icon={catIcon(it.cat)} iconSize={32} style={{ width: 76, height: 76, borderRadius: radius.md }} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 15, fontWeight: '700', color: C.ink }} numberOfLines={1}>{it.title}</Text>
-                  <Text style={[t.small, { marginTop: 4 }]} numberOfLines={1}>{distLabel(s, it)} · {it.area}</Text>
+                  <Text style={[t.small, { marginTop: 4 }]} numberOfLines={1}>{distLabel(s, it) ? `${distLabel(s, it)} · ` : ''}{it.area}</Text>
                   <FreeTag small style={{ marginTop: 7, alignSelf: 'flex-start' }} />
                 </View>
                 <Pressable onPress={() => toggleSave(it.id)} hitSlop={8}>
@@ -93,27 +93,26 @@ export default function Saved() {
             return (
             <View key={request.id} style={{ backgroundColor: C.surface, borderRadius: radius.xl, borderCurve: 'continuous', padding: 11, ...shadow(8, 20, 0.4) }}>
               <Pressable disabled={!listing} onPress={() => listing && open(listing.id)} style={{ flexDirection: 'row', gap: 13, alignItems: 'center' }}>
-                <PhotoTile tint={listing?.tint ?? C.bg} uri={listing?.photos?.[0]} style={{ width: 64, height: 64, borderRadius: radius.md }} />
+                <PhotoTile tint={listing?.tint ?? C.bg} uri={listing?.photos?.[0]} icon={listing ? catIcon(listing.cat) : undefined} iconSize={30} style={{ width: 64, height: 64, borderRadius: radius.md }} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 15, fontWeight: '700', color: C.ink }} numberOfLines={1}>{listing ? listing.title : tr('saved.listingRemoved')}</Text>
                   <Text style={[t.small, { marginTop: 4 }]} numberOfLines={1}>{request.note}</Text>
                   <Text style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{tr('saved.requestedLine', { ago: fmtAgo(request.createdAt), date: fmtDate(request.createdAt) })}</Text>
                 </View>
-                {taken ? (
-                  <View style={{ backgroundColor: gotByMe ? '#E4F0E9' : C.bg, borderRadius: radius.pill, paddingVertical: 5, paddingHorizontal: 11 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: gotByMe ? C.free : C.muted }}>{gotByMe ? tr('saved.gotBadge') : tr('saved.givenBadge')}</Text>
-                  </View>
-                ) : (
-                  <StatusBadge status={request.status} tr={tr} />
-                )}
+                {taken ? null : <StatusBadge status={request.status} tr={tr} />}
               </Pressable>
               {taken ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 11 }}>
-                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                    <Icon name={gotByMe ? 'check-circle' : 'gift'} size={16} color={gotByMe ? C.free : C.muted} />
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: gotByMe ? C.free : C.muted }} numberOfLines={1}>{gotByMe ? tr('saved.received') : tr('saved.givenOther')}</Text>
+                <View style={{ marginTop: 11, flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: gotByMe ? '#E8F3EC' : C.bg, borderRadius: radius.lg, borderCurve: 'continuous', paddingVertical: 10, paddingHorizontal: 12 }}>
+                  <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: gotByMe ? C.free : C.muted, alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon name={gotByMe ? 'check' : 'gift'} size={19} color="#fff" />
                   </View>
-                  <Btn icon="trash" label={tr('common.remove')} variant="outline" onPress={() => removeRequest(request.id)} style={{ paddingVertical: 11 }} textStyle={{ fontSize: 14, color: C.muted }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: gotByMe ? C.free : C.ink }} numberOfLines={1}>{gotByMe ? tr('saved.received') : tr('saved.givenOther')}</Text>
+                    <Text style={{ fontSize: 11.5, color: C.muted, marginTop: 1 }} numberOfLines={1}>{tr('saved.removeHint')}</Text>
+                  </View>
+                  <Pressable onPress={() => removeRequest(request.id)} hitSlop={8} style={{ width: 38, height: 38, borderRadius: 19, borderWidth: 1.5, borderColor: gotByMe ? 'rgba(46,125,50,0.25)' : C.line, backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon name="trash" size={16} color={C.muted} />
+                  </Pressable>
                 </View>
               ) : request.status === 'accepted' && listing ? (
                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 11 }}>

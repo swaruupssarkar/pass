@@ -1,14 +1,16 @@
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
+import { Linking, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { WebView } from 'react-native-webview';
 
-import { Icon } from '@/pass/icon';
-import { activeListing, distLabel, fmtAgo, fmtDate, myRequestFor, userName, userRating, USERS, usePass, useT } from '@/pass/store';
+import { fmtKm, haversineKm, type Coords, type Listing } from '@/pass/data';
+import { catIcon, Icon } from '@/pass/icon';
+import { activeListing, distLabel, fmtAgo, fmtDate, myRequestFor, reviewsFor, userName, userPoint, userRating, USERS, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Avatar, Btn, Hatch, Header, SafetyNote, Screen, VerifiedBadge, t } from '@/pass/ui';
+import { Avatar, Btn, Header, SafetyNote, Screen, VerifiedBadge, t } from '@/pass/ui';
 
 export default function Detail() {
   const router = useRouter();
@@ -36,13 +38,15 @@ export default function Detail() {
   const owner = USERS[item.ownerId];
   const ownerName = userName(s, item.ownerId);
   const ownerRating = userRating(s, item.ownerId);
+  const ownerReviews = reviewsFor(s, item.ownerId).length;
   const mine = item.ownerId === s.currentUserId;
   const myReq = myRequestFor(s, item.id);
   const saved = !!s.saved[item.id];
   const photos = item.photos ?? [];
-  const count = photos.length > 0 ? photos.length : 4;
+  const count = photos.length > 0 ? photos.length : 1;
   const gal = Math.min(s.galleryIdx, count - 1);
   const sheetTop = height * (s.sheetExpanded ? 0.07 : 0.46);
+  const galleryH = height * 0.46; // image band sits above the (collapsed) sheet
 
   const step = (dir: number) => patch({ galleryIdx: (gal + dir + count) % count });
   const viewGiver = () => {
@@ -85,18 +89,13 @@ export default function Detail() {
     <View style={{ flex: 1, backgroundColor: item.tint }}>
       <StatusBar style="dark" />
       {/* gallery */}
-      <View style={{ flex: 1 }}>
+      <View style={{ height: galleryH }}>
         {photos.length > 0 ? (
-          <Image source={{ uri: photos[gal] }} style={StyleAbs} contentFit="cover" transition={150} />
+          <Image source={{ uri: photos[gal] }} style={StyleAbs} contentFit="contain" transition={150} />
         ) : (
-          <>
-            <Hatch gap={32} />
-            <View style={StyleAbs}>
-              <Text style={{ flex: 1, textAlign: 'center', textAlignVertical: 'center', fontFamily: 'monospace', fontSize: 13, color: C.ink, opacity: 0.42 }}>
-                {item.ph} {gal + 1}
-              </Text>
-            </View>
-          </>
+          <View style={[StyleAbs, { alignItems: 'center', justifyContent: 'center' }]}>
+            <Icon name={catIcon(item.cat)} size={88} color={C.accent} />
+          </View>
         )}
         {/* tap zones */}
         <Pressable onPress={() => step(-1)} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '35%' }} />
@@ -137,8 +136,8 @@ export default function Detail() {
             </View>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 11 }}>
-            <Icon name="pin" size={15} color={C.muted} />
-            <Text style={{ fontSize: 14.5, fontWeight: '600', color: C.muted }}>{distLabel(s, item)} · {item.area}</Text>
+            <Icon name="pin" size={15} color={C.accent} />
+            <Text style={{ fontSize: 14.5, fontWeight: '700', color: C.accent }}>{distLabel(s, item) ? `${distLabel(s, item)} · ` : ''}{item.area}</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 7 }}>
             <Icon name="time" size={15} color={C.muted} />
@@ -165,13 +164,15 @@ export default function Detail() {
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}>
                 <Icon name="star" size={12.5} color={C.star} />
-                <Text style={{ fontSize: 12.5, color: C.muted }}>{ownerRating != null ? ownerRating : tr('common.new')} · {tr('giver.memberSince', { year: owner.since })}</Text>
+                <Text style={{ fontSize: 12.5, color: C.muted }}>{ownerRating != null ? ownerRating : tr('common.new')}{ownerReviews > 0 ? ` · ${tr('common.reviewsN', { n: ownerReviews })}` : ''} · {tr('giver.memberSince', { year: owner.since })}</Text>
               </View>
             </View>
             {!mine && <Text style={{ color: C.accent, fontSize: 14, fontWeight: '800' }}>{tr('detail.view')}</Text>}
           </Pressable>
 
           <Text style={{ fontSize: 14.5, color: C.ink, opacity: 0.82, lineHeight: 23, marginTop: 16 }}>{item.desc}</Text>
+
+          <PickupMap item={item} />
 
           {item.taken ? (
             <View style={{ marginTop: 18, backgroundColor: C.bg, borderRadius: radius.lg, paddingVertical: 16, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 }}>
@@ -183,7 +184,23 @@ export default function Detail() {
           <View style={{ marginTop: 18 }}>
             <SafetyNote text={tr('detail.safetyNote')} />
           </View>
-          <Pressable onPress={() => router.push('/report')} style={{ alignSelf: 'center', marginTop: 12 }}>
+          <Pressable
+            onPress={() => router.push('/report')}
+            style={({ pressed }) => ({
+              alignSelf: 'center',
+              marginTop: 14,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 7,
+              paddingVertical: 9,
+              paddingHorizontal: 16,
+              borderRadius: radius.pill,
+              borderWidth: 1,
+              borderColor: C.line,
+              backgroundColor: C.bg,
+              opacity: pressed ? 0.6 : 1,
+            })}>
+            <Icon name="flag" size={13} color={C.muted} />
             <Text style={{ fontSize: 12.5, fontWeight: '700', color: C.muted }}>{tr('detail.report')}</Text>
           </Pressable>
         </ScrollView>
@@ -207,6 +224,72 @@ export default function Detail() {
           </View>
         ) : null}
       </View>
+    </View>
+  );
+}
+
+// read-only OSM/Leaflet preview: product pin, plus your pin + a line + auto-fit when known
+const buildMapHtml = (plat: number, plng: number, me: Coords | null, accent: string) => `<!DOCTYPE html>
+<html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  html, body, #map { height: 100%; margin: 0; padding: 0; background: #e8eef2; }
+  .pin { width: 20px; height: 20px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+  .me { background: #2563EB; } .it { background: ${accent}; }
+  .leaflet-control-attribution { display: none; }
+</style></head><body><div id="map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  var map = L.map('map', { zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false, touchZoom: false, boxZoom: false, keyboard: false, tap: false });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+  function dot(c) { return L.divIcon({ className: '', html: '<div class="pin ' + c + '"></div>', iconSize: [20, 20], iconAnchor: [10, 10] }); }
+  L.marker([${plat}, ${plng}], { icon: dot('it') }).addTo(map);
+  ${me
+    ? `L.marker([${me.lat}, ${me.lng}], { icon: dot('me') }).addTo(map);
+       L.polyline([[${me.lat}, ${me.lng}], [${plat}, ${plng}]], { color: '${accent}', weight: 3, dashArray: '6 6', opacity: 0.85 }).addTo(map);
+       map.fitBounds([[${me.lat}, ${me.lng}], [${plat}, ${plng}]], { padding: [40, 40] });`
+    : `map.setView([${plat}, ${plng}], 14);`}
+</script></body></html>`;
+
+function PickupMap({ item }: { item: Listing }) {
+  const tr = useT();
+  const { s, useCurrentLocation } = usePass();
+  const me = userPoint(s);
+  const dist = me ? fmtKm(haversineKm(me, { lat: item.lat, lng: item.lng })) : null;
+  const html = buildMapHtml(item.lat, item.lng, me, C.accent);
+
+  const openDirections = () => {
+    const dest = `${item.lat},${item.lng}`;
+    const url = me
+      ? `https://www.google.com/maps/dir/?api=1&origin=${me.lat},${me.lng}&destination=${dest}&travelmode=driving`
+      : `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`;
+    Linking.openURL(url);
+  };
+
+  return (
+    <View style={{ marginTop: 18 }}>
+      <Text style={{ fontSize: 13, fontWeight: '800', color: C.ink, marginBottom: 9 }}>{tr('detail.pickupLocation')}</Text>
+      {item.address ? (
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 11 }}>
+          <Icon name="pin" size={15} color={C.accent} />
+          <Text style={{ flex: 1, fontSize: 14, color: C.ink, lineHeight: 20 }}>{item.address}</Text>
+        </View>
+      ) : null}
+      <View style={{ height: 170, borderRadius: radius.lg, borderCurve: 'continuous', overflow: 'hidden', borderWidth: 1, borderColor: C.line }}>
+        <View style={StyleAbs} pointerEvents="none">
+          <WebView originWhitelist={['*']} source={{ html }} style={{ flex: 1, backgroundColor: C.bg }} scrollEnabled={false} />
+        </View>
+        <Pressable onPress={openDirections} style={[StyleAbs, { justifyContent: 'flex-end' }]}>
+          <View style={{ margin: 10, alignSelf: 'flex-start', backgroundColor: 'rgba(28,24,22,0.8)', borderRadius: radius.md, paddingVertical: 9, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Icon name="pin" size={14} color="#fff" />
+            <Text style={{ color: '#fff', fontSize: 12.5, fontWeight: '700' }}>{dist ? tr('detail.awayTap', { dist }) : tr('detail.tapOpenMaps')}</Text>
+          </View>
+        </Pressable>
+      </View>
+      {!me ? (
+        <Btn icon="pin" label={tr('detail.useMyLocation')} variant="outline" onPress={() => void useCurrentLocation()} block style={{ marginTop: 10, paddingVertical: 12 }} textStyle={{ fontSize: 13.5 }} />
+      ) : null}
     </View>
   );
 }
