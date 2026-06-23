@@ -66,7 +66,7 @@ export default function Categories() {
 
           {/* products */}
           {products.length === 0 ? (
-            <EmptyState compact icon="search" title={tr('categories.emptyCat', { cat: tr('cat.' + selCat) })} />
+            <EmptyState brand compact icon="search" title={tr('categories.emptyCat', { cat: tr('cat.' + selCat) })} />
           ) : (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 16 }}>
               {products.map((l) => (

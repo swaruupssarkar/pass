@@ -15,12 +15,16 @@ import {
 import { useSafeAreaInsets, type Edge } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
+  Extrapolation,
   FadeInDown,
+  interpolate,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
+
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import { Icon, type IconName } from '@/pass/icon';
 import { hasUnreadChats, usePass, userName, useT } from '@/pass/store';
@@ -428,6 +432,7 @@ export function EmptyState({
   ctaIcon,
   onCta,
   compact,
+  brand,
 }: {
   icon: IconName;
   title: string;
@@ -436,6 +441,8 @@ export function EmptyState({
   ctaIcon?: IconName;
   onCta?: () => void;
   compact?: boolean;
+  /** Use the branded heart→Daata-logo loop instead of the plain icon disc. */
+  brand?: boolean;
 }) {
   const float = useSharedValue(0);
   const pulse = useSharedValue(0);
@@ -451,15 +458,19 @@ export function EmptyState({
   const disc = compact ? 70 : 84;
   return (
     <View style={{ flex: 1, minHeight: compact ? 260 : 340, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36, paddingVertical: compact ? 40 : 50 }}>
-      <View style={{ width: disc + 36, height: disc + 36, alignItems: 'center', justifyContent: 'center' }}>
-        <Animated.View style={[{ position: 'absolute', width: disc, height: disc, borderRadius: disc / 2, backgroundColor: C.accent }, ringStyle]} />
-        <Animated.View style={[{ width: disc, height: disc, borderRadius: disc / 2, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }, iconStyle]}>
-          <Icon name={icon} size={compact ? 30 : 34} color={C.accent} />
-        </Animated.View>
-      </View>
-      <Animated.Text entering={FadeInDown.delay(80).springify()} style={[t.h3, { marginTop: 16, textAlign: 'center' }]}>{title}</Animated.Text>
+      {brand ? (
+        <DaataBrandHero size={compact ? 104 : 132} />
+      ) : (
+        <View style={{ width: disc + 36, height: disc + 36, alignItems: 'center', justifyContent: 'center' }}>
+          <Animated.View style={[{ position: 'absolute', width: disc, height: disc, borderRadius: disc / 2, backgroundColor: C.accent }, ringStyle]} />
+          <Animated.View style={[{ width: disc, height: disc, borderRadius: disc / 2, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }, iconStyle]}>
+            <Icon name={icon} size={compact ? 30 : 34} color={C.accent} />
+          </Animated.View>
+        </View>
+      )}
+      <Animated.Text entering={FadeInDown.delay(80).springify()} style={{ marginTop: 16, textAlign: 'center', fontSize: 15, fontWeight: '600', color: C.muted }}>{title}</Animated.Text>
       {body ? (
-        <Animated.Text entering={FadeInDown.delay(150)} style={[t.small, { marginTop: 8, textAlign: 'center', maxWidth: 290 }]}>{body}</Animated.Text>
+        <Animated.Text entering={FadeInDown.delay(150)} style={[t.small, { marginTop: 6, textAlign: 'center', maxWidth: 290, opacity: 0.85 }]}>{body}</Animated.Text>
       ) : null}
       {ctaLabel && onCta ? (
         <Animated.View entering={FadeInDown.delay(220)} style={{ marginTop: 18 }}>
@@ -468,6 +479,90 @@ export function EmptyState({
       ) : null}
     </View>
   );
+}
+
+// ---------- branded empty-state animation ----------
+// One 4s loop: a heart bounces in, pulses twice, cross-fades into the Daata
+// logo, three free items float up around it with a sparkle, the logo breathes,
+// then everything fades and the loop restarts. Soft easing throughout.
+
+const BRAND_ORANGE = '#FA6023';
+const CLAMP = Extrapolation.CLAMP;
+
+function DaataBrandHero({ size = 132 }: { size?: number }) {
+  const p = useSharedValue(0);
+  useEffect(() => {
+    p.value = withRepeat(withTiming(1, { duration: 4000, easing: Easing.inOut(Easing.quad) }), -1, false);
+  }, [p]);
+
+  // heart: bounce in (0–0.2), pulse twice (0.2–0.4), shrink+fade into logo (0.4–0.55)
+  const heart = useAnimatedStyle(() => ({
+    opacity: interpolate(p.value, [0, 0.06, 0.4, 0.55], [0, 1, 1, 0], CLAMP),
+    transform: [{ scale: interpolate(p.value, [0, 0.12, 0.2, 0.25, 0.3, 0.35, 0.4, 0.55], [0, 1.12, 1, 1.15, 1, 1.15, 1, 0.5], CLAMP) }],
+  }));
+  // logo: cross-fade in (0.42–0.55), breathe (0.75–0.88), fade out (0.88–1)
+  const logo = useAnimatedStyle(() => ({
+    opacity: interpolate(p.value, [0.42, 0.55, 0.88, 1], [0, 1, 1, 0], CLAMP),
+    transform: [{ scale: interpolate(p.value, [0.42, 0.55, 0.75, 0.815, 0.88], [0.6, 1, 1, 1.05, 1], CLAMP) }],
+  }));
+
+  const box = size * 1.9;
+  const r = size * 0.6;
+  const sparks = [0, 1, 2, 3, 4].map((i) => ({ x: Math.cos((i / 5) * 2 * Math.PI) * r, y: Math.sin((i / 5) * 2 * Math.PI) * r, start: 0.5 + i * 0.02 }));
+  const logoSize = size * 0.78;
+
+  return (
+    <View style={{ width: box, height: box, alignItems: 'center', justifyContent: 'center' }}>
+      {sparks.map((sp, i) => (
+        <Spark key={i} p={p} x={sp.x} y={sp.y} start={sp.start} />
+      ))}
+
+      <Animated.View style={[{ position: 'absolute' }, logo]}>
+        <Image source={require('../../assets/images/icon.png')} style={{ width: logoSize, height: logoSize, borderRadius: logoSize * 0.26 }} contentFit="contain" />
+      </Animated.View>
+
+      <Animated.View style={[{ position: 'absolute' }, heart]}>
+        <Icon name="heart" size={size * 0.5} color={BRAND_ORANGE} />
+      </Animated.View>
+
+      <FloatItem p={p} dx={-size * 0.66} y0={size * 0.04} y1={-size * 0.22} start={0.56}>
+        <MaterialCommunityIcons name="book-open-outline" size={size * 0.22} color={BRAND_ORANGE} />
+      </FloatItem>
+      <FloatItem p={p} dx={0} y0={-size * 0.36} y1={-size * 0.66} start={0.6}>
+        <MaterialCommunityIcons name="teddy-bear" size={size * 0.24} color={BRAND_ORANGE} />
+      </FloatItem>
+      <FloatItem p={p} dx={size * 0.66} y0={size * 0.04} y1={-size * 0.22} start={0.64}>
+        <MaterialCommunityIcons name="tshirt-crew-outline" size={size * 0.22} color={BRAND_ORANGE} />
+      </FloatItem>
+    </View>
+  );
+}
+
+// A free item that rises (y0→y1) out around the logo and fades, trailing a few
+// dotted breadcrumbs beneath it — so it reads as floating up, not stuck on the logo.
+function FloatItem({ p, dx, y0, y1, start, children }: { p: { value: number }; dx: number; y0: number; y1: number; start: number; children: React.ReactNode }) {
+  const st = useAnimatedStyle(() => ({
+    opacity: interpolate(p.value, [start, start + 0.07, start + 0.18, start + 0.26], [0, 1, 1, 0], CLAMP),
+    transform: [{ translateX: dx }, { translateY: interpolate(p.value, [start, start + 0.26], [y0, y1], CLAMP) }],
+  }));
+  return (
+    <Animated.View style={[{ position: 'absolute', alignItems: 'center' }, st]}>
+      {children}
+      <View style={{ position: 'absolute', top: '100%', alignItems: 'center', gap: 5, paddingTop: 6 }}>
+        {[0, 1, 2].map((i) => (
+          <View key={i} style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: BRAND_ORANGE, opacity: 0.4 - i * 0.11 }} />
+        ))}
+      </View>
+    </Animated.View>
+  );
+}
+
+function Spark({ p, x, y, start }: { p: { value: number }; x: number; y: number; start: number }) {
+  const st = useAnimatedStyle(() => ({
+    opacity: interpolate(p.value, [start, start + 0.06, start + 0.16], [0, 1, 0], CLAMP),
+    transform: [{ translateX: x }, { translateY: y }, { scale: interpolate(p.value, [start, start + 0.08, start + 0.16], [0.3, 1, 0.4], CLAMP) }],
+  }));
+  return <Animated.View style={[{ position: 'absolute', width: 6, height: 6, borderRadius: 3, backgroundColor: BRAND_ORANGE }, st]} />;
 }
 
 // ---------- review card ----------

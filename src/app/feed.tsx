@@ -156,6 +156,7 @@ export default function Feed() {
 
         {items.length === 0 ? (
           <EmptyState
+            brand
             icon="search"
             title={tr('feed.nothingIn', { loc })}
             body={tr('feed.nothingHint')}
