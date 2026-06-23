@@ -14,20 +14,17 @@ import {
   type Message,
   type Notification,
   type Review,
-  OTHER_USER,
   type Profile,
   type Request,
   REPORT_REASONS,
-  SEED_LISTINGS,
-  SEED_PROFILES,
   type UserId,
-  USERS,
 } from '@/pass/data';
 import { REPORT_DELIST_THRESHOLD, REPORT_EMAIL, REPORT_ENDPOINT } from '@/pass/config';
 import { supabase } from '@/pass/supabase';
+import { flushOutbox, initOutbox } from '@/pass/outbox';
 import {
-  addBlock, addSave, clearNotificationsRemote, deleteListingRemote, deleteNotificationRemote, deleteRequestRemote,
-  deleteThreadRemote, fetchListings, fetchProfiles, insertHandoff, insertMessage, insertRequest, insertReview,
+  addBlock, addSave, clearNotificationsRemote, deleteAccount as deleteAccountRemote, deleteListingRemote, deleteNotificationRemote, deleteRequestRemote,
+  deleteThreadRemote, fetchListings, fetchProfiles, fetchProfileStats, fetchReviewsFor, insertHandoff, insertMessage, insertRequest, insertReview,
   markNotificationsRead, pullUserData, removeBlock, removeSave, reportListingRemote, rowToListing, rowToMessage,
   rowToNotification, rowToRequest, setListingTaken, updateProfileRemote, updateRequestStatus, updateThreadRead,
   uploadImage, uploadListingPhotos, upsertListing, upsertNotifyPrefs, upsertThread, uuid,
@@ -45,7 +42,6 @@ export type Dialog = { title: string; message?: string; actions: DialogAction[] 
 
 export type NotifyPrefs = { near: boolean; chat: boolean; addr: { lat: number; lng: number; label: string } | null };
 const DEFAULT_NOTIFY: NotifyPrefs = { near: true, chat: true, addr: null };
-const NOTIFY_RADIUS_KM = 100;
 
 /** The report payload that gets emailed (see deliverReport). Nothing is stored. */
 export type ReportPayload = {
@@ -56,12 +52,12 @@ export type ReportPayload = {
   ts: number;
 };
 
-const STORAGE_KEY = 'pass.state.v4';
+const STORAGE_KEY = 'pass.state.v5';
 
 type State = {
   /** Supabase auth user id ('' when logged out). */
   currentUserId: UserId;
-  /** cache of user records (current user + everyone referenced); seeded from SEED_PROFILES. */
+  /** cache of user records (current user + everyone referenced), hydrated from Supabase. */
   profiles: Record<string, Profile>;
   /** false until the initial Supabase session check resolves (gates the splash). */
   authReady: boolean;
@@ -140,10 +136,10 @@ type State = {
 
 const INITIAL: State = {
   currentUserId: '',
-  profiles: { ...SEED_PROFILES },
+  profiles: {},
   authReady: false,
   lang: DEFAULT_LANG,
-  listings: SEED_LISTINGS.map((l) => ({ ...l })),
+  listings: [],
   requests: [],
   threads: {},
   threadListing: {},
@@ -154,8 +150,8 @@ const INITIAL: State = {
   reviews: [],
   handoffs: [],
   activeMode: 'city',
-  activeCityId: USERS.u1.cityId,
-  userCity: { u1: USERS.u1.cityId, u2: USERS.u2.cityId },
+  activeCityId: CITIES[0].id,
+  userCity: {},
   userLoc: null,
   userLocLabel: null,
   locStatus: 'undetermined',
@@ -177,7 +173,7 @@ const INITIAL: State = {
   postPhotos: [],
   postAddress: '',
   postCoords: null,
-  postCityId: USERS.u1.cityId,
+  postCityId: CITIES[0].id,
   editingId: null,
   draft: '',
   cancelTarget: null,
@@ -192,8 +188,8 @@ const INITIAL: State = {
   reportCounts: {},
   saved: {},
   blocked: {},
-  notify: { u1: { near: true, chat: true, addr: null }, u2: { near: true, chat: true, addr: null } },
-  dp: { u1: null, u2: null },
+  notify: {},
+  dp: {},
   names: {},
   onboarded: false,
   hydrated: false,
@@ -206,12 +202,11 @@ const INITIAL: State = {
 export const me = (s: State): Profile =>
   s.profiles[s.currentUserId] ?? { id: s.currentUserId, name: 'You', dp: null };
 // seed-only helper (two demo users); real auth has no fixed "other" user
-export const otherOf = (id: UserId): Profile =>
-  s_profile(SEED_PROFILES, OTHER_USER[id]) ?? { id: OTHER_USER[id] ?? '', name: 'Someone', dp: null };
-const s_profile = (m: Record<string, Profile>, id?: string) => (id ? m[id] : undefined);
-// resolve any user id to a Profile (cache → seed → safe fallback)
+// resolve any user id to a Profile (cache → safe fallback)
 export const profileOf = (s: State, id: UserId): Profile =>
-  s.profiles[id] ?? SEED_PROFILES[id] ?? { id, name: 'Someone', dp: null };
+  s.profiles[id] ?? { id, name: 'Someone', dp: null };
+// avatar URL for any user: current-user optimistic override → cached profile dp
+export const userDp = (s: State, id: UserId): string | null => s.dp[id] ?? profileOf(s, id).dp ?? null;
 
 export function nearestCity(c: Coords) {
   return CITIES.reduce((best, city) =>
@@ -241,7 +236,6 @@ export function userPoint(s: State): Coords | null {
   const addr = s.notify?.[s.currentUserId]?.addr;
   return addr ? { lat: addr.lat, lng: addr.lng } : null;
 }
-export const hasUserPoint = (s: State): boolean => userPoint(s) !== null;
 
 /** Distance label from the user's real point, or null when only a city is set. */
 export const distLabel = (s: State, l: Listing): string | null => {
@@ -322,9 +316,6 @@ export const incomingRequests = (
     .filter((r) => r.toUserId === s.currentUserId)
     .sort((a, b) => b.createdAt - a.createdAt)
     .map((r) => ({ request: r, user: profileOf(s, r.fromUserId), listing: listingById(s, r.listingId) }));
-
-export const incomingPendingCount = (s: State): number =>
-  s.requests.filter((r) => r.toUserId === s.currentUserId && r.status === 'pending').length;
 
 /** A pending request from `otherId` to the current user (shown inside their chat thread). */
 export const pendingIncomingFrom = (s: State, otherId: UserId): Request | null =>
@@ -443,7 +434,7 @@ export const handoffsTo = (s: State, userId: UserId): Handoff[] =>
 
 /** Display name for a user, honouring any self-set override. */
 export const userName = (s: State, id: UserId): string =>
-  s.names?.[id] ?? s.profiles[id]?.name ?? USERS[id]?.name ?? 'Someone';
+  s.names?.[id] ?? s.profiles[id]?.name ?? 'Someone';
 
 /** Real average rating computed from received reviews; null when none yet. */
 export function userRating(s: State, id: UserId): number | null {
@@ -456,9 +447,12 @@ export function userRating(s: State, id: UserId): number | null {
 export const reportCount = (s: State, listingId: string): number =>
   s.reportCounts?.[listingId] ?? 0;
 
-/** A listing is auto-delisted once it crosses the report threshold. */
-export const isDelisted = (s: State, listingId: string): boolean =>
-  reportCount(s, listingId) >= REPORT_DELIST_THRESHOLD;
+/** Delisted when the server flag is set (cross-device) or the local tally crosses
+ * the threshold (immediate feedback for the reporter before realtime lands). */
+export const isDelisted = (s: State, listingId: string): boolean => {
+  const l = s.listings.find((x) => x.id === listingId);
+  return !!l?.delisted || reportCount(s, listingId) >= REPORT_DELIST_THRESHOLD;
+};
 
 // ---- time format ----
 
@@ -538,6 +532,7 @@ type Store = {
   signInWithEmail: (email: string) => Promise<{ ok: boolean; error?: string }>;
   verifyOtp: (email: string, token: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
+  deleteAccount: () => Promise<{ ok: boolean; error?: string }>;
   // location
   setCity: (cityId: string) => void;
   useCurrentLocation: () => Promise<'granted' | 'denied' | 'error'>;
@@ -547,6 +542,8 @@ type Store = {
   openListing: (id: string) => void;
   toggleSave: (id: string) => void;
   viewPerson: (id: UserId) => void;
+  /** Fetch another user's public profile data (reviews + hand-off counts) + cache the people referenced. */
+  loadPublicProfile: (userId: UserId) => Promise<{ given: number; received: number }>;
   // post
   startPost: () => void;
   startEdit: (id: string) => void;
@@ -666,6 +663,16 @@ export function PassProvider({ children }: { children: ReactNode }) {
         }));
       },
 
+      // permanently delete the account: all images + every DB row + the auth user
+      deleteAccount: async () => {
+        const me = s.currentUserId;
+        if (!me) return { ok: false, error: 'Not signed in' };
+        const res = await deleteAccountRemote(me);
+        // wipe all local state/cache so nothing of theirs lingers on the device
+        if (res.ok) setS({ ...INITIAL, hydrated: true, authReady: true });
+        return res;
+      },
+
       setCity: (cityId) => {
         setS((prev) => ({
           ...prev,
@@ -729,12 +736,34 @@ export function PassProvider({ children }: { children: ReactNode }) {
 
       openListing: (id) => setS((prev) => ({ ...prev, activeListingId: id, galleryIdx: 0, sheetExpanded: false })),
       toggleSave: (id) => {
+        if (!s.currentUserId) return;
         const willSave = !s.saved[id];
         setS((prev) => ({ ...prev, saved: { ...prev.saved, [id]: !prev.saved[id] } }));
         if (willSave) void addSave(s.currentUserId, id);
         else void removeSave(s.currentUserId, id);
       },
       viewPerson: (id) => setS((prev) => ({ ...prev, activePersonId: id })),
+
+      loadPublicProfile: async (userId) => {
+        // reviews are public-readable; hand-off counts come from a security-definer
+        // RPC (handoffs themselves are participant-only under RLS)
+        const [reviews, stats] = await Promise.all([fetchReviewsFor(userId), fetchProfileStats(userId)]);
+        // cache reviewer profiles so names/avatars resolve in the cards
+        const reviewerIds = reviews.map((r) => r.from).filter((x) => !s.profiles[x]);
+        const profs = await fetchProfiles(reviewerIds);
+        // merge reviews (dedupe by id) so reviewsFor/userRating work for this user
+        // everywhere (giver profile + detail owner card)
+        setS((prev) => {
+          const revById = new Map(prev.reviews.map((r) => [r.id, r]));
+          reviews.forEach((r) => revById.set(r.id, r));
+          return {
+            ...prev,
+            reviews: [...revById.values()],
+            profiles: { ...prev.profiles, ...Object.fromEntries(profs.map((p) => [p.id, p])) },
+          };
+        });
+        return stats;
+      },
 
       startPost: () =>
         setS((prev) => ({
@@ -848,6 +877,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
       // send a request to the owner. If a chat with them already exists, the request
       // also drops into that thread as a message (so it shows under Chats, not Requests).
       requestListing: (listingId, note) => {
+        if (!s.currentUserId) return;
         const l = s.listings.find((x) => x.id === listingId);
         if (!l) return;
         if (s.requests.some((r) => r.listingId === listingId && r.fromUserId === s.currentUserId)) return;
@@ -878,8 +908,11 @@ export function PassProvider({ children }: { children: ReactNode }) {
         });
         void insertRequest(req);
         if (hasThread && msg) {
-          void upsertThread(tid, { listingId, starter: s.threadStarter[tid] ?? s.currentUserId, accepted: true });
-          void insertMessage(tid, msg);
+          // await thread upsert before the message so m_ins RLS (thread must exist) passes
+          (async () => {
+            await upsertThread(tid, { listingId, starter: s.threadStarter[tid] ?? s.currentUserId, accepted: true });
+            await insertMessage(tid, msg);
+          })();
         }
       },
 
@@ -938,23 +971,10 @@ export function PassProvider({ children }: { children: ReactNode }) {
       // notice — the reason is kept private (it drives the follow-up block prompt).
       cancelRequest: (requestId, _reason) => {
         if (!s.requests.some((r) => r.id === requestId)) return;
-        setS((prev) => {
-          const req = prev.requests.find((r) => r.id === requestId);
-          if (!req) return prev;
-          const other = prev.currentUserId === req.fromUserId ? req.toUserId : req.fromUserId;
-          const l = prev.listings.find((x) => x.id === req.listingId);
-          const title = `${userName(prev, prev.currentUserId)} cancelled the request${l ? ` for ${l.title}` : ''}`;
-          return {
-            ...prev,
-            requests: prev.requests.filter((r) => r.id !== requestId),
-            cancelTarget: null,
-            notifications: [
-              notify(prev, { userId: other, kind: 'request', title, body: '', listingId: req.listingId }),
-              ...prev.notifications,
-            ],
-          };
-        });
-        void deleteRequestRemote(requestId);
+        // soft-cancel: mark 'cancelled' so the DB trigger notifies the other party
+        // cross-device; remove it from our own list. The listing relists (not accepted).
+        setS((prev) => ({ ...prev, requests: prev.requests.filter((r) => r.id !== requestId), cancelTarget: null }));
+        void updateRequestStatus(requestId, 'cancelled');
       },
 
       openCancelReason: (requestId, role) => setS((prev) => ({ ...prev, cancelTarget: { requestId, role } })),
@@ -969,8 +989,9 @@ export function PassProvider({ children }: { children: ReactNode }) {
 
       openThreadFor: (listingId) => {
         const l = s.listings.find((x) => x.id === listingId);
-        const otherId = l ? l.ownerId : OTHER_USER[s.currentUserId];
-        // never start a chat with yourself (e.g. messaging from your own listing)
+        // never start a chat with yourself, when logged out, or for an unknown listing
+        if (!l || !s.currentUserId) return s.activeThreadId ?? '';
+        const otherId = l.ownerId;
         if (otherId === s.currentUserId) return s.activeThreadId ?? '';
         const id = threadId(s.currentUserId, otherId);
         setS((prev) => {
@@ -1110,10 +1131,12 @@ export function PassProvider({ children }: { children: ReactNode }) {
       },
 
       blockUser: (id) => {
+        if (!s.currentUserId) return;
         setS((prev) => ({ ...prev, blocked: { ...prev.blocked, [blockKey(prev.currentUserId, id)]: true } }));
         void addBlock(s.currentUserId, id);
       },
       unblockUser: (id) => {
+        if (!s.currentUserId) return;
         setS((prev) => ({ ...prev, blocked: { ...prev.blocked, [blockKey(prev.currentUserId, id)]: false } }));
         void removeBlock(s.currentUserId, id);
       },
@@ -1326,66 +1349,13 @@ export function PassProvider({ children }: { children: ReactNode }) {
     };
   }, [s]);
 
-  // hydrate
+  // hydrate the AsyncStorage cache (instant cold-start paint; Supabase pull reconciles after)
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         const saved = raw ? (JSON.parse(raw) as Partial<State>) : {};
-        // sync seed listings' photos with the current seed (clears any old stock URLs);
-        // user-posted listings keep their own uploaded photos
-        if (saved.listings) {
-          const seedById = new Map(SEED_LISTINGS.map((l) => [l.id, l]));
-          saved.listings = saved.listings.map((l) => (seedById.has(l.id) ? { ...l, photos: seedById.get(l.id)!.photos } : l));
-          // backfill hand-off records for already-given listings that predate the log
-          const logged = new Set((saved.handoffs ?? []).map((h) => h.listingId));
-          const backfill: Handoff[] = saved.listings
-            .filter((l) => l.taken && l.takenBy && !logged.has(l.id))
-            .map((l) => ({ id: `h_${l.id}`, listingId: l.id, giverId: l.ownerId, recipientId: l.takenBy as UserId, title: l.title, photo: l.photos?.[0], tint: l.tint, cat: l.cat, ts: l.createdAt }));
-          if (backfill.length) saved.handoffs = [...backfill, ...(saved.handoffs ?? [])];
-        }
-        // purge any self-chat threads (p:x-x) created by an earlier bug
-        {
-          const notSelf = ([k]: [string, unknown]) => {
-            const [a, b] = k.replace(/^p:/, '').split('-');
-            return a !== b;
-          };
-          if (saved.threads) saved.threads = Object.fromEntries(Object.entries(saved.threads).filter(notSelf)) as typeof saved.threads;
-          if (saved.threadListing) saved.threadListing = Object.fromEntries(Object.entries(saved.threadListing).filter(notSelf)) as typeof saved.threadListing;
-          if (saved.threadStarter) saved.threadStarter = Object.fromEntries(Object.entries(saved.threadStarter).filter(notSelf)) as typeof saved.threadStarter;
-          if (saved.threadAccepted) saved.threadAccepted = Object.fromEntries(Object.entries(saved.threadAccepted).filter(notSelf)) as typeof saved.threadAccepted;
-          if (saved.threadRead) saved.threadRead = Object.fromEntries(Object.entries(saved.threadRead).filter(notSelf)) as typeof saved.threadRead;
-        }
-        // backfill chat threads for accepted requests that predate thread-on-accept,
-        // so an accepted request shows under Chats instead of lingering in Requests
-        if (saved.requests?.length) {
-          const threads = { ...(saved.threads ?? {}) };
-          const threadListing = { ...(saved.threadListing ?? {}) };
-          const threadStarter = { ...(saved.threadStarter ?? {}) };
-          const threadAccepted = { ...(saved.threadAccepted ?? {}) };
-          let changed = false;
-          for (const r of saved.requests) {
-            if (r.status !== 'accepted' || r.toUserId === r.fromUserId) continue;
-            const id = threadId(r.toUserId, r.fromUserId);
-            if (threads[id]?.length) continue;
-            const l = (saved.listings ?? []).find((x) => x.id === r.listingId);
-            threads[id] = [
-              { id: uid('m'), from: r.fromUserId, text: r.note, ts: r.createdAt },
-              { id: uid('m'), from: r.toUserId, text: `Accepted your request for ${l?.title ?? 'the item'}. Let's arrange the pickup!`, ts: r.createdAt + 1000 },
-            ];
-            threadListing[id] = r.listingId;
-            threadStarter[id] = threadStarter[id] ?? r.fromUserId;
-            threadAccepted[id] = true;
-            changed = true;
-          }
-          if (changed) {
-            saved.threads = threads;
-            saved.threadListing = threadListing;
-            saved.threadStarter = threadStarter;
-            saved.threadAccepted = threadAccepted;
-          }
-        }
         if (alive) setS((prev) => ({ ...prev, ...saved, hydrated: true }));
       } catch {
         if (alive) setS((prev) => ({ ...prev, hydrated: true }));
@@ -1396,9 +1366,15 @@ export function PassProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // offline outbox: flush queued writes on app foreground + once on launch
+  useEffect(() => {
+    initOutbox();
+    void flushOutbox();
+  }, []);
+
   // auth: mirror the Supabase session into the store + bootstrap the profile row
   useEffect(() => {
-    const applyUser = async (userId: string | null) => {
+    const applyUser = async (userId: string | null, pull: boolean) => {
       if (!userId) {
         setS((prev) => ({ ...prev, currentUserId: '', authReady: true }));
         return;
@@ -1428,6 +1404,12 @@ export function PassProvider({ children }: { children: ReactNode }) {
             },
           }));
         }
+        // only do the heavy full pull on real sign-in — NOT on every token refresh
+        // (which would periodically clobber in-flight optimistic/offline writes)
+        if (!pull) return;
+        // drain any offline-queued writes FIRST so the pull below includes them
+        // (otherwise the wholesale replace could drop not-yet-synced local rows)
+        await flushOutbox();
         // pull listings (source of truth) + the rest of the user's data
         const ls = await fetchListings();
         if (ls) setS((prev) => ({ ...prev, listings: ls }));
@@ -1457,12 +1439,18 @@ export function PassProvider({ children }: { children: ReactNode }) {
         }
         const profs = await fetchProfiles([...refIds]);
         if (profs.length) setS((prev) => ({ ...prev, profiles: { ...prev.profiles, ...Object.fromEntries(profs.map((p) => [p.id, p])) } }));
+        // we're authed + online — drain any writes queued while offline
+        void flushOutbox();
       } catch {
         // offline / transient — the cache + fallback name keep the UI usable
       }
     };
-    supabase.auth.getSession().then(({ data }) => applyUser(data.session?.user.id ?? null));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => applyUser(session?.user.id ?? null));
+    // onAuthStateChange fires INITIAL_SESSION on mount, so no separate getSession needed.
+    // Full pull only on sign-in/initial; token refresh & user updates just refresh identity.
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      const pull = event === 'INITIAL_SESSION' || event === 'SIGNED_IN';
+      applyUser(session?.user.id ?? null, pull);
+    });
     return () => sub.subscription.unsubscribe();
   }, []);
 
@@ -1495,7 +1483,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
         const m = payload.new as Record<string, any>;
         const tid: string = m.thread_id;
-        if (!threadUsers(tid).includes(me) || m.from_user === me) return; // skip others' threads + my own echo
+        if (!threadUsers(tid).includes(me)) return; // only my threads (id-dedupe below handles my own echo + multi-device)
         const msg = rowToMessage(m);
         setS((prev) => {
           const arr = prev.threads[tid] ?? [];
@@ -1512,11 +1500,45 @@ export function PassProvider({ children }: { children: ReactNode }) {
         }
         const r = rowToRequest(payload.new as Record<string, unknown>);
         if (r.fromUserId !== me && r.toUserId !== me) return;
+        // a cancelled request drops off both parties' lists
+        if (r.status === 'cancelled') {
+          setS((prev) => ({ ...prev, requests: prev.requests.filter((x) => x.id !== r.id) }));
+          return;
+        }
         setS((prev) => {
           const exists = prev.requests.some((x) => x.id === r.id);
           return { ...prev, requests: exists ? prev.requests.map((x) => (x.id === r.id ? r : x)) : [r, ...prev.requests] };
         });
         ensureProfile(r.fromUserId);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'threads' }, (payload) => {
+        if (payload.eventType === 'DELETE') return;
+        const t = payload.new as Record<string, any>;
+        const tid: string = t.id;
+        if (!threadUsers(tid).includes(me)) return;
+        // keep accepted state + read receipts live across devices
+        setS((prev) => {
+          const rr: Record<string, number> = { ...(prev.threadRead[tid] ?? {}) };
+          if (t.read_a) rr[t.user_a] = Date.parse(t.read_a);
+          if (t.read_b) rr[t.user_b] = Date.parse(t.read_b);
+          return {
+            ...prev,
+            threadAccepted: { ...prev.threadAccepted, [tid]: !!t.accepted },
+            threadListing: t.listing_id ? { ...prev.threadListing, [tid]: t.listing_id } : prev.threadListing,
+            threadRead: { ...prev.threadRead, [tid]: rr },
+          };
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (payload) => {
+        if (payload.eventType === 'DELETE') return;
+        const p = payload.new as Record<string, any>;
+        if (!p.id) return;
+        // refresh cached name/dp/city when any cached user updates their profile
+        setS((prev) =>
+          prev.profiles[p.id]
+            ? { ...prev, profiles: { ...prev.profiles, [p.id]: { id: p.id, name: p.name || 'Someone', cityId: p.city_id, dp: p.dp, since: p.since } } }
+            : prev
+        );
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${me}` }, (payload) => {
         const n = rowToNotification(payload.new as Record<string, unknown>);
@@ -1609,4 +1631,4 @@ export function useT(): (key: string, params?: Record<string, string | number>) 
   return (key: string, params?: Record<string, string | number>) => translate(s.lang, key, params);
 }
 
-export { CATS, CITIES, USERS };
+export { CATS, CITIES };

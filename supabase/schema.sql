@@ -374,3 +374,55 @@ create policy st_upd on storage.objects for update to authenticated using (
 drop policy if exists st_del on storage.objects;
 create policy st_del on storage.objects for delete to authenticated using (
   bucket_id in ('listing-photos','avatars','chat-images') and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- ============================================================================
+-- ACCOUNT DELETION
+-- Deletes the caller's auth.users row; FK ON DELETE CASCADE removes their
+-- profile and every row referencing it (listings, requests, threads, messages,
+-- reviews, handoffs, saves, blocks, notify_prefs, notifications). Storage
+-- objects are wiped client-side before this is called (RLS lets a user delete
+-- their own bucket folders).
+-- ============================================================================
+create or replace function public.delete_account()
+returns void language plpgsql security definer set search_path = public, auth as $$
+begin
+  delete from auth.users where id = auth.uid();
+end; $$;
+revoke all on function public.delete_account() from public, anon;
+grant execute on function public.delete_account() to authenticated;
+
+-- ============================================================================
+-- PUBLIC PROFILE STATS
+-- handoffs are participant-only readable (RLS), so other users' given/received
+-- counts need a security-definer aggregate that exposes only the numbers.
+-- ============================================================================
+create or replace function public.profile_stats(p_user uuid)
+returns json language sql security definer set search_path = public as $$
+  select json_build_object(
+    'given', (select count(*) from public.handoffs where giver_id = p_user),
+    'received', (select count(*) from public.handoffs where recipient_id = p_user)
+  );
+$$;
+grant execute on function public.profile_stats(uuid) to authenticated;
+
+-- ============================================================================
+-- POST-LAUNCH HARDENING (applied via Management API; kept here for the record)
+-- ============================================================================
+-- profiles realtime so cached names/dp/city refresh across devices
+alter publication supabase_realtime add table public.profiles;
+-- server-side moderation: delist a listing once reports cross the threshold
+alter table public.listings add column if not exists delisted boolean default false;
+-- (report_listing updated to set listings.delisted = true when count >= 5)
+-- (notify_on_request_status extended to notify the other party on status='cancelled')
+-- storage cleanup: drop a listing's images on ANY delete path
+create or replace function public.cleanup_listing_storage()
+returns trigger language plpgsql security definer set search_path = public, storage as $$
+begin
+  delete from storage.objects
+  where bucket_id = 'listing-photos'
+    and name like old.owner_id::text || '/' || old.id::text || '/%';
+  return old;
+end; $$;
+drop trigger if exists on_listing_deleted on public.listings;
+create trigger on_listing_deleted after delete on public.listings
+  for each row execute function public.cleanup_listing_storage();

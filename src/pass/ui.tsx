@@ -3,7 +3,6 @@ import { Image } from 'expo-image';
 import { memo, useEffect, useState } from 'react';
 import {
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -13,7 +12,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets, type Edge } from 'react-native-safe-area-context';
+import { useSafeAreaInsets, type Edge } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
   FadeInDown,
@@ -40,11 +39,17 @@ export function Screen({
   edges?: Edge[];
   style?: StyleProp<ViewStyle>;
 }) {
-  return (
-    <SafeAreaView edges={edges} style={[{ flex: 1, backgroundColor: bg }, style]}>
-      {children}
-    </SafeAreaView>
-  );
+  // Use insets from context (available synchronously) instead of SafeAreaView,
+  // which measures after first paint and makes content "bounce" down on mount —
+  // very visible with the fade screen transition.
+  const insets = useSafeAreaInsets();
+  const pad = {
+    paddingTop: edges.includes('top') ? insets.top : 0,
+    paddingBottom: edges.includes('bottom') ? insets.bottom : 0,
+    paddingLeft: edges.includes('left') ? insets.left : 0,
+    paddingRight: edges.includes('right') ? insets.right : 0,
+  };
+  return <View style={[{ flex: 1, backgroundColor: bg }, pad, style]}>{children}</View>;
 }
 
 // ---------- text ----------
@@ -113,10 +118,6 @@ export function PhotoTile({
 }
 
 // ---------- gradient helper (CSS gradient on New Arch) ----------
-
-export function gradient(css: string): ViewStyle {
-  return { experimental_backgroundImage: css } as unknown as ViewStyle;
-}
 
 // ---------- buttons ----------
 
@@ -540,22 +541,6 @@ export function ReviewCard({
         </View>
         {onAuthorPress ? <Icon name="forward" size={18} color={C.muted} /> : null}
       </Pressable>
-    </View>
-  );
-}
-
-// ---------- stylized map backdrop ----------
-
-export function MapBackdrop({ children, style }: { children?: React.ReactNode; style?: StyleProp<ViewStyle> }) {
-  return (
-    <View style={[{ flex: 1, backgroundColor: C.mapLand, overflow: 'hidden' }, style]}>
-      <View style={[StyleSheet.absoluteFill, gradient('linear-gradient(135deg, #E2EAE2, #D6E0DA)')]} />
-      <View style={{ position: 'absolute', top: '18%', left: '-10%', width: '120%', height: 14, backgroundColor: C.mapRoad, transform: [{ rotate: '-8deg' }] }} />
-      <View style={{ position: 'absolute', top: '54%', left: '-10%', width: '120%', height: 18, backgroundColor: C.mapRoad, transform: [{ rotate: '6deg' }] }} />
-      <View style={{ position: 'absolute', top: '-10%', left: '46%', width: 13, height: '120%', backgroundColor: C.mapRoad, transform: [{ rotate: '10deg' }] }} />
-      <View style={{ position: 'absolute', top: '40%', left: '18%', width: 90, height: 70, backgroundColor: C.mapBlock, borderRadius: 8 }} />
-      <View style={{ position: 'absolute', top: '60%', left: '62%', width: 110, height: 80, backgroundColor: C.mapBlock, borderRadius: 8 }} />
-      {children}
     </View>
   );
 }

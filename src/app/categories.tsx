@@ -1,15 +1,17 @@
 import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 
 import { catIcon, Icon } from '@/pass/icon';
 import { browseListings, CATS, distLabel, usePass, useT } from '@/pass/store';
-import { C, radius, TINTS } from '@/pass/theme';
-import { BottomNav, Btn, EmptyState, FreeTag, Header, PhotoTile, Screen, shadow, t } from '@/pass/ui';
+import { C, radius } from '@/pass/theme';
+import { BottomNav, EmptyState, FreeTag, Header, PhotoTile, Screen, shadow, t } from '@/pass/ui';
 
 export default function Categories() {
   const router = useRouter();
   const tr = useT();
   const { s, patch, openListing, toggleSave } = usePass();
+  const { width } = useWindowDimensions();
+  const cardW = width >= 600 ? '31%' : '48%'; // the left rail leaves less room → 3 cols only on wide tablets
   const selCat = CATS[s.catSel];
   const products = browseListings({ ...s, catFilter: selCat, q: '' });
 
@@ -68,7 +70,7 @@ export default function Categories() {
           ) : (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 16 }}>
               {products.map((l) => (
-                <Pressable key={l.id} onPress={() => open(l.id)} style={{ width: '48%', backgroundColor: C.surface, borderRadius: radius.xl, borderCurve: 'continuous', padding: 9, marginBottom: 14, ...shadow(10, 26, 0.4) }}>
+                <Pressable key={l.id} onPress={() => open(l.id)} style={{ width: cardW, backgroundColor: C.surface, borderRadius: radius.xl, borderCurve: 'continuous', padding: 9, marginBottom: 14, ...shadow(10, 26, 0.4) }}>
                   <PhotoTile tint={l.tint} uri={l.photos?.[0]} icon={catIcon(l.cat)} iconSize={50} gap={20} style={{ aspectRatio: 1, borderRadius: radius.md }}>
                     {distLabel(s, l) ? (
                       <View style={{ position: 'absolute', top: 9, left: 9, backgroundColor: 'rgba(28,24,22,0.62)', borderRadius: radius.pill, paddingVertical: 4, paddingHorizontal: 10 }}>

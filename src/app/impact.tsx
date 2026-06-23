@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 
 import { catIcon, Icon } from '@/pass/icon';
-import { fmtAgo, fmtDate, listingById, myHandoffs, reviewsFor, userName, usePass, useT } from '@/pass/store';
+import { fmtAgo, fmtDate, listingById, myHandoffs, reviewsFor, userName, usePass, useT, userDp } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, EmptyState, Header, PhotoTile, ReviewCard, Screen, shadow, t } from '@/pass/ui';
 
@@ -30,7 +30,7 @@ export default function Impact() {
             <Icon name="gift" size={22} color="#fff" />
           </View>
           <Text style={{ fontSize: 13, fontWeight: '600', color: '#fff', opacity: 0.92, marginTop: 16 }}>{tr('impact.givenAway')}</Text>
-          <Text style={{ fontSize: 44, fontWeight: '800', color: '#fff', letterSpacing: -1.5, marginTop: 6 }}>{tr(n === 1 ? 'impact.itemCountOne' : 'impact.itemCountOther', { count: n })}</Text>
+          <Text numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.6} style={{ fontSize: 44, fontWeight: '800', color: '#fff', letterSpacing: -1.5, marginTop: 6 }}>{tr(n === 1 ? 'impact.itemCountOne' : 'impact.itemCountOther', { count: n })}</Text>
         </View>
 
         <View style={{ flexDirection: 'row', backgroundColor: C.surface, borderRadius: radius.xl, marginTop: 14, paddingVertical: 18, ...shadow(10, 26, 0.35) }}>
@@ -54,7 +54,7 @@ export default function Impact() {
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 14.5, fontWeight: '800', color: C.ink }} numberOfLines={1}>{h.title}</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                      <Avatar name={name} uri={s.dp[h.recipientId]} size={18} color={C.ink} />
+                      <Avatar name={name} uri={userDp(s, h.recipientId)} size={18} color={C.ink} />
                       <Text style={{ fontSize: 12.5, color: C.muted }} numberOfLines={1}>{tr('manage.givenTo', { name })}</Text>
                     </View>
                   </View>
@@ -79,7 +79,7 @@ export default function Impact() {
                 tags={r.tags}
                 text={r.text}
                 authorName={userName(s, r.from)}
-                authorUri={s.dp[r.from]}
+                authorUri={userDp(s, r.from)}
                 date={`${fmtDate(r.ts)} · ${fmtAgo(r.ts)}`}
                 product={listingById(s, r.listingId ?? null)?.title}
                 onAuthorPress={() => openPerson(r.from)}

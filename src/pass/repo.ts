@@ -6,6 +6,7 @@ import { FileSystemUploadType, uploadAsync } from 'expo-file-system/legacy';
 
 import { SUPABASE_URL } from '@/pass/config';
 import type { Handoff, Listing, Message, Notification, Profile, Request, Review, UserId } from '@/pass/data';
+import { push } from '@/pass/outbox';
 import { supabase } from '@/pass/supabase';
 
 // client-generated v4 uuid → ids match the DB PK so retried inserts upsert cleanly
@@ -15,8 +16,6 @@ export const uuid = (): string =>
     return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
   });
 
-const STORAGE_MARK = '/storage/v1/object/public/';
-const isStorageUrl = (u: string) => u.includes(STORAGE_MARK);
 const isRemoteUrl = (u: string) => /^https?:\/\//.test(u);
 
 // ---------- profiles ----------
@@ -54,6 +53,7 @@ export function rowToListing(r: Row): Listing {
     updatedAt: r.updated_at ? Date.parse(r.updated_at) : undefined,
     taken: !!r.taken,
     takenBy: r.taken_by ?? undefined,
+    delisted: !!r.delisted,
   };
 }
 
@@ -121,27 +121,17 @@ export async function fetchListings(): Promise<Listing[] | null> {
 }
 
 export async function upsertListing(l: Listing): Promise<void> {
-  await supabase.from('listings').upsert(listingToRow(l));
+  await push({ kind: 'upsert', table: 'listings', row: listingToRow(l) });
 }
 
 export async function setListingTaken(id: string, takenBy: UserId): Promise<void> {
-  await supabase.from('listings').update({ taken: true, taken_by: takenBy }).eq('id', id);
+  await push({ kind: 'update', table: 'listings', values: { taken: true, taken_by: takenBy }, match: { id } });
 }
 
-/** Delete a listing + its Storage objects (skips external URLs like seed photos). */
+/** Delete a listing. Its Storage images are removed server-side by the
+ * on_listing_deleted trigger (covers cascade/account-delete paths too). */
 export async function deleteListingRemote(l: Listing): Promise<void> {
-  const paths = (l.photos ?? [])
-    .filter(isStorageUrl)
-    .map((u) => u.split(`${STORAGE_MARK}listing-photos/`)[1])
-    .filter(Boolean) as string[];
-  if (paths.length) {
-    try {
-      await supabase.storage.from('listing-photos').remove(paths);
-    } catch {
-      /* best-effort; orphan sweeper can catch leftovers */
-    }
-  }
-  await supabase.from('listings').delete().eq('id', l.id);
+  await push({ kind: 'delete', table: 'listings', match: { id: l.id } });
 }
 
 // ---------- requests ----------
@@ -158,15 +148,13 @@ export function rowToRequest(r: Row): Request {
   };
 }
 export async function insertRequest(req: Request): Promise<void> {
-  await supabase.from('requests').upsert({
-    id: req.id, listing_id: req.listingId, from_user: req.fromUserId, to_user: req.toUserId, note: req.note, status: req.status,
-  });
+  await push({ kind: 'upsert', table: 'requests', row: { id: req.id, listing_id: req.listingId, from_user: req.fromUserId, to_user: req.toUserId, note: req.note, status: req.status } });
 }
 export async function updateRequestStatus(id: string, status: string): Promise<void> {
-  await supabase.from('requests').update({ status }).eq('id', id);
+  await push({ kind: 'update', table: 'requests', values: { status }, match: { id } });
 }
 export async function deleteRequestRemote(id: string): Promise<void> {
-  await supabase.from('requests').delete().eq('id', id);
+  await push({ kind: 'delete', table: 'requests', match: { id } });
 }
 async function fetchRequests(me: string): Promise<Request[]> {
   const { data } = await supabase.from('requests').select('*').or(`from_user.eq.${me},to_user.eq.${me}`);
@@ -182,22 +170,22 @@ export function rowToMessage(m: Row): Message {
 }
 export async function upsertThread(id: string, fields: { listingId?: string | null; starter?: string; accepted?: boolean }): Promise<void> {
   const [a, b] = threadPair(id);
-  const row: Row = { id, user_a: a, user_b: b };
+  const row: Record<string, unknown> = { id, user_a: a, user_b: b };
   if (fields.listingId !== undefined) row.listing_id = fields.listingId;
   if (fields.starter !== undefined) row.starter = fields.starter;
   if (fields.accepted !== undefined) row.accepted = fields.accepted;
-  await supabase.from('threads').upsert(row);
+  await push({ kind: 'upsert', table: 'threads', row });
 }
 export async function insertMessage(threadId: string, m: Message): Promise<void> {
-  await supabase.from('messages').upsert({ id: m.id, thread_id: threadId, from_user: m.from, body: m.text, image: m.image ?? null });
+  await push({ kind: 'upsert', table: 'messages', row: { id: m.id, thread_id: threadId, from_user: m.from, body: m.text, image: m.image ?? null } });
 }
 export async function updateThreadRead(id: string, me: string, ts: number): Promise<void> {
   const [a] = threadPair(id);
   const col = me === a ? 'read_a' : 'read_b';
-  await supabase.from('threads').update({ [col]: new Date(ts).toISOString() }).eq('id', id);
+  await push({ kind: 'update', table: 'threads', values: { [col]: new Date(ts).toISOString() }, match: { id } });
 }
 export async function deleteThreadRemote(id: string): Promise<void> {
-  await supabase.from('threads').delete().eq('id', id);
+  await push({ kind: 'delete', table: 'threads', match: { id } });
 }
 
 export type ThreadBundle = {
@@ -234,7 +222,7 @@ export function rowToReview(r: Row): Review {
   return { id: r.id, from: r.from_user, to: r.to_user, listingId: r.listing_id ?? undefined, rating: r.rating, tags: r.tags ?? [], text: r.body ?? '', ts: r.created_at ? Date.parse(r.created_at) : Date.now() };
 }
 export async function insertReview(rev: Review): Promise<void> {
-  await supabase.from('reviews').upsert({ id: rev.id, from_user: rev.from, to_user: rev.to, listing_id: rev.listingId ?? null, rating: rev.rating, tags: rev.tags, body: rev.text }, { onConflict: 'from_user,listing_id', ignoreDuplicates: true });
+  await push({ kind: 'upsert', table: 'reviews', onConflict: 'from_user,listing_id', row: { id: rev.id, from_user: rev.from, to_user: rev.to, listing_id: rev.listingId ?? null, rating: rev.rating, tags: rev.tags, body: rev.text } });
 }
 /** Reviews authored by, or about, the current user. */
 async function fetchReviews(me: string): Promise<Review[]> {
@@ -253,20 +241,25 @@ export function rowToHandoff(r: Row): Handoff {
   return { id: r.id, listingId: r.listing_id, giverId: r.giver_id, recipientId: r.recipient_id, title: r.title, photo: r.photo ?? undefined, tint: r.tint ?? '#E9E3DA', cat: r.cat ?? '', ts: r.created_at ? Date.parse(r.created_at) : Date.now() };
 }
 export async function insertHandoff(h: Handoff): Promise<void> {
-  await supabase.from('handoffs').upsert({ id: h.id, listing_id: h.listingId, giver_id: h.giverId, recipient_id: h.recipientId, title: h.title, photo: h.photo ?? null, tint: h.tint, cat: h.cat });
+  await push({ kind: 'upsert', table: 'handoffs', row: { id: h.id, listing_id: h.listingId, giver_id: h.giverId, recipient_id: h.recipientId, title: h.title, photo: h.photo ?? null, tint: h.tint, cat: h.cat } });
 }
 async function fetchHandoffs(me: string): Promise<Handoff[]> {
   const { data } = await supabase.from('handoffs').select('*').or(`giver_id.eq.${me},recipient_id.eq.${me}`);
   return (data ?? []).map(rowToHandoff);
 }
+/** Public given/received counts for any user (handoffs are participant-only via RLS). */
+export async function fetchProfileStats(userId: string): Promise<{ given: number; received: number }> {
+  const { data } = await supabase.rpc('profile_stats', { p_user: userId });
+  return { given: data?.given ?? 0, received: data?.received ?? 0 };
+}
 
 // ---------- saves / blocks / notify prefs / notifications ----------
 
 export async function addSave(me: string, listingId: string): Promise<void> {
-  await supabase.from('saves').upsert({ user_id: me, listing_id: listingId });
+  await push({ kind: 'upsert', table: 'saves', row: { user_id: me, listing_id: listingId } });
 }
 export async function removeSave(me: string, listingId: string): Promise<void> {
-  await supabase.from('saves').delete().eq('user_id', me).eq('listing_id', listingId);
+  await push({ kind: 'delete', table: 'saves', match: { user_id: me, listing_id: listingId } });
 }
 async function fetchSaves(me: string): Promise<string[]> {
   const { data } = await supabase.from('saves').select('listing_id').eq('user_id', me);
@@ -274,10 +267,10 @@ async function fetchSaves(me: string): Promise<string[]> {
 }
 
 export async function addBlock(me: string, blocked: string): Promise<void> {
-  await supabase.from('blocks').upsert({ blocker: me, blocked });
+  await push({ kind: 'upsert', table: 'blocks', row: { blocker: me, blocked } });
 }
 export async function removeBlock(me: string, blocked: string): Promise<void> {
-  await supabase.from('blocks').delete().eq('blocker', me).eq('blocked', blocked);
+  await push({ kind: 'delete', table: 'blocks', match: { blocker: me, blocked } });
 }
 /** Returns block keys "blocker>blocked" for rows where I block or am blocked. */
 async function fetchBlocks(me: string): Promise<string[]> {
@@ -287,7 +280,7 @@ async function fetchBlocks(me: string): Promise<string[]> {
 
 export type NotifyPrefsRow = { near: boolean; chat: boolean; addr: { lat: number; lng: number; label: string } | null };
 export async function upsertNotifyPrefs(me: string, p: NotifyPrefsRow): Promise<void> {
-  await supabase.from('notify_prefs').upsert({ user_id: me, near: p.near, chat: p.chat, addr_lat: p.addr?.lat ?? null, addr_lng: p.addr?.lng ?? null, addr_label: p.addr?.label ?? null });
+  await push({ kind: 'upsert', table: 'notify_prefs', row: { user_id: me, near: p.near, chat: p.chat, addr_lat: p.addr?.lat ?? null, addr_lng: p.addr?.lng ?? null, addr_label: p.addr?.label ?? null } });
 }
 async function fetchNotifyPrefs(me: string): Promise<NotifyPrefsRow | null> {
   const { data } = await supabase.from('notify_prefs').select('*').eq('user_id', me).maybeSingle();
@@ -303,22 +296,63 @@ async function fetchNotifications(me: string): Promise<Notification[]> {
   return (data ?? []).map(rowToNotification);
 }
 export async function markNotificationsRead(me: string): Promise<void> {
-  await supabase.from('notifications').update({ read: true }).eq('user_id', me).eq('read', false);
+  await push({ kind: 'update', table: 'notifications', values: { read: true }, match: { user_id: me, read: false } });
 }
 export async function deleteNotificationRemote(id: string): Promise<void> {
-  await supabase.from('notifications').delete().eq('id', id);
+  await push({ kind: 'delete', table: 'notifications', match: { id } });
 }
 export async function clearNotificationsRemote(me: string): Promise<void> {
-  await supabase.from('notifications').delete().eq('user_id', me);
+  await push({ kind: 'delete', table: 'notifications', match: { user_id: me } });
 }
 
 // ---------- profile ----------
 
 export async function updateProfileRemote(me: string, fields: { name?: string; city_id?: string; dp?: string | null }): Promise<void> {
-  await supabase.from('profiles').update(fields).eq('id', me);
+  await push({ kind: 'update', table: 'profiles', values: fields, match: { id: me } });
 }
 export async function reportListingRemote(listingId: string): Promise<void> {
-  await supabase.rpc('report_listing', { p_listing: listingId });
+  await push({ kind: 'rpc', fn: 'report_listing', args: { p_listing: listingId } });
+}
+
+// ---------- account deletion ----------
+
+// Recursively collect every file path under a bucket prefix (folders have id===null).
+async function listAllFiles(bucket: string, prefix: string): Promise<string[]> {
+  const { data } = await supabase.storage.from(bucket).list(prefix, { limit: 1000 });
+  if (!data) return [];
+  const files: string[] = [];
+  for (const item of data) {
+    const path = prefix ? `${prefix}/${item.name}` : item.name;
+    if (item.id === null) files.push(...(await listAllFiles(bucket, path)));
+    else files.push(path);
+  }
+  return files;
+}
+async function wipeBucket(bucket: string, uid: string): Promise<void> {
+  const files = await listAllFiles(bucket, uid);
+  if (files.length) {
+    try {
+      await supabase.storage.from(bucket).remove(files);
+    } catch {
+      /* best-effort */
+    }
+  }
+}
+
+/** Permanently delete the account: every image, every DB row, and the auth user. */
+export async function deleteAccount(uid: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    // 1. wipe the user's images from all buckets (their own folders)
+    await Promise.all([wipeBucket('listing-photos', uid), wipeBucket('avatars', uid), wipeBucket('chat-images', uid)]);
+    // 2. delete the auth user — FK cascades remove the profile + all referencing rows
+    const { error } = await supabase.rpc('delete_account');
+    if (error) return { ok: false, error: error.message };
+    // 3. end the session
+    await supabase.auth.signOut();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Delete failed' };
+  }
 }
 
 // ---------- one-shot pull of everything the signed-in user needs ----------

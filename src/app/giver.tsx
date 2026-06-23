@@ -1,30 +1,51 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 
 import { CITIES } from '@/pass/data';
 import { catIcon, Icon } from '@/pass/icon';
-import { distLabel, fmtAgo, fmtDate, handoffsBy, handoffsTo, listingById, profileOf, reviewsFor, userName, userRating, usePass, useT } from '@/pass/store';
+import { distLabel, fmtAgo, fmtDate, handoffsBy, handoffsTo, listingById, profileOf, reviewsFor, userName, userRating, usePass, useT, userDp } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, Btn, EmptyState, FreeTag, Header, PhotoTile, ReviewCard, Screen, shadow, t, VerifiedBadge } from '@/pass/ui';
 
 export default function Giver() {
   const router = useRouter();
   const tr = useT();
-  const { s, openListing, openThreadFor, toggleSave, viewPerson } = usePass();
+  const { s, openListing, openThreadFor, toggleSave, viewPerson, loadPublicProfile } = usePass();
+  const { width } = useWindowDimensions();
+  const cardW = width >= 600 ? '31.5%' : '48%'; // 3 columns on tablets, 2 on phones
 
   const id = s.activePersonId ?? s.currentUserId;
   const isMe = id === s.currentUserId;
   const person = profileOf(s, id);
   const name = userName(s, id);
-  const rating = userRating(s, id);
   // show the city this user is actually browsing from (their chosen city), not just their home
   const city = CITIES.find((c) => c.id === (s.userCity?.[id] ?? person.cityId));
 
   const live = s.listings.filter((l) => l.ownerId === id && !l.taken);
-  const given = handoffsBy(s, id).length;
-  const received = handoffsTo(s, id).length;
+
+  // another user's reviews/hand-offs aren't in the synced cache — fetch on open.
+  // reviews get merged into the store (so reviewsFor/userRating work); the
+  // given/received counts come back from the RPC (handoffs are RLS-private).
+  const [stats, setStats] = useState<{ given: number; received: number } | null>(null);
+  useEffect(() => {
+    if (isMe) {
+      setStats(null);
+      return;
+    }
+    let alive = true;
+    loadPublicProfile(id).then((r) => {
+      if (alive) setStats(r);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [id, isMe, loadPublicProfile]);
+
+  const given = isMe ? handoffsBy(s, id).length : stats?.given ?? 0;
+  const received = isMe ? handoffsTo(s, id).length : stats?.received ?? 0;
   const reviews = reviewsFor(s, id);
+  const rating = userRating(s, id);
   const [reviewLimit, setReviewLimit] = useState(5);
 
   const open = (lid: string) => {
@@ -51,7 +72,7 @@ export default function Giver() {
         <View style={{ paddingHorizontal: 18 }}>
           <View style={{ backgroundColor: C.surface, borderRadius: 24, borderCurve: 'continuous', padding: 20, ...shadow(12, 30, 0.35) }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
-              <Avatar name={name} uri={s.dp[id]} size={68} square />
+              <Avatar name={name} uri={userDp(s, id)} size={68} square />
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                   <Text style={{ fontSize: 21, fontWeight: '800', color: C.ink, letterSpacing: -0.4 }} numberOfLines={1}>{name}</Text>
@@ -95,7 +116,7 @@ export default function Giver() {
         {live.length === 0 && <EmptyState compact icon="gift" title={tr('giver.noGiveaways')} />}
         <View style={{ paddingHorizontal: 18, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
           {live.map((l) => (
-            <Pressable key={l.id} onPress={() => open(l.id)} style={{ width: '48%', backgroundColor: C.surface, borderRadius: 18, borderCurve: 'continuous', padding: 8, marginBottom: 13, ...shadow(10, 26, 0.4) }}>
+            <Pressable key={l.id} onPress={() => open(l.id)} style={{ width: cardW, backgroundColor: C.surface, borderRadius: 18, borderCurve: 'continuous', padding: 8, marginBottom: 13, ...shadow(10, 26, 0.4) }}>
               <PhotoTile tint={l.tint} uri={l.photos?.[0]} icon={catIcon(l.cat)} iconSize={42} gap={18} style={{ aspectRatio: 1, borderRadius: 13 }}>
                 {distLabel(s, l) ? (
                   <View style={{ position: 'absolute', top: 8, left: 8, backgroundColor: 'rgba(28,24,22,0.6)', borderRadius: radius.pill, paddingVertical: 3, paddingHorizontal: 9 }}>
@@ -128,7 +149,7 @@ export default function Giver() {
                 tags={r.tags}
                 text={r.text}
                 authorName={userName(s, r.from)}
-                authorUri={s.dp[r.from]}
+                authorUri={userDp(s, r.from)}
                 date={`${fmtDate(r.ts)} · ${fmtAgo(r.ts)}`}
                 product={listingById(s, r.listingId ?? null)?.title}
                 onAuthorPress={() => openPerson(r.from)}

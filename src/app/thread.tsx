@@ -2,16 +2,18 @@ import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from 'react-native';
 
 import { catIcon, Icon } from '@/pass/icon';
-import { activeThreadMessages, chatDay, dayStamp, fmtTime, iBlocked, isBlocked, listingById, pendingIncomingFrom, pendingReviewFrom, threadMeta, threadPendingForMe, usePass, useT } from '@/pass/store';
+import { activeThreadMessages, chatDay, dayStamp, fmtTime, iBlocked, isBlocked, listingById, pendingIncomingFrom, pendingReviewFrom, threadMeta, threadPendingForMe, usePass, useT, userDp } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, Btn, FreeTag, PhotoTile, Screen, VerifiedBadge } from '@/pass/ui';
 
 export default function Thread() {
   const router = useRouter();
   const tr = useT();
+  const { width } = useWindowDimensions();
+  const chatImg = Math.min(220, Math.round(width * 0.62)); // fits the 80%-max bubble on any width
   const { s, sendMsg, sendImage, shareLoc, viewPerson, openListing, blockUser, unblockUser, showConfirm, acceptRequest, declineRequest, acceptThread, deleteThread, markThreadRead, startRateForListing } = usePass();
   const [draft, setDraft] = useState('');
   const send = () => {
@@ -113,7 +115,7 @@ export default function Thread() {
             <Icon name="back" size={22} color={C.ink} />
           </Pressable>
           <Pressable onPress={openPerson}>
-            <Avatar name={meta.otherName} uri={s.dp[meta.otherId]} size={40} />
+            <Avatar name={meta.otherName} uri={userDp(s, meta.otherId)} size={40} />
           </Pressable>
           <View style={{ flex: 1 }}>
             <Pressable onPress={openPerson} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
@@ -170,7 +172,7 @@ export default function Thread() {
             ) : null}
             <View style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '80%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
               {m.image ? (
-                <Image source={{ uri: m.image }} style={{ width: 200, height: 200, borderRadius: 18, backgroundColor: C.bg }} contentFit="cover" transition={150} />
+                <Image source={{ uri: m.image }} style={{ width: chatImg, height: chatImg, borderRadius: 18, backgroundColor: C.bg }} contentFit="cover" transition={150} />
               ) : (
                 <Pressable
                   disabled={!url}

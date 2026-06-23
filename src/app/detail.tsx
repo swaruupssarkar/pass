@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Linking, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,9 +9,9 @@ import { WebView } from 'react-native-webview';
 
 import { fmtKm, haversineKm, type Coords, type Listing } from '@/pass/data';
 import { catIcon, Icon } from '@/pass/icon';
-import { activeListing, distLabel, fmtAgo, fmtDate, myRequestFor, profileOf, reviewsFor, userName, userPoint, userRating, usePass, useT } from '@/pass/store';
+import { activeListing, distLabel, fmtAgo, fmtDate, myRequestFor, profileOf, reviewsFor, userName, userPoint, userRating, usePass, useT, userDp } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Avatar, Btn, EmptyState, Header, SafetyNote, Screen, VerifiedBadge, t } from '@/pass/ui';
+import { Avatar, Btn, EmptyState, Header, SafetyNote, Screen, VerifiedBadge } from '@/pass/ui';
 
 export default function Detail() {
   const router = useRouter();
@@ -19,8 +19,14 @@ export default function Detail() {
   const tr = useT();
   const { height, width } = useWindowDimensions();
   const [idx, setIdx] = useState(0);
-  const { s, patch, toggleSave, viewPerson, requestListing, openThreadFor, openTakenPicker, showAlert, cancelRequest, showConfirm } = usePass();
+  const { s, patch, toggleSave, viewPerson, requestListing, openThreadFor, openTakenPicker, showAlert, cancelRequest, showConfirm, loadPublicProfile } = usePass();
   const item = activeListing(s);
+
+  // fetch the owner's reviews so the owner card rating/count is correct for other users
+  const ownerId = item?.ownerId;
+  useEffect(() => {
+    if (ownerId && ownerId !== s.currentUserId) loadPublicProfile(ownerId);
+  }, [ownerId, s.currentUserId, loadPublicProfile]);
 
   if (!item) {
     return (
@@ -154,7 +160,7 @@ export default function Detail() {
           </View>
 
           <Pressable onPress={mine ? undefined : viewGiver} style={{ marginTop: 16, backgroundColor: C.bg, borderRadius: radius.lg, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 13 }}>
-            <Avatar name={ownerName} uri={s.dp[item.ownerId]} />
+            <Avatar name={ownerName} uri={userDp(s, item.ownerId)} />
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Text style={{ fontSize: 16, fontWeight: '800', color: C.ink }}>{ownerName}</Text>

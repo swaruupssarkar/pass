@@ -4,7 +4,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 
 import { Icon } from '@/pass/icon';
-import { fmtAgo, inboxRows, incomingRequests, threadId, threadPendingForMe, usePass, useT } from '@/pass/store';
+import { fmtAgo, inboxRows, incomingRequests, threadId, threadPendingForMe, usePass, useT, userDp } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, BottomNav, Btn, EmptyState, PhotoTile, Screen, shadow, t } from '@/pass/ui';
 
@@ -83,7 +83,7 @@ export default function Inbox() {
                   </Pressable>
                 )}>
                 <Pressable onPress={() => openChatThread(row.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: C.surface, borderRadius: radius.lg, borderCurve: 'continuous', padding: 12, ...shadow(8, 20, 0.4) }}>
-                  <Avatar name={row.otherName} uri={s.dp[row.otherId]} size={54} square />
+                  <Avatar name={row.otherName} uri={userDp(s, row.otherId)} size={54} square />
                   <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, flex: 1 }}>
@@ -112,7 +112,7 @@ export default function Inbox() {
               {/* requester + time */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11 }}>
                 <Pressable onPress={() => openPerson(request.fromUserId)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 11, flex: 1, opacity: pressed ? 0.7 : 1 })}>
-                  <Avatar name={user.name} uri={s.dp[request.fromUserId]} size={42} color={C.ink} />
+                  <Avatar name={user.name} uri={userDp(s, request.fromUserId)} size={42} color={C.ink} />
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 15, fontWeight: '700', color: C.ink }} numberOfLines={1}>{user.name}</Text>
                     <Text style={{ fontSize: 11.5, color: C.muted }}>{tr('inbox.requested')} · {fmtAgo(request.createdAt)}</Text>

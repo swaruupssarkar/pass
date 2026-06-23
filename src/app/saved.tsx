@@ -135,12 +135,13 @@ export default function Saved() {
   );
 }
 
-function StatusBadge({ status, tr }: { status: 'pending' | 'accepted' | 'declined'; tr: (key: string, params?: Record<string, string | number>) => string }) {
+function StatusBadge({ status, tr }: { status: 'pending' | 'accepted' | 'declined' | 'cancelled'; tr: (key: string, params?: Record<string, string | number>) => string }) {
   const map =
     {
       pending: { label: tr('saved.statusPending'), bg: C.pendingBg, fg: C.pendingInk },
       accepted: { label: tr('saved.statusAccepted'), bg: '#E4F0E9', fg: C.free },
       declined: { label: tr('saved.statusDeclined'), bg: C.bg, fg: C.muted },
+      cancelled: { label: tr('saved.statusDeclined'), bg: C.bg, fg: C.muted },
     }[status] ?? { label: tr('saved.statusPending'), bg: C.pendingBg, fg: C.pendingInk };
   return (
     <View style={{ backgroundColor: map.bg, borderRadius: radius.pill, paddingVertical: 5, paddingHorizontal: 11 }}>

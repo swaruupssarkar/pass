@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Keyboard, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { catIcon, Icon } from '@/pass/icon';
@@ -13,7 +13,7 @@ import {
   usePass,
   useT,
 } from '@/pass/store';
-import { C, radius, TINTS } from '@/pass/theme';
+import { C, radius } from '@/pass/theme';
 import { BottomNav, Btn, EmptyState, FreeTag, PhotoTile, Pill, Screen, shadow, t } from '@/pass/ui';
 
 const RADIUS_PRESETS = [3, 5, 10, 20, 100];
@@ -23,6 +23,8 @@ export default function Feed() {
   const tr = useT();
   const { s, patch, openListing, toggleSave, useCurrentLocation, markOnboarded, showAlert, showConfirm } = usePass();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const cardW = width >= 600 ? '31.5%' : '48%'; // 3 columns on tablets, 2 on phones
   const items = useMemo(
     () => browseListings(s),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -129,7 +131,7 @@ export default function Feed() {
           </Pressable>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 13, paddingHorizontal: 18, paddingVertical: 12 }}>
-          {CATS.map((c, i) => {
+          {CATS.map((c) => {
             const sel = s.catFilter === c;
             return (
               <Pressable key={c} onPress={() => patch({ catFilter: sel ? null : c, q: '' })} style={{ alignItems: 'center', gap: 8, width: 72 }}>
@@ -166,7 +168,7 @@ export default function Feed() {
               const saved = !!s.saved[it.id];
               const d = distLabel(s, it);
               return (
-                <Pressable key={it.id} onPress={() => open(it.id)} style={{ width: '48%', backgroundColor: C.surface, borderRadius: radius.xl, borderCurve: 'continuous', padding: 9, marginBottom: 14, ...shadow(10, 26, 0.4) }}>
+                <Pressable key={it.id} onPress={() => open(it.id)} style={{ width: cardW, backgroundColor: C.surface, borderRadius: radius.xl, borderCurve: 'continuous', padding: 9, marginBottom: 14, ...shadow(10, 26, 0.4) }}>
                   <PhotoTile tint={it.tint} uri={it.photos?.[0]} icon={catIcon(it.cat)} iconSize={50} gap={20} style={{ aspectRatio: 1, borderRadius: radius.md }}>
                     {d ? (
                       <View style={{ position: 'absolute', top: 9, left: 9, backgroundColor: 'rgba(28,24,22,0.62)', borderRadius: radius.pill, paddingVertical: 4, paddingHorizontal: 10 }}>

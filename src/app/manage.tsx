@@ -1,10 +1,10 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { catIcon, Icon, type IconName } from '@/pass/icon';
-import { fmtAgo, fmtDate, myListings, requestsFor, userName, usePass, useT } from '@/pass/store';
+import { fmtAgo, fmtDate, myListings, requestsFor, userName, usePass, useT, userDp } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, Btn, EmptyState, Header, PhotoTile, Screen, shadow, t } from '@/pass/ui';
 import type { Listing } from '@/pass/data';
@@ -14,6 +14,8 @@ export default function Manage() {
   const tr = useT();
   const { s, patch, startPost, startEdit, openTakenPicker, confirmTaken, deleteListing, acceptRequest, declineRequest, openCancelReason, showConfirm, openListing, viewPerson } = usePass();
   const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
+  const sheetListMax = Math.round(height * 0.5); // keep bottom-sheet usable on short devices
   const [tab, setTab] = useState<'live' | 'given'>('live');
   const [reqListId, setReqListId] = useState<string | null>(null);
   const list = myListings(s);
@@ -164,10 +166,10 @@ export default function Manage() {
             {picker.length === 0 ? (
               <Text style={[t.small, { marginTop: 14 }]}>{tr('manage.noRequestsYet')}</Text>
             ) : (
-              <ScrollView style={{ maxHeight: 360, marginTop: 16 }} contentContainerStyle={{ gap: 10 }} showsVerticalScrollIndicator={false}>
+              <ScrollView style={{ maxHeight: sheetListMax, marginTop: 16 }} contentContainerStyle={{ gap: 10 }} showsVerticalScrollIndicator={false}>
                 {picker.map(({ request, user }) => (
                   <View key={request.id} style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start', borderWidth: 1, borderColor: C.line, borderRadius: 15, padding: 12 }}>
-                    <Avatar name={user.name} uri={s.dp[request.fromUserId]} size={42} color={C.ink} />
+                    <Avatar name={user.name} uri={userDp(s, request.fromUserId)} size={42} color={C.ink} />
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 14, fontWeight: '700', color: C.ink }}>{user.name}</Text>
                       <Text style={{ fontSize: 12.5, color: C.muted, marginTop: 4, lineHeight: 18 }}>{request.note}</Text>
@@ -191,11 +193,11 @@ export default function Manage() {
           <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: C.surface, borderTopLeftRadius: 26, borderTopRightRadius: 26, borderCurve: 'continuous', padding: 22, paddingTop: 8, paddingBottom: insets.bottom + 18 }}>
             <View style={{ width: 44, height: 5, borderRadius: 3, backgroundColor: C.line, alignSelf: 'center', marginBottom: 16 }} />
             <Text style={t.h3} numberOfLines={1}>{tr('manage.requestsFor', { title: reqItem?.title ?? '' })}</Text>
-            <ScrollView style={{ maxHeight: 420, marginTop: 14 }} contentContainerStyle={{ gap: 10 }} showsVerticalScrollIndicator={false}>
+            <ScrollView style={{ maxHeight: sheetListMax, marginTop: 14 }} contentContainerStyle={{ gap: 10 }} showsVerticalScrollIndicator={false}>
               {sheetReqs.map(({ request, user }) => (
                 <View key={request.id} style={{ borderWidth: 1, borderColor: C.line, borderRadius: 15, borderCurve: 'continuous', padding: 12, gap: 11 }}>
                   <Pressable onPress={() => { setReqListId(null); openPerson(request.fromUserId); }} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 11, opacity: pressed ? 0.7 : 1 })}>
-                    <Avatar name={user.name} uri={s.dp[request.fromUserId]} size={40} color={C.ink} />
+                    <Avatar name={user.name} uri={userDp(s, request.fromUserId)} size={40} color={C.ink} />
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 14, fontWeight: '800', color: C.ink }} numberOfLines={1}>{user.name}</Text>
                       <Text style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }} numberOfLines={2}>{request.note}</Text>

@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, Text, useWindowDimensions, View } from 'react-native';
 
 import { INTRO_CARDS } from '@/pass/data';
 import { type IconName } from '@/pass/icon';
@@ -11,6 +11,8 @@ import { AnimatedIconHero, Btn, Screen, t } from '@/pass/ui';
 export default function Intro() {
   const router = useRouter();
   const tr = useT();
+  const { width } = useWindowDimensions();
+  const heroDisc = Math.min(186, Math.round(width * 0.46)); // scale to viewport on small screens
   const [i, setI] = useState(0);
   const card = INTRO_CARDS[i] ?? INTRO_CARDS[0];
 
@@ -29,7 +31,7 @@ export default function Intro() {
         </View>
 
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <AnimatedIconHero key={i} icon={card.icon as IconName} tint={card.tint} disc={186} iconSize={78} />
+          <AnimatedIconHero key={i} icon={card.icon as IconName} tint={card.tint} disc={heroDisc} iconSize={Math.round(heroDisc * 0.42)} />
           <Text style={[t.h1, { fontSize: 26, marginTop: 32, textAlign: 'center', maxWidth: 280, lineHeight: 31 }]}>
             {card.title}
           </Text>

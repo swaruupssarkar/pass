@@ -5,7 +5,7 @@ import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { Icon, type IconName } from '@/pass/icon';
 import { CITIES, handoffsTo, me, myHandoffs, myListings, reviewsFor, userName, userRating, usePass, useT } from '@/pass/store';
-import { C, radius } from '@/pass/theme';
+import { C } from '@/pass/theme';
 import { Avatar, BottomNav, Btn, Screen, shadow, VerifiedBadge } from '@/pass/ui';
 
 const ROWS: { icon: IconName; labelKey: string; route: '/manage' | '/impact' | '/saved' | '/safety' | '/settings' }[] = [
