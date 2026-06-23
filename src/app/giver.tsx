@@ -2,9 +2,9 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
-import { CITIES, USERS } from '@/pass/data';
+import { CITIES } from '@/pass/data';
 import { catIcon, Icon } from '@/pass/icon';
-import { distLabel, fmtAgo, fmtDate, handoffsBy, handoffsTo, listingById, otherOf, reviewsFor, userName, userRating, usePass, useT } from '@/pass/store';
+import { distLabel, fmtAgo, fmtDate, handoffsBy, handoffsTo, listingById, profileOf, reviewsFor, userName, userRating, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, Btn, EmptyState, FreeTag, Header, PhotoTile, ReviewCard, Screen, shadow, t, VerifiedBadge } from '@/pass/ui';
 
@@ -13,8 +13,9 @@ export default function Giver() {
   const tr = useT();
   const { s, openListing, openThreadFor, toggleSave, viewPerson } = usePass();
 
-  const id = s.activePersonId ?? otherOf(s.currentUserId).id;
-  const person = USERS[id];
+  const id = s.activePersonId ?? s.currentUserId;
+  const isMe = id === s.currentUserId;
+  const person = profileOf(s, id);
   const name = userName(s, id);
   const rating = userRating(s, id);
   // show the city this user is actually browsing from (their chosen city), not just their home
@@ -60,7 +61,7 @@ export default function Giver() {
                   <Icon name="star" size={13} color={C.star} />
                   <Text style={{ fontSize: 12.5, color: C.ink, fontWeight: '700' }}>{rating != null ? rating : tr('common.new')}</Text>
                   {reviews.length > 0 ? <Text style={{ fontSize: 12.5, color: C.muted }}>· {tr('common.reviewsN', { n: reviews.length })}</Text> : null}
-                  <Text style={{ fontSize: 12.5, color: C.muted }}>· {tr('giver.memberSince', { year: person.since })}</Text>
+                  <Text style={{ fontSize: 12.5, color: C.muted }}>· {tr('giver.memberSince', { year: person.since ?? '—' })}</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 }}>
                   <Icon name="pin" size={12.5} color={C.accent} />
@@ -77,7 +78,9 @@ export default function Giver() {
               <Stat n={received} label={tr('profile.received')} />
             </View>
 
-            <Btn icon="chat" label={tr('giver.message', { name })} onPress={message} block style={{ marginTop: 18, paddingVertical: 14 }} />
+            {!isMe ? (
+              <Btn icon="chat" label={tr('giver.message', { name })} onPress={message} block style={{ marginTop: 18, paddingVertical: 14 }} />
+            ) : null}
           </View>
         </View>
 

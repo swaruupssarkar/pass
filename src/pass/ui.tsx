@@ -369,6 +369,51 @@ export function SafetyNote({ text, danger }: { text: string; danger?: boolean })
   );
 }
 
+// ---------- animated onboarding hero ----------
+// A softly floating rounded-square disc with a centered icon and a pulsing ring
+// behind it. Optional notification-style badge. Used on the onboarding screens
+// so the hero feels alive.
+
+export function AnimatedIconHero({
+  icon,
+  disc = 132,
+  iconSize = 54,
+  tint = C.accentSoft,
+  badge,
+}: {
+  icon: IconName;
+  disc?: number;
+  iconSize?: number;
+  tint?: string;
+  badge?: string;
+}) {
+  const float = useSharedValue(0);
+  const pulse = useSharedValue(0);
+
+  useEffect(() => {
+    float.value = withRepeat(withTiming(1, { duration: 2400, easing: Easing.inOut(Easing.quad) }), -1, true);
+    pulse.value = withRepeat(withTiming(1, { duration: 2600, easing: Easing.out(Easing.quad) }), -1, false);
+  }, [float, pulse]);
+
+  const discStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -8 * float.value }] }));
+  const ringStyle = useAnimatedStyle(() => ({ transform: [{ scale: 1 + pulse.value * 0.55 }], opacity: 0.22 * (1 - pulse.value) }));
+
+  const r = disc * 0.32;
+  return (
+    <View style={{ width: disc + 64, height: disc + 64, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View style={[{ position: 'absolute', width: disc, height: disc, borderRadius: r, borderCurve: 'continuous', backgroundColor: C.accent }, ringStyle]} />
+      <Animated.View style={[{ width: disc, height: disc, borderRadius: r, borderCurve: 'continuous', backgroundColor: tint, alignItems: 'center', justifyContent: 'center' }, discStyle]}>
+        <Icon name={icon} size={iconSize} color={C.accent} />
+        {badge ? (
+          <View style={{ position: 'absolute', top: disc * 0.18, right: disc * 0.2, minWidth: 24, height: 24, paddingHorizontal: 5, borderRadius: 12, backgroundColor: C.accent, borderWidth: 2.5, borderColor: tint, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>{badge}</Text>
+          </View>
+        ) : null}
+      </Animated.View>
+    </View>
+  );
+}
+
 // ---------- animated empty state ----------
 // Shared blank-screen placeholder: a softly floating icon inside a pulsing
 // ring, plus optional title/body/CTA. Used on every "nothing here yet" screen

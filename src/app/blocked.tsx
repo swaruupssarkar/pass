@@ -1,7 +1,6 @@
 import { ScrollView, Text, View } from 'react-native';
 
-import { USERS } from '@/pass/data';
-import { blockedUserIds, CITIES, userName, usePass, useT } from '@/pass/store';
+import { blockedUserIds, CITIES, profileOf, userName, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, Btn, EmptyState, Header, Screen, shadow } from '@/pass/ui';
 
@@ -21,7 +20,7 @@ export default function Blocked() {
         ) : (
           <View style={{ gap: 11 }}>
             {blocked.map((id) => {
-              const city = CITIES.find((c) => c.id === USERS[id].cityId);
+              const city = CITIES.find((c) => c.id === profileOf(s, id).cityId);
               return (
                 <View key={id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.surface, borderRadius: radius.lg, borderCurve: 'continuous', padding: 13, ...shadow(8, 20, 0.35) }}>
                   <Avatar name={userName(s, id)} uri={s.dp[id]} size={46} square />

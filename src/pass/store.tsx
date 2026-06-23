@@ -15,13 +15,16 @@ import {
   type Notification,
   type Review,
   OTHER_USER,
+  type Profile,
   type Request,
   REPORT_REASONS,
   SEED_LISTINGS,
+  SEED_PROFILES,
   type UserId,
   USERS,
 } from '@/pass/data';
 import { REPORT_DELIST_THRESHOLD, REPORT_EMAIL, REPORT_ENDPOINT } from '@/pass/config';
+import { supabase } from '@/pass/supabase';
 import { DEFAULT_LANG, type LangCode, translate } from '@/pass/i18n';
 import { reverseGeocode } from '@/pass/places';
 import { TINTS } from '@/pass/theme';
@@ -48,7 +51,12 @@ export type ReportPayload = {
 const STORAGE_KEY = 'pass.state.v4';
 
 type State = {
+  /** Supabase auth user id ('' when logged out). */
   currentUserId: UserId;
+  /** cache of user records (current user + everyone referenced); seeded from SEED_PROFILES. */
+  profiles: Record<string, Profile>;
+  /** false until the initial Supabase session check resolves (gates the splash). */
+  authReady: boolean;
   lang: LangCode;
   listings: Listing[];
   requests: Request[];
@@ -123,7 +131,9 @@ type State = {
 };
 
 const INITIAL: State = {
-  currentUserId: 'u1',
+  currentUserId: '',
+  profiles: { ...SEED_PROFILES },
+  authReady: false,
   lang: DEFAULT_LANG,
   listings: SEED_LISTINGS.map((l) => ({ ...l })),
   requests: [],
@@ -184,8 +194,16 @@ const INITIAL: State = {
 
 // ---- pure helpers ----
 
-export const me = (s: State) => USERS[s.currentUserId];
-export const otherOf = (id: UserId) => USERS[OTHER_USER[id]];
+// current user's profile, with a safe fallback so call sites never crash pre-load
+export const me = (s: State): Profile =>
+  s.profiles[s.currentUserId] ?? { id: s.currentUserId, name: 'You', dp: null };
+// seed-only helper (two demo users); real auth has no fixed "other" user
+export const otherOf = (id: UserId): Profile =>
+  s_profile(SEED_PROFILES, OTHER_USER[id]) ?? { id: OTHER_USER[id] ?? '', name: 'Someone', dp: null };
+const s_profile = (m: Record<string, Profile>, id?: string) => (id ? m[id] : undefined);
+// resolve any user id to a Profile (cache → seed → safe fallback)
+export const profileOf = (s: State, id: UserId): Profile =>
+  s.profiles[id] ?? SEED_PROFILES[id] ?? { id, name: 'Someone', dp: null };
 
 export function nearestCity(c: Coords) {
   return CITIES.reduce((best, city) =>
@@ -269,16 +287,16 @@ export const listingById = (s: State, id: string | null): Listing | null =>
 
 export const activeListing = (s: State): Listing | null => listingById(s, s.activeListingId);
 
-export function ownerOf(s: State, l: Listing) {
-  return USERS[l.ownerId];
+export function ownerOf(s: State, l: Listing): Profile {
+  return profileOf(s, l.ownerId);
 }
 
 // ---- requests ----
 
-export function requestsFor(s: State, listingId: string): { request: Request; user: typeof USERS[UserId] }[] {
+export function requestsFor(s: State, listingId: string): { request: Request; user: Profile }[] {
   return s.requests
     .filter((r) => r.listingId === listingId)
-    .map((r) => ({ request: r, user: USERS[r.fromUserId] }));
+    .map((r) => ({ request: r, user: profileOf(s, r.fromUserId) }));
 }
 
 export const myRequests = (s: State): { request: Request; listing: Listing | null }[] =>
@@ -289,11 +307,11 @@ export const myRequests = (s: State): { request: Request; listing: Listing | nul
 /** Requests other people made for the current user's listings. */
 export const incomingRequests = (
   s: State
-): { request: Request; user: typeof USERS[UserId]; listing: Listing | null }[] =>
+): { request: Request; user: Profile; listing: Listing | null }[] =>
   s.requests
     .filter((r) => r.toUserId === s.currentUserId)
     .sort((a, b) => b.createdAt - a.createdAt)
-    .map((r) => ({ request: r, user: USERS[r.fromUserId], listing: listingById(s, r.listingId) }));
+    .map((r) => ({ request: r, user: profileOf(s, r.fromUserId), listing: listingById(s, r.listingId) }));
 
 export const incomingPendingCount = (s: State): number =>
   s.requests.filter((r) => r.toUserId === s.currentUserId && r.status === 'pending').length;
@@ -346,7 +364,7 @@ export function threadMeta(s: State, id: string): ThreadMeta {
     id,
     listingId,
     otherId,
-    otherName: USERS[otherId]?.name ?? 'Someone',
+    otherName: userName(s, otherId),
     item: l?.title ?? 'Chat',
     tint: l?.tint ?? TINTS[0],
     area: l?.area ?? '',
@@ -359,9 +377,10 @@ export const activeThreadMessages = (s: State): Message[] => threadMessages(s, s
 export type InboxRow = ThreadMeta & { last: string; time: string; unread: boolean; ts: number };
 
 export function inboxRows(s: State): InboxRow[] {
-  const ids = Object.keys(s.threads).filter(
-    (id) => id.startsWith('p:') && threadUsers(id).includes(s.currentUserId) && (s.threads[id]?.length ?? 0) > 0
-  );
+  const ids = Object.keys(s.threads).filter((id) => {
+    const [a, b] = threadUsers(id);
+    return id.startsWith('p:') && a !== b && (a === s.currentUserId || b === s.currentUserId) && (s.threads[id]?.length ?? 0) > 0;
+  });
   const unreadThreads = new Set(
     s.notifications.filter((n) => n.userId === s.currentUserId && !n.read && n.kind === 'message' && n.threadId).map((n) => n.threadId)
   );
@@ -413,7 +432,8 @@ export const handoffsTo = (s: State, userId: UserId): Handoff[] =>
   (s.handoffs ?? []).filter((h) => h.recipientId === userId).sort((a, b) => b.ts - a.ts);
 
 /** Display name for a user, honouring any self-set override. */
-export const userName = (s: State, id: UserId): string => s.names?.[id] ?? USERS[id].name;
+export const userName = (s: State, id: UserId): string =>
+  s.names?.[id] ?? s.profiles[id]?.name ?? USERS[id]?.name ?? 'Someone';
 
 /** Real average rating computed from received reviews; null when none yet. */
 export function userRating(s: State, id: UserId): number | null {
@@ -504,13 +524,15 @@ function deliverReport(payload: ReportPayload): void {
 type Store = {
   s: State;
   patch: (p: Partial<State>) => void;
-  // users
-  switchUser: (id: UserId) => void;
-  logout: () => void;
+  // auth
+  signInWithEmail: (email: string) => Promise<{ ok: boolean; error?: string }>;
+  verifyOtp: (email: string, token: string) => Promise<{ ok: boolean; error?: string }>;
+  logout: () => Promise<void>;
   // location
   setCity: (cityId: string) => void;
   useCurrentLocation: () => Promise<'granted' | 'denied' | 'error'>;
   requestLocation: () => Promise<void>;
+  requestNotifications: () => Promise<'granted' | 'denied' | 'error'>;
   // browse
   openListing: (id: string) => void;
   toggleSave: (id: string) => void;
@@ -601,22 +623,37 @@ export function PassProvider({ children }: { children: ReactNode }) {
       s,
       patch,
 
-      switchUser: (id) =>
+      signInWithEmail: async (email) => {
+        const { error } = await supabase.auth.signInWithOtp({
+          email: email.trim().toLowerCase(),
+          options: { shouldCreateUser: true },
+        });
+        return error ? { ok: false, error: error.message } : { ok: true };
+      },
+
+      verifyOtp: async (email, token) => {
+        const { error } = await supabase.auth.verifyOtp({
+          email: email.trim().toLowerCase(),
+          token: token.trim(),
+          type: 'email',
+        });
+        // on success the onAuthStateChange listener populates currentUserId + profile
+        return error ? { ok: false, error: error.message } : { ok: true };
+      },
+
+      logout: async () => {
+        await supabase.auth.signOut();
         setS((prev) => ({
           ...prev,
-          currentUserId: id,
-          activeMode: 'city',
-          // restore this user's last-chosen city instead of forcing their home city
-          activeCityId: prev.userCity?.[id] ?? USERS[id].cityId,
+          currentUserId: '',
           activeThreadId: null,
           activeListingId: null,
           activePersonId: null,
           q: '',
           catFilter: null,
           draft: '',
-        })),
-
-      logout: () => setS((prev) => ({ ...prev, onboarded: false })),
+        }));
+      },
 
       setCity: (cityId) =>
         setS((prev) => ({
@@ -659,6 +696,21 @@ export function PassProvider({ children }: { children: ReactNode }) {
         }
       },
 
+      // ask the OS for real notification permission (shows the system dialog).
+      // expo-notifications is lazy-loaded so its native module is never touched
+      // at app boot — in Expo Go (no notifications module) that would crash.
+      requestNotifications: async () => {
+        try {
+          const Notifications = await import('expo-notifications');
+          const current = await Notifications.getPermissionsAsync();
+          if (current.granted || current.status === 'granted') return 'granted';
+          const res = await Notifications.requestPermissionsAsync();
+          return res.granted || res.status === 'granted' ? 'granted' : 'denied';
+        } catch {
+          return 'error';
+        }
+      },
+
       openListing: (id) => setS((prev) => ({ ...prev, activeListingId: id, galleryIdx: 0, sheetExpanded: false })),
       toggleSave: (id) => setS((prev) => ({ ...prev, saved: { ...prev.saved, [id]: !prev.saved[id] } })),
       viewPerson: (id) => setS((prev) => ({ ...prev, activePersonId: id })),
@@ -674,7 +726,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
           postPhotos: [],
           postAddress: '',
           postCoords: null,
-          postCityId: USERS[prev.currentUserId].cityId,
+          postCityId: prev.profiles[prev.currentUserId]?.cityId ?? prev.activeCityId,
         })),
 
       startEdit: (id) =>
@@ -809,7 +861,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
               notify(prev, {
                 userId: l.ownerId,
                 kind: hasThread ? 'message' : 'request',
-                title: `${USERS[prev.currentUserId].name} wants your ${l.title}`,
+                title: `${userName(prev, prev.currentUserId)} wants your ${l.title}`,
                 body: text,
                 threadId: hasThread ? tid : undefined,
                 listingId,
@@ -844,7 +896,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
             threadStarter: { ...prev.threadStarter, [id]: prev.threadStarter[id] ?? req.fromUserId },
             threadAccepted: { ...prev.threadAccepted, [id]: true },
             notifications: [
-              notify(prev, { userId: req.fromUserId, kind: 'request', title: `${USERS[req.toUserId].name} accepted your request`, body: `You can now chat about ${l?.title ?? 'the item'}.`, threadId: id, listingId: req.listingId, route: '/thread' }),
+              notify(prev, { userId: req.fromUserId, kind: 'request', title: `${userName(prev, req.toUserId)} accepted your request`, body: `You can now chat about ${l?.title ?? 'the item'}.`, threadId: id, listingId: req.listingId, route: '/thread' }),
               ...prev.notifications,
             ],
           };
@@ -858,7 +910,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
             ...prev,
             requests: prev.requests.map((r) => (r.id === requestId ? { ...r, status: 'declined' } : r)),
             notifications: [
-              notify(prev, { userId: req.fromUserId, kind: 'request', title: `${USERS[req.toUserId].name} declined your request`, body: '', listingId: req.listingId }),
+              notify(prev, { userId: req.fromUserId, kind: 'request', title: `${userName(prev, req.toUserId)} declined your request`, body: '', listingId: req.listingId }),
               ...prev.notifications,
             ],
           };
@@ -873,7 +925,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
           if (!req) return prev;
           const other = prev.currentUserId === req.fromUserId ? req.toUserId : req.fromUserId;
           const l = prev.listings.find((x) => x.id === req.listingId);
-          const title = `${USERS[prev.currentUserId].name} cancelled the request${l ? ` for ${l.title}` : ''}`;
+          const title = `${userName(prev, prev.currentUserId)} cancelled the request${l ? ` for ${l.title}` : ''}`;
           return {
             ...prev,
             requests: prev.requests.filter((r) => r.id !== requestId),
@@ -896,6 +948,8 @@ export function PassProvider({ children }: { children: ReactNode }) {
       openThreadFor: (listingId) => {
         const l = s.listings.find((x) => x.id === listingId);
         const otherId = l ? l.ownerId : OTHER_USER[s.currentUserId];
+        // never start a chat with yourself (e.g. messaging from your own listing)
+        if (otherId === s.currentUserId) return s.activeThreadId ?? '';
         const id = threadId(s.currentUserId, otherId);
         setS((prev) => {
           const { threads, threadListing } = ensurePairThread(prev, otherId, listingId);
@@ -960,7 +1014,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
             threadStarter,
             threadAccepted,
             notifications: [
-              notify(prev, { userId: other, kind: 'message', title: `New message from ${USERS[prev.currentUserId].name}`, body: text, threadId: id, listingId: meta.listingId ?? undefined, route: '/thread' }),
+              notify(prev, { userId: other, kind: 'message', title: `New message from ${userName(prev, prev.currentUserId)}`, body: text, threadId: id, listingId: meta.listingId ?? undefined, route: '/thread' }),
               ...prev.notifications,
             ],
           };
@@ -986,7 +1040,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
             ...prev,
             threads: { ...prev.threads, [id]: [...(prev.threads[id] ?? []), msg] },
             notifications: [
-              notify(prev, { userId: other, kind: 'message', title: `New message from ${USERS[prev.currentUserId].name}`, body: 'Shared a live location', threadId: id, listingId: meta.listingId ?? undefined, route: '/thread' }),
+              notify(prev, { userId: other, kind: 'message', title: `New message from ${userName(prev, prev.currentUserId)}`, body: 'Shared a live location', threadId: id, listingId: meta.listingId ?? undefined, route: '/thread' }),
               ...prev.notifications,
             ],
           };
@@ -1004,7 +1058,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
             ...prev,
             threads: { ...prev.threads, [id]: [...(prev.threads[id] ?? []), msg] },
             notifications: [
-              notify(prev, { userId: other, kind: 'message', title: `New message from ${USERS[prev.currentUserId].name}`, body: 'Sent a photo', threadId: id, listingId: meta.listingId ?? undefined, route: '/thread' }),
+              notify(prev, { userId: other, kind: 'message', title: `New message from ${userName(prev, prev.currentUserId)}`, body: 'Sent a photo', threadId: id, listingId: meta.listingId ?? undefined, route: '/thread' }),
               ...prev.notifications,
             ],
           };
@@ -1031,7 +1085,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
               notify(prev, {
                 userId: recipientId,
                 kind: 'taken',
-                title: `${USERS[prev.currentUserId].name} marked "${l.title}" as taken by you`,
+                title: `${userName(prev, prev.currentUserId)} marked "${l.title}" as taken by you`,
                 body: 'Please rate your experience.',
                 listingId,
                 route: '/rate',
@@ -1134,7 +1188,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
             listingId,
             listingTitle: l.title,
             reason: REPORT_REASONS[prev.reportReason] ?? `Reason #${prev.reportReason}`,
-            reportedBy: USERS[prev.currentUserId].name,
+            reportedBy: userName(prev, prev.currentUserId),
             ts: Date.now(),
           });
           // count THIS listing only; it auto-delists once it crosses the threshold
@@ -1144,7 +1198,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
       markOnboarded: () => setS((prev) => (prev.onboarded ? prev : { ...prev, onboarded: true })),
 
       setName: (name) =>
-        setS((prev) => ({ ...prev, names: { ...prev.names, [prev.currentUserId]: name.trim() || USERS[prev.currentUserId].name } })),
+        setS((prev) => ({ ...prev, names: { ...prev.names, [prev.currentUserId]: name.trim() || userName(prev, prev.currentUserId) } })),
       setDp: (uri) => setS((prev) => ({ ...prev, dp: { ...prev.dp, [prev.currentUserId]: uri } })),
 
       setNotifyNear: (on) =>
@@ -1193,6 +1247,47 @@ export function PassProvider({ children }: { children: ReactNode }) {
             .map((l) => ({ id: `h_${l.id}`, listingId: l.id, giverId: l.ownerId, recipientId: l.takenBy as UserId, title: l.title, photo: l.photos?.[0], tint: l.tint, cat: l.cat, ts: l.createdAt }));
           if (backfill.length) saved.handoffs = [...backfill, ...(saved.handoffs ?? [])];
         }
+        // purge any self-chat threads (p:x-x) created by an earlier bug
+        {
+          const notSelf = ([k]: [string, unknown]) => {
+            const [a, b] = k.replace(/^p:/, '').split('-');
+            return a !== b;
+          };
+          if (saved.threads) saved.threads = Object.fromEntries(Object.entries(saved.threads).filter(notSelf)) as typeof saved.threads;
+          if (saved.threadListing) saved.threadListing = Object.fromEntries(Object.entries(saved.threadListing).filter(notSelf)) as typeof saved.threadListing;
+          if (saved.threadStarter) saved.threadStarter = Object.fromEntries(Object.entries(saved.threadStarter).filter(notSelf)) as typeof saved.threadStarter;
+          if (saved.threadAccepted) saved.threadAccepted = Object.fromEntries(Object.entries(saved.threadAccepted).filter(notSelf)) as typeof saved.threadAccepted;
+          if (saved.threadRead) saved.threadRead = Object.fromEntries(Object.entries(saved.threadRead).filter(notSelf)) as typeof saved.threadRead;
+        }
+        // backfill chat threads for accepted requests that predate thread-on-accept,
+        // so an accepted request shows under Chats instead of lingering in Requests
+        if (saved.requests?.length) {
+          const threads = { ...(saved.threads ?? {}) };
+          const threadListing = { ...(saved.threadListing ?? {}) };
+          const threadStarter = { ...(saved.threadStarter ?? {}) };
+          const threadAccepted = { ...(saved.threadAccepted ?? {}) };
+          let changed = false;
+          for (const r of saved.requests) {
+            if (r.status !== 'accepted' || r.toUserId === r.fromUserId) continue;
+            const id = threadId(r.toUserId, r.fromUserId);
+            if (threads[id]?.length) continue;
+            const l = (saved.listings ?? []).find((x) => x.id === r.listingId);
+            threads[id] = [
+              { id: uid('m'), from: r.fromUserId, text: r.note, ts: r.createdAt },
+              { id: uid('m'), from: r.toUserId, text: `Accepted your request for ${l?.title ?? 'the item'}. Let's arrange the pickup!`, ts: r.createdAt + 1000 },
+            ];
+            threadListing[id] = r.listingId;
+            threadStarter[id] = threadStarter[id] ?? r.fromUserId;
+            threadAccepted[id] = true;
+            changed = true;
+          }
+          if (changed) {
+            saved.threads = threads;
+            saved.threadListing = threadListing;
+            saved.threadStarter = threadStarter;
+            saved.threadAccepted = threadAccepted;
+          }
+        }
         if (alive) setS((prev) => ({ ...prev, ...saved, hydrated: true }));
       } catch {
         if (alive) setS((prev) => ({ ...prev, hydrated: true }));
@@ -1203,12 +1298,54 @@ export function PassProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // auth: mirror the Supabase session into the store + bootstrap the profile row
+  useEffect(() => {
+    const applyUser = async (userId: string | null) => {
+      if (!userId) {
+        setS((prev) => ({ ...prev, currentUserId: '', authReady: true }));
+        return;
+      }
+      setS((prev) => ({ ...prev, currentUserId: userId, authReady: true }));
+      try {
+        const email = (await supabase.auth.getUser()).data.user?.email ?? '';
+        // safety net in case the signup trigger didn't run (keeps existing row)
+        await supabase.from('profiles').upsert({ id: userId }, { onConflict: 'id', ignoreDuplicates: true });
+        const { data } = await supabase
+          .from('profiles')
+          .select('id,name,city_id,dp,since')
+          .eq('id', userId)
+          .single();
+        if (data) {
+          setS((prev) => ({
+            ...prev,
+            profiles: {
+              ...prev.profiles,
+              [userId]: {
+                id: data.id,
+                name: data.name || email.split('@')[0] || 'You',
+                cityId: data.city_id,
+                dp: data.dp,
+                since: data.since,
+              },
+            },
+          }));
+        }
+      } catch {
+        // offline / transient — the cache + fallback name keep the UI usable
+      }
+    };
+    supabase.auth.getSession().then(({ data }) => applyUser(data.session?.user.id ?? null));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => applyUser(session?.user.id ?? null));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
   // persist (debounced so the JSON.stringify never blocks the tap that triggered it)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!s.hydrated) return;
     const snapshot = {
       currentUserId: s.currentUserId,
+      profiles: s.profiles,
       lang: s.lang,
       listings: s.listings,
       requests: s.requests,
@@ -1242,6 +1379,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
   }, [
     s.hydrated,
     s.currentUserId,
+    s.profiles,
     s.lang,
     s.listings,
     s.requests,

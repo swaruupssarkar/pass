@@ -4,7 +4,9 @@
 
 export type Coords = { lat: number; lng: number };
 
-export type UserId = 'u1' | 'u2';
+// Real auth makes this a Supabase user uuid. '' means logged-out. The seed
+// demo ids 'u1'/'u2' are still valid strings (they own the seed listings).
+export type UserId = string;
 
 export type User = {
   id: UserId;
@@ -13,6 +15,16 @@ export type User = {
   cityId: string;
   rating: number;
   since: string;
+};
+
+// A user record as cached in the store (current user + everyone referenced by
+// listings/threads/etc). Hydrated from Supabase `profiles`, seeded from USERS.
+export type Profile = {
+  id: string;
+  name: string;
+  cityId?: string | null;
+  since?: string;
+  dp?: string | null;
 };
 
 export type City = { id: string; name: string; initial: string; lat: number; lng: number; landmark: string; img: string };
@@ -137,6 +149,11 @@ export const USERS: Record<UserId, User> = {
 
 export const OTHER_USER: Record<UserId, UserId> = { u1: 'u2', u2: 'u1' };
 
+// Seed users projected into the Profile shape used by the store's profiles cache.
+export const SEED_PROFILES: Record<string, Profile> = Object.fromEntries(
+  Object.values(USERS).map((u) => [u.id, { id: u.id, name: u.name, cityId: u.cityId, since: u.since, dp: null }])
+);
+
 // ---- seeded listings (each owned by a test user, spread across two cities) ----
 
 const T = ['#E5D9C9', '#D9E0DC', '#E6DCEA', '#E3DBC8', '#DEDCD2', '#E7DAC6', '#DCE6E2', '#EFE7DC'];
@@ -205,8 +222,8 @@ export const SEED_LISTINGS: Listing[] = BASE_LISTINGS.map((l) => {
 // ---- onboarding + misc copy ----
 
 export const INTRO_CARDS = [
-  { tint: '#E4EFE8', img: 'find free stuff', title: 'Find free stuff near you', body: 'Browse furniture, appliances, books and more — given away by neighbours, completely free.', cta: 'Next' },
-  { tint: '#FBEAE3', img: 'give a box', title: 'Give away what you don’t need', body: 'Post it in a minute. Someone close by will love it — and it stays out of a landfill.', cta: 'Get started' },
+  { tint: '#E4EFE8', icon: 'search', img: 'find free stuff', title: 'Find free stuff near you', body: 'Browse furniture, appliances, books and more — given away by neighbours, completely free.', cta: 'Next' },
+  { tint: '#FBEAE3', icon: 'gift', img: 'give a box', title: 'Give away what you don’t need', body: 'Post it in a minute. Someone close by will love it — and it stays out of a landfill.', cta: 'Get started' },
 ];
 
 export const REPORT_REASONS = [

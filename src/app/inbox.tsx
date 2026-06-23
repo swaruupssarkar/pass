@@ -14,9 +14,12 @@ export default function Inbox() {
   const { s, openThread, viewPerson, acceptRequest, declineRequest, openThreadFor, openListing, deleteThread, showConfirm } = usePass();
   const [tab, setTab] = useState<'chats' | 'requests'>('chats');
   const rows = inboxRows(s);
-  // requests from people you do NOT already have a chat with (those show inside the chat instead)
-  const requests = incomingRequests(s).filter((r) => !s.threads[threadId(s.currentUserId, r.request.fromUserId)]);
-  const pending = requests.filter((r) => r.request.status === 'pending').length;
+  // Requests tab = only pending requests awaiting a decision. Once accepted the
+  // request becomes a chat (a thread is created), so it moves to the Chats tab.
+  const requests = incomingRequests(s).filter(
+    (r) => r.request.status === 'pending' && !s.threads[threadId(s.currentUserId, r.request.fromUserId)]
+  );
+  const pending = requests.length;
 
   const openChatThread = (id: string) => {
     openThread(id);

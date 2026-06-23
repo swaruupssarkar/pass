@@ -11,10 +11,12 @@ export default function Splash() {
   const tr = useT();
   const { s } = usePass();
 
-  // returning user: skip onboarding once persisted state has loaded
+  // once cache + session resolve: signed-in users skip the splash (to the feed,
+  // or into the rest of onboarding); signed-out users tap to start → intro → login
   useEffect(() => {
-    if (s.hydrated && s.onboarded) router.replace('/feed');
-  }, [s.hydrated, s.onboarded, router]);
+    if (!s.hydrated || !s.authReady) return;
+    if (s.currentUserId) router.replace(s.onboarded ? '/feed' : '/location');
+  }, [s.hydrated, s.authReady, s.currentUserId, s.onboarded, router]);
 
   return (
     <Pressable
@@ -35,9 +37,9 @@ export default function Splash() {
           justifyContent: 'center',
           boxShadow: '0 18px 40px -14px rgba(0,0,0,0.4)',
         }}>
-        <Text style={{ fontSize: 46, fontWeight: '800', color: C.accent, letterSpacing: -2 }}>p</Text>
+        <Text style={{ fontSize: 46, fontWeight: '800', color: C.accent, letterSpacing: -2 }}>D</Text>
       </View>
-      <Text style={{ fontSize: 40, fontWeight: '800', color: '#fff', letterSpacing: -1, marginTop: 24 }}>pass</Text>
+      <Text style={{ fontSize: 40, fontWeight: '800', color: '#fff', letterSpacing: -1, marginTop: 24 }}>Daata</Text>
       <Text style={{ fontSize: 17, color: 'rgba(255,255,255,0.92)', textAlign: 'center', marginTop: 10, lineHeight: 26, fontWeight: '500', maxWidth: 260 }}>
         {tr('index.tagline', { br: '\n' })}
       </Text>

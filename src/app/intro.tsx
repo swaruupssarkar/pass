@@ -3,9 +3,10 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { INTRO_CARDS } from '@/pass/data';
+import { type IconName } from '@/pass/icon';
 import { useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Btn, PhotoTile, Screen, t } from '@/pass/ui';
+import { AnimatedIconHero, Btn, Screen, t } from '@/pass/ui';
 
 export default function Intro() {
   const router = useRouter();
@@ -15,25 +16,20 @@ export default function Intro() {
 
   const next = () => {
     if (i < INTRO_CARDS.length - 1) setI(i + 1);
-    else router.push('/location');
+    else router.push('/login');
   };
 
   return (
     <Screen edges={['top', 'bottom']}>
       <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 18, paddingBottom: 28 }}>
         <View style={{ alignItems: 'flex-end' }}>
-          <Pressable onPress={() => router.push('/location')} hitSlop={10} style={{ padding: 6 }}>
+          <Pressable onPress={() => router.push('/login')} hitSlop={10} style={{ padding: 6 }}>
             <Text style={{ fontSize: 14, fontWeight: '600', color: C.muted }}>{tr('intro.skip')}</Text>
           </Pressable>
         </View>
 
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <PhotoTile
-            tint={card.tint}
-            caption={card.img}
-            gap={24}
-            style={{ width: 230, height: 230, borderRadius: 36, borderCurve: 'continuous' }}
-          />
+          <AnimatedIconHero key={i} icon={card.icon as IconName} tint={card.tint} disc={186} iconSize={78} />
           <Text style={[t.h1, { fontSize: 26, marginTop: 32, textAlign: 'center', maxWidth: 280, lineHeight: 31 }]}>
             {card.title}
           </Text>

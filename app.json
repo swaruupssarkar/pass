@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "pass",
-    "slug": "pass",
+    "name": "Daata",
+    "slug": "daata",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "pass",
+    "scheme": "daata",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
@@ -55,7 +55,8 @@
           "photosPermission": "Allow pass to access your photos so you can add item pictures.",
           "cameraPermission": "Allow pass to use your camera to take item pictures."
         }
-      ]
+      ],
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true,

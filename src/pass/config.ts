@@ -12,6 +12,22 @@ export const GOOGLE_PLACES_KEY: string =
 
 export const hasPlaces = (): boolean => GOOGLE_PLACES_KEY.length > 0;
 
+// ---- Supabase backend ----
+// Publishable/anon key — safe to ship in the client; Row-Level Security enforces
+// access. Set via .env (EXPO_PUBLIC_SUPABASE_*) or app.json -> expo.extra.
+export const SUPABASE_URL: string =
+  process.env.EXPO_PUBLIC_SUPABASE_URL ??
+  (Constants.expoConfig?.extra?.supabaseUrl as string | undefined) ??
+  '';
+
+export const SUPABASE_ANON_KEY: string =
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ??
+  (Constants.expoConfig?.extra?.supabaseAnonKey as string | undefined) ??
+  '';
+
+// When unset, the app keeps running in local-only mode (mirrors hasPlaces()).
+export const hasSupabase = (): boolean => SUPABASE_URL.length > 0 && SUPABASE_ANON_KEY.length > 0;
+
 // Moderation: a listing is automatically delisted (hidden from browse) once it
 // receives this many reports. Change this single value to tune the threshold.
 export const REPORT_DELIST_THRESHOLD = 5;

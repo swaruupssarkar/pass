@@ -7,7 +7,6 @@ import { Icon, type IconName } from '@/pass/icon';
 import { CITIES, handoffsTo, me, myHandoffs, myListings, reviewsFor, userName, userRating, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, BottomNav, Btn, Screen, shadow, VerifiedBadge } from '@/pass/ui';
-import type { UserId } from '@/pass/data';
 
 const ROWS: { icon: IconName; labelKey: string; route: '/manage' | '/impact' | '/saved' | '/safety' | '/settings' }[] = [
   { icon: 'clipboard', labelKey: 'profile.myListings', route: '/manage' },
@@ -17,12 +16,10 @@ const ROWS: { icon: IconName; labelKey: string; route: '/manage' | '/impact' | '
   { icon: 'settings', labelKey: 'profile.settings', route: '/settings' },
 ];
 
-const SWITCH_IDS: UserId[] = ['u1', 'u2'];
-
 export default function Profile() {
   const router = useRouter();
   const tr = useT();
-  const { s, switchUser, logout, setName, setDp } = usePass();
+  const { s, logout, setName, setDp } = usePass();
   const user = me(s);
   const mine = myListings(s);
   const givenCount = myHandoffs(s).length;
@@ -109,41 +106,6 @@ export default function Profile() {
           </View>
         </View>
 
-        {/* user switcher */}
-        <View style={{ backgroundColor: C.surface, borderRadius: 18, marginTop: 16, padding: 14, ...shadow(8, 24, 0.3) }}>
-          <Text style={{ fontSize: 11, fontWeight: '700', color: C.muted, letterSpacing: 0.3, marginBottom: 11 }}>{tr('profile.switchAccount')}</Text>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            {SWITCH_IDS.map((id) => {
-              const on = s.currentUserId === id;
-              return (
-                <Pressable
-                  key={id}
-                  onPress={() => switchUser(id)}
-                  style={{
-                    flex: 1,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 9,
-                    paddingVertical: 10,
-                    paddingHorizontal: 12,
-                    borderRadius: radius.md,
-                    borderCurve: 'continuous',
-                    borderWidth: 1.5,
-                    borderColor: on ? C.accent : C.line,
-                    backgroundColor: on ? C.accentSoft : C.surface,
-                  }}>
-                  <Avatar name={userName(s, id)} uri={s.dp[id]} size={34} square tint={on ? C.surface : C.bg} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13.5, fontWeight: '800', color: C.ink }} numberOfLines={1}>{userName(s, id)}</Text>
-                    <Text style={{ fontSize: 11, color: C.muted }} numberOfLines={1}>{on ? tr('profile.active') : tr('profile.tapToSwitch')}</Text>
-                  </View>
-                  {on ? <Icon name="check-circle" size={17} color={C.accent} /> : null}
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
         {/* menu */}
         <View style={{ backgroundColor: C.surface, borderRadius: 18, marginTop: 16, overflow: 'hidden', ...shadow(8, 24, 0.3) }}>
           {ROWS.map((r, i) => (
@@ -162,9 +124,9 @@ export default function Profile() {
           icon="back"
           label={tr('profile.logout')}
           variant="outline"
-          onPress={() => {
-            logout();
-            router.replace('/');
+          onPress={async () => {
+            await logout();
+            router.replace('/login');
           }}
           block
           style={{ marginTop: 16, paddingVertical: 14 }}

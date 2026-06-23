@@ -9,7 +9,7 @@ import { WebView } from 'react-native-webview';
 
 import { fmtKm, haversineKm, type Coords, type Listing } from '@/pass/data';
 import { catIcon, Icon } from '@/pass/icon';
-import { activeListing, distLabel, fmtAgo, fmtDate, myRequestFor, reviewsFor, userName, userPoint, userRating, USERS, usePass, useT } from '@/pass/store';
+import { activeListing, distLabel, fmtAgo, fmtDate, myRequestFor, profileOf, reviewsFor, userName, userPoint, userRating, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, Btn, EmptyState, Header, SafetyNote, Screen, VerifiedBadge, t } from '@/pass/ui';
 
@@ -31,7 +31,7 @@ export default function Detail() {
     );
   }
 
-  const owner = USERS[item.ownerId];
+  const owner = profileOf(s, item.ownerId);
   const ownerName = userName(s, item.ownerId);
   const ownerRating = userRating(s, item.ownerId);
   const ownerReviews = reviewsFor(s, item.ownerId).length;
@@ -162,7 +162,7 @@ export default function Detail() {
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}>
                 <Icon name="star" size={12.5} color={C.star} />
-                <Text style={{ fontSize: 12.5, color: C.muted }}>{ownerRating != null ? ownerRating : tr('common.new')}{ownerReviews > 0 ? ` · ${tr('common.reviewsN', { n: ownerReviews })}` : ''} · {tr('giver.memberSince', { year: owner.since })}</Text>
+                <Text style={{ fontSize: 12.5, color: C.muted }}>{ownerRating != null ? ownerRating : tr('common.new')}{ownerReviews > 0 ? ` · ${tr('common.reviewsN', { n: ownerReviews })}` : ''} · {tr('giver.memberSince', { year: owner.since ?? '—' })}</Text>
               </View>
             </View>
             {!mine && <Text style={{ color: C.accent, fontSize: 14, fontWeight: '800' }}>{tr('detail.view')}</Text>}

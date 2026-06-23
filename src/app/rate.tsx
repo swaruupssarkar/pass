@@ -1,9 +1,9 @@
 import { useRouter } from 'expo-router';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
-import { RATE_TAGS, USERS } from '@/pass/data';
+import { RATE_TAGS } from '@/pass/data';
 import { Icon } from '@/pass/icon';
-import { usePass, useT } from '@/pass/store';
+import { profileOf, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Btn, Pill, Screen, t } from '@/pass/ui';
 
@@ -11,7 +11,7 @@ export default function Rate() {
   const router = useRouter();
   const tr = useT();
   const { s, patch, toggleRateTag, submitRate } = usePass();
-  const giver = s.rateGiverId ? USERS[s.rateGiverId] : null;
+  const giver = s.rateGiverId ? profileOf(s, s.rateGiverId) : null;
 
   const submit = () => {
     if (s.rating === 0) return;
