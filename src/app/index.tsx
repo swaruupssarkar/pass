@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Image, Pressable, Text, View } from 'react-native';
 
 import { usePass, useT } from '@/pass/store';
 import { C } from '@/pass/theme';
@@ -26,18 +26,8 @@ export default function Splash() {
       <View style={{ position: 'absolute', top: -60, right: -40, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.08)' }} />
       <View style={{ position: 'absolute', bottom: -70, left: -50, width: 260, height: 260, borderRadius: 130, backgroundColor: 'rgba(255,255,255,0.07)' }} />
 
-      <View
-        style={{
-          width: 96,
-          height: 96,
-          borderRadius: 30,
-          borderCurve: 'continuous',
-          backgroundColor: '#fff',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 18px 40px -14px rgba(0,0,0,0.4)',
-        }}>
-        <Text style={{ fontSize: 46, fontWeight: '800', color: C.accent, letterSpacing: -2 }}>D</Text>
+      <View style={{ borderRadius: 26, borderCurve: 'continuous', boxShadow: '0 18px 40px -14px rgba(0,0,0,0.4)' }}>
+        <Image source={require('../../assets/images/icon.png')} style={{ width: 104, height: 104, borderRadius: 26 }} />
       </View>
       <Text style={{ fontSize: 40, fontWeight: '800', color: '#fff', letterSpacing: -1, marginTop: 24 }}>Daata</Text>
       <Text style={{ fontSize: 17, color: 'rgba(255,255,255,0.92)', textAlign: 'center', marginTop: 10, lineHeight: 26, fontWeight: '500', maxWidth: 260 }}>

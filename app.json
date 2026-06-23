@@ -8,14 +8,13 @@
     "scheme": "daata",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon",
       "config": {
         "googleMapsApiKey": "YOUR_IOS_GOOGLE_MAPS_API_KEY"
       }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#FA6023",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -36,24 +35,26 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#FA6023",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 180,
           "android": {
             "image": "./assets/images/splash-icon.png",
-            "imageWidth": 76
+            "imageWidth": 180
           }
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow pass to use your location to show free items near you."
+          "locationWhenInUsePermission": "Allow Daata to use your location to show free items near you."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow pass to access your photos so you can add item pictures.",
-          "cameraPermission": "Allow pass to use your camera to take item pictures."
+          "photosPermission": "Allow Daata to access your photos so you can add item pictures.",
+          "cameraPermission": "Allow Daata to use your camera to take item pictures."
         }
       ],
       "expo-notifications"

@@ -1,6 +1,6 @@
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { BackHandler, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { usePass } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
@@ -13,6 +13,15 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Logged out → this is the dead-end. Swallow Android hardware-back / predictive
+  // gesture so the user can't pop back into the app; stick here until signed in.
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+      return () => sub.remove();
+    }, []),
+  );
 
   const sendCode = async () => {
     const e = email.trim();
@@ -35,6 +44,7 @@ export default function Login() {
 
   return (
     <Screen edges={['top', 'bottom']}>
+      <Stack.Screen options={{ gestureEnabled: false }} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: 30, paddingBottom: 28 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
