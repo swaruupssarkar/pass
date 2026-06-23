@@ -55,7 +55,7 @@ export default function PickMap() {
   const notifyMode = useLocalSearchParams().mode === 'notify';
 
   const start = notifyMode
-    ? s.notify[s.currentUserId].addr ?? s.userLoc ?? activeOrigin(s)
+    ? s.notify[s.currentUserId]?.addr ?? s.userLoc ?? activeOrigin(s)
     : s.postCoords ?? s.userLoc ?? activeOrigin(s);
   const [coords, setCoords] = useState({ lat: start.lat, lng: start.lng });
   const [query, setQuery] = useState('');

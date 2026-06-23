@@ -25,6 +25,13 @@ import {
 } from '@/pass/data';
 import { REPORT_DELIST_THRESHOLD, REPORT_EMAIL, REPORT_ENDPOINT } from '@/pass/config';
 import { supabase } from '@/pass/supabase';
+import {
+  addBlock, addSave, clearNotificationsRemote, deleteListingRemote, deleteNotificationRemote, deleteRequestRemote,
+  deleteThreadRemote, fetchListings, fetchProfiles, insertHandoff, insertMessage, insertRequest, insertReview,
+  markNotificationsRead, pullUserData, removeBlock, removeSave, reportListingRemote, rowToListing, rowToMessage,
+  rowToNotification, rowToRequest, setListingTaken, updateProfileRemote, updateRequestStatus, updateThreadRead,
+  uploadImage, uploadListingPhotos, upsertListing, upsertNotifyPrefs, upsertThread, uuid,
+} from '@/pass/repo';
 import { DEFAULT_LANG, type LangCode, translate } from '@/pass/i18n';
 import { reverseGeocode } from '@/pass/places';
 import { TINTS } from '@/pass/theme';
@@ -37,6 +44,7 @@ export type DialogAction = { label: string; kind?: 'primary' | 'cancel' | 'destr
 export type Dialog = { title: string; message?: string; actions: DialogAction[] };
 
 export type NotifyPrefs = { near: boolean; chat: boolean; addr: { lat: number; lng: number; label: string } | null };
+const DEFAULT_NOTIFY: NotifyPrefs = { near: true, chat: true, addr: null };
 const NOTIFY_RADIUS_KM = 100;
 
 /** The report payload that gets emailed (see deliverReport). Nothing is stored. */
@@ -278,9 +286,11 @@ export const iBlocked = (s: State, otherId: UserId): boolean => !!s.blocked[bloc
 /** A block exists in EITHER direction — hides content and gates messaging both ways (WhatsApp-style). */
 export const isBlocked = (s: State, otherId: UserId): boolean =>
   !!s.blocked[blockKey(s.currentUserId, otherId)] || !!s.blocked[blockKey(otherId, s.currentUserId)];
-/** Everyone the current user has blocked. */
+/** Everyone the current user has blocked (derived from the block map keys). */
 export const blockedUserIds = (s: State): UserId[] =>
-  (Object.keys(USERS) as UserId[]).filter((id) => id !== s.currentUserId && iBlocked(s, id));
+  Object.entries(s.blocked)
+    .filter(([k, v]) => v && k.startsWith(`${s.currentUserId}>`))
+    .map(([k]) => k.split('>')[1]);
 
 export const listingById = (s: State, id: string | null): Listing | null =>
   s.listings.find((l) => l.id === id) ?? null;
@@ -632,13 +642,14 @@ export function PassProvider({ children }: { children: ReactNode }) {
       },
 
       verifyOtp: async (email, token) => {
-        const { error } = await supabase.auth.verifyOtp({
-          email: email.trim().toLowerCase(),
-          token: token.trim(),
-          type: 'email',
-        });
+        const e = email.trim().toLowerCase();
+        const t = token.trim();
+        // 'email' covers magic-link OTP (existing users); 'signup' covers the
+        // confirm-signup OTP (new users). Try the generic first, then fall back.
+        let res = await supabase.auth.verifyOtp({ email: e, token: t, type: 'email' });
+        if (res.error) res = await supabase.auth.verifyOtp({ email: e, token: t, type: 'signup' });
         // on success the onAuthStateChange listener populates currentUserId + profile
-        return error ? { ok: false, error: error.message } : { ok: true };
+        return res.error ? { ok: false, error: res.error.message } : { ok: true };
       },
 
       logout: async () => {
@@ -655,13 +666,18 @@ export function PassProvider({ children }: { children: ReactNode }) {
         }));
       },
 
-      setCity: (cityId) =>
+      setCity: (cityId) => {
         setS((prev) => ({
           ...prev,
           activeMode: 'city',
           activeCityId: cityId,
           userCity: { ...prev.userCity, [prev.currentUserId]: cityId },
-        })),
+          profiles: prev.profiles[prev.currentUserId]
+            ? { ...prev.profiles, [prev.currentUserId]: { ...prev.profiles[prev.currentUserId], cityId } }
+            : prev.profiles,
+        }));
+        if (s.currentUserId) void updateProfileRemote(s.currentUserId, { city_id: cityId });
+      },
 
       useCurrentLocation: async () => {
         const { status } = await Location.requestForegroundPermissionsAsync();
@@ -712,7 +728,12 @@ export function PassProvider({ children }: { children: ReactNode }) {
       },
 
       openListing: (id) => setS((prev) => ({ ...prev, activeListingId: id, galleryIdx: 0, sheetExpanded: false })),
-      toggleSave: (id) => setS((prev) => ({ ...prev, saved: { ...prev.saved, [id]: !prev.saved[id] } })),
+      toggleSave: (id) => {
+        const willSave = !s.saved[id];
+        setS((prev) => ({ ...prev, saved: { ...prev.saved, [id]: !prev.saved[id] } }));
+        if (willSave) void addSave(s.currentUserId, id);
+        else void removeSave(s.currentUserId, id);
+      },
       viewPerson: (id) => setS((prev) => ({ ...prev, activePersonId: id })),
 
       startPost: () =>
@@ -756,6 +777,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
 
       submitPost: () => {
         let outId: string | null = null;
+        let toSync: Listing | null = null;
         setS((prev) => {
           const coords = prev.postCoords ?? activeOrigin(prev);
           const cityId = prev.postCoords ? nearestCity(prev.postCoords).id : prev.postCityId;
@@ -769,9 +791,10 @@ export function PassProvider({ children }: { children: ReactNode }) {
                 ? { ...l, title, cat: prev.postCat, cond: prev.postCond, blurb: `${prev.postCond} · ${prev.postCat}`, desc, address: prev.postAddress, area, lat: coords.lat, lng: coords.lng, cityId, photos: prev.postPhotos, updatedAt: Date.now() }
                 : l
             );
+            toSync = listings.find((l) => l.id === prev.editingId) ?? null;
             return { ...prev, listings, editingId: null };
           }
-          const id = uid('l');
+          const id = uuid();
           outId = id;
           const listing: Listing = {
             id,
@@ -792,26 +815,24 @@ export function PassProvider({ children }: { children: ReactNode }) {
             createdAt: Date.now(),
             taken: false,
           };
-          const nearNotifs = (Object.keys(prev.notify) as UserId[])
-            .filter((uid) => uid !== prev.currentUserId)
-            .filter((uid) => {
-              const p = prev.notify[uid];
-              return p.near && p.addr && haversineKm(p.addr, { lat: listing.lat, lng: listing.lng }) <= NOTIFY_RADIUS_KM;
-            })
-            .map((uid) =>
-              notify(prev, { userId: uid, kind: 'item', title: 'New free item near you', body: listing.title, listingId: listing.id, route: '/detail' })
-            );
-          return {
-            ...prev,
-            listings: [listing, ...prev.listings],
-            activeListingId: id,
-            notifications: [...nearNotifs, ...prev.notifications],
-          };
+          toSync = listing;
+          return { ...prev, listings: [listing, ...prev.listings], activeListingId: id };
         });
+        // push to Supabase: upload local photos, swap in their URLs, upsert the row
+        const pending = toSync as Listing | null; // assigned in the setS closure
+        if (pending) {
+          const l = pending;
+          (async () => {
+            const photos = await uploadListingPhotos(l.ownerId, l.id, l.photos ?? []);
+            setS((p) => ({ ...p, listings: p.listings.map((x) => (x.id === l.id ? { ...x, photos } : x)) }));
+            await upsertListing({ ...l, photos });
+          })();
+        }
         return outId;
       },
 
-      deleteListing: (id) =>
+      deleteListing: (id) => {
+        const listing = s.listings.find((l) => l.id === id) ?? null;
         setS((prev) => ({
           ...prev,
           listings: prev.listings.filter((l) => l.id !== id),
@@ -819,36 +840,27 @@ export function PassProvider({ children }: { children: ReactNode }) {
           threads: Object.fromEntries(Object.entries(prev.threads).filter(([tid]) => !tid.startsWith(`${id}:`))),
           takenPickerId: prev.takenPickerId === id ? null : prev.takenPickerId,
           activeListingId: prev.activeListingId === id ? null : prev.activeListingId,
-        })),
+        }));
+        // remove the row + its Storage images (skips external seed URLs)
+        if (listing) void deleteListingRemote(listing);
+      },
 
       // send a request to the owner. If a chat with them already exists, the request
       // also drops into that thread as a message (so it shows under Chats, not Requests).
-      requestListing: (listingId, note) =>
+      requestListing: (listingId, note) => {
+        const l = s.listings.find((x) => x.id === listingId);
+        if (!l) return;
+        if (s.requests.some((r) => r.listingId === listingId && r.fromUserId === s.currentUserId)) return;
+        const now = Date.now();
+        const text = note.trim() || `Hi! Is the ${l.title} still available?`;
+        const req: Request = { id: uuid(), listingId, fromUserId: s.currentUserId, toUserId: l.ownerId, note: text, createdAt: now, status: 'pending' };
+        const tid = threadId(s.currentUserId, l.ownerId);
+        const hasThread = !!s.threads[tid];
+        const msg: Message | null = hasThread ? { id: uuid(), from: s.currentUserId, text, ts: now } : null;
         setS((prev) => {
-          const l = prev.listings.find((x) => x.id === listingId);
-          if (!l) return prev;
-          if (prev.requests.some((r) => r.listingId === listingId && r.fromUserId === prev.currentUserId)) return prev;
-          const now = Date.now();
-          const text = note.trim() || `Hi! Is the ${l.title} still available?`;
-          const req: Request = {
-            id: uid('r'),
-            listingId,
-            fromUserId: prev.currentUserId,
-            toUserId: l.ownerId,
-            note: text,
-            createdAt: now,
-            status: 'pending',
-          };
-          const tid = threadId(prev.currentUserId, l.ownerId);
-          const hasThread = !!prev.threads[tid];
-          const threads = hasThread
-            ? { ...prev.threads, [tid]: [...prev.threads[tid], { id: uid('m'), from: prev.currentUserId, text, ts: now }] }
-            : prev.threads;
+          const threads = hasThread && msg ? { ...prev.threads, [tid]: [...(prev.threads[tid] ?? []), msg] } : prev.threads;
           const threadListing = hasThread ? { ...prev.threadListing, [tid]: listingId } : prev.threadListing;
-          // engaging with someone's listing counts as accepting any chat they opened
-          const threadStarter = hasThread
-            ? { ...prev.threadStarter, [tid]: prev.threadStarter[tid] ?? prev.currentUserId }
-            : prev.threadStarter;
+          const threadStarter = hasThread ? { ...prev.threadStarter, [tid]: prev.threadStarter[tid] ?? prev.currentUserId } : prev.threadStarter;
           const threadAccepted = hasThread ? { ...prev.threadAccepted, [tid]: true } : prev.threadAccepted;
           return {
             ...prev,
@@ -857,35 +869,29 @@ export function PassProvider({ children }: { children: ReactNode }) {
             threadListing,
             threadStarter,
             threadAccepted,
+            // local echo only; the recipient is notified server-side via a DB trigger
             notifications: [
-              notify(prev, {
-                userId: l.ownerId,
-                kind: hasThread ? 'message' : 'request',
-                title: `${userName(prev, prev.currentUserId)} wants your ${l.title}`,
-                body: text,
-                threadId: hasThread ? tid : undefined,
-                listingId,
-                route: hasThread ? '/thread' : '/manage',
-              }),
+              notify(prev, { userId: l.ownerId, kind: hasThread ? 'message' : 'request', title: `${userName(prev, prev.currentUserId)} wants your ${l.title}`, body: text, threadId: hasThread ? tid : undefined, listingId, route: hasThread ? '/thread' : '/manage' }),
               ...prev.notifications,
             ],
           };
-        }),
+        });
+        void insertRequest(req);
+        if (hasThread && msg) {
+          void upsertThread(tid, { listingId, starter: s.threadStarter[tid] ?? s.currentUserId, accepted: true });
+          void insertMessage(tid, msg);
+        }
+      },
 
       // owner accepts -> opens a shared thread (seeded with the requester's note) for both
-      acceptRequest: (requestId) =>
+      acceptRequest: (requestId) => {
+        const req = s.requests.find((r) => r.id === requestId);
+        if (!req) return;
+        const id = threadId(req.toUserId, req.fromUserId);
+        const l = s.listings.find((x) => x.id === req.listingId);
+        const seed: Message = { id: uuid(), from: req.fromUserId, text: req.note, ts: req.createdAt };
+        const accept: Message = { id: uuid(), from: req.toUserId, text: `Accepted your request for ${l?.title ?? 'the item'}. Let's arrange the pickup!`, ts: Date.now() };
         setS((prev) => {
-          const req = prev.requests.find((r) => r.id === requestId);
-          if (!req) return prev;
-          const id = threadId(req.toUserId, req.fromUserId);
-          const l = prev.listings.find((x) => x.id === req.listingId);
-          const seed: Message = { id: uid('m'), from: req.fromUserId, text: req.note, ts: req.createdAt };
-          const accept: Message = {
-            id: uid('m'),
-            from: req.toUserId,
-            text: `Accepted your request for ${l?.title ?? 'the item'}. Let's arrange the pickup!`,
-            ts: Date.now(),
-          };
           const existing = prev.threads[id] ?? [];
           const msgs = existing.length === 0 ? [seed, accept] : [...existing, accept];
           return {
@@ -900,9 +906,18 @@ export function PassProvider({ children }: { children: ReactNode }) {
               ...prev.notifications,
             ],
           };
-        }),
+        });
+        void updateRequestStatus(requestId, 'accepted');
+        (async () => {
+          await upsertThread(id, { listingId: req.listingId, starter: s.threadStarter[id] ?? req.fromUserId, accepted: true });
+          // note: the requester's note isn't re-inserted as a message — RLS only lets
+          // a user insert their own messages, and it already lives on the request row
+          await insertMessage(id, accept);
+        })();
+      },
 
-      declineRequest: (requestId) =>
+      declineRequest: (requestId) => {
+        if (!s.requests.some((r) => r.id === requestId)) return;
         setS((prev) => {
           const req = prev.requests.find((r) => r.id === requestId);
           if (!req) return prev;
@@ -914,12 +929,15 @@ export function PassProvider({ children }: { children: ReactNode }) {
               ...prev.notifications,
             ],
           };
-        }),
+        });
+        void updateRequestStatus(requestId, 'declined');
+      },
 
       // remove a request (pending or accepted). Removing an accepted one un-reserves
       // the listing, so it returns to the public feed. The other party gets a neutral
       // notice — the reason is kept private (it drives the follow-up block prompt).
-      cancelRequest: (requestId, _reason) =>
+      cancelRequest: (requestId, _reason) => {
+        if (!s.requests.some((r) => r.id === requestId)) return;
         setS((prev) => {
           const req = prev.requests.find((r) => r.id === requestId);
           if (!req) return prev;
@@ -935,15 +953,19 @@ export function PassProvider({ children }: { children: ReactNode }) {
               ...prev.notifications,
             ],
           };
-        }),
+        });
+        void deleteRequestRemote(requestId);
+      },
 
       openCancelReason: (requestId, role) => setS((prev) => ({ ...prev, cancelTarget: { requestId, role } })),
       closeCancelReason: () => setS((prev) => ({ ...prev, cancelTarget: null })),
 
       // silently drop a request from my list (no notification) — used once a deal is
       // settled (item given) or already declined, just to clear it off the screen
-      removeRequest: (requestId) =>
-        setS((prev) => ({ ...prev, requests: prev.requests.filter((r) => r.id !== requestId) })),
+      removeRequest: (requestId) => {
+        setS((prev) => ({ ...prev, requests: prev.requests.filter((r) => r.id !== requestId) }));
+        void deleteRequestRemote(requestId);
+      },
 
       openThreadFor: (listingId) => {
         const l = s.listings.find((x) => x.id === listingId);
@@ -959,6 +981,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
             : { ...prev.threadStarter, [id]: prev.currentUserId };
           return { ...prev, threads, threadListing, threadStarter, activeThreadId: id };
         });
+        void upsertThread(id, { listingId, starter: s.threadStarter[id] ?? s.currentUserId });
         return id;
       },
 
@@ -971,7 +994,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
           ),
         })),
 
-      deleteThread: (id) =>
+      deleteThread: (id) => {
         setS((prev) => ({
           ...prev,
           threads: Object.fromEntries(Object.entries(prev.threads).filter(([k]) => k !== id)),
@@ -981,33 +1004,39 @@ export function PassProvider({ children }: { children: ReactNode }) {
           threadRead: Object.fromEntries(Object.entries(prev.threadRead).filter(([k]) => k !== id)),
           activeThreadId: prev.activeThreadId === id ? null : prev.activeThreadId,
           notifications: prev.notifications.filter((n) => n.threadId !== id),
-        })),
+        }));
+        void deleteThreadRemote(id);
+      },
 
-      acceptThread: (id) =>
-        setS((prev) => ({ ...prev, threadAccepted: { ...prev.threadAccepted, [id]: true } })),
+      acceptThread: (id) => {
+        setS((prev) => ({ ...prev, threadAccepted: { ...prev.threadAccepted, [id]: true } }));
+        void upsertThread(id, { accepted: true });
+      },
 
       // stamp that the current user has seen this thread up to now (for read receipts)
-      markThreadRead: (id) =>
+      markThreadRead: (id) => {
+        const ts = Date.now();
         setS((prev) => ({
           ...prev,
-          threadRead: { ...prev.threadRead, [id]: { ...(prev.threadRead[id] ?? {}), [prev.currentUserId]: Date.now() } },
-        })),
+          threadRead: { ...prev.threadRead, [id]: { ...(prev.threadRead[id] ?? {}), [prev.currentUserId]: ts } },
+        }));
+        void updateThreadRead(id, s.currentUserId, ts);
+      },
 
       // text is passed in from the composer's local state so typing never touches
       // global state (which would re-render every screen on each keystroke)
-      sendMsg: (text) =>
+      sendMsg: (text) => {
+        const id = s.activeThreadId;
+        const body = text.trim();
+        if (!id || !body) return;
+        const msg: Message = { id: uuid(), from: s.currentUserId, text: body, ts: Date.now() };
+        const starter = s.threadStarter[id] ?? s.currentUserId;
+        const accepts = starter !== s.currentUserId; // replying accepts a cold DM
         setS((prev) => {
-          const id = prev.activeThreadId;
-          const body = text.trim();
-          if (!id || !body) return prev;
           const other = otherInThread(prev, id);
-          const msg: Message = { id: uid('m'), from: prev.currentUserId, text: body, ts: Date.now() };
           const meta = threadMeta(prev, id);
-          const starter = prev.threadStarter[id] ?? prev.currentUserId;
           const threadStarter = prev.threadStarter[id] ? prev.threadStarter : { ...prev.threadStarter, [id]: starter };
-          // replying to a chat someone else opened accepts it
-          const threadAccepted =
-            starter !== prev.currentUserId ? { ...prev.threadAccepted, [id]: true } : prev.threadAccepted;
+          const threadAccepted = accepts ? { ...prev.threadAccepted, [id]: true } : prev.threadAccepted;
           return {
             ...prev,
             threads: { ...prev.threads, [id]: [...(prev.threads[id] ?? []), msg] },
@@ -1018,10 +1047,16 @@ export function PassProvider({ children }: { children: ReactNode }) {
               ...prev.notifications,
             ],
           };
-        }),
+        });
+        (async () => {
+          await upsertThread(id, { starter, accepted: accepts ? true : undefined });
+          await insertMessage(id, msg);
+        })();
+      },
 
       shareLoc: async () => {
-        if (!s.activeThreadId) return;
+        const id = s.activeThreadId;
+        if (!id) return;
         let text = 'Shared my live location for the meetup';
         try {
           const { status } = await Location.requestForegroundPermissionsAsync();
@@ -1030,11 +1065,9 @@ export function PassProvider({ children }: { children: ReactNode }) {
             text = `My live location: https://maps.google.com/?q=${pos.coords.latitude},${pos.coords.longitude}`;
           }
         } catch {}
+        const msg: Message = { id: uuid(), from: s.currentUserId, text, ts: Date.now() };
         setS((prev) => {
-          const id = prev.activeThreadId;
-          if (!id) return prev;
           const other = otherInThread(prev, id);
-          const msg: Message = { id: uid('m'), from: prev.currentUserId, text, ts: Date.now() };
           const meta = threadMeta(prev, id);
           return {
             ...prev,
@@ -1045,14 +1078,17 @@ export function PassProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
+        await upsertThread(id, { starter: s.threadStarter[id] ?? s.currentUserId, accepted: true });
+        await insertMessage(id, msg);
       },
 
-      sendImage: (uri) =>
+      sendImage: (uri) => {
+        const id = s.activeThreadId;
+        if (!id) return;
+        const msgId = uuid();
+        const msg: Message = { id: msgId, from: s.currentUserId, text: '', image: uri, ts: Date.now() };
         setS((prev) => {
-          const id = prev.activeThreadId;
-          if (!id) return prev;
           const other = otherInThread(prev, id);
-          const msg: Message = { id: uid('m'), from: prev.currentUserId, text: '', image: uri, ts: Date.now() };
           const meta = threadMeta(prev, id);
           return {
             ...prev,
@@ -1062,20 +1098,41 @@ export function PassProvider({ children }: { children: ReactNode }) {
               ...prev.notifications,
             ],
           };
-        }),
+        });
+        (async () => {
+          const folder = id.replace(/[^a-zA-Z0-9]/g, '_');
+          const url = await uploadImage(uri, 'chat-images', `${s.currentUserId}/${folder}/${uuid()}.jpg`);
+          const image = url ?? uri;
+          if (url) setS((prev) => ({ ...prev, threads: { ...prev.threads, [id]: (prev.threads[id] ?? []).map((m) => (m.id === msgId ? { ...m, image } : m)) } }));
+          await upsertThread(id, { starter: s.threadStarter[id] ?? s.currentUserId, accepted: true });
+          await insertMessage(id, { ...msg, image });
+        })();
+      },
 
-      blockUser: (id) => setS((prev) => ({ ...prev, blocked: { ...prev.blocked, [blockKey(prev.currentUserId, id)]: true } })),
-      unblockUser: (id) => setS((prev) => ({ ...prev, blocked: { ...prev.blocked, [blockKey(prev.currentUserId, id)]: false } })),
+      blockUser: (id) => {
+        setS((prev) => ({ ...prev, blocked: { ...prev.blocked, [blockKey(prev.currentUserId, id)]: true } }));
+        void addBlock(s.currentUserId, id);
+      },
+      unblockUser: (id) => {
+        setS((prev) => ({ ...prev, blocked: { ...prev.blocked, [blockKey(prev.currentUserId, id)]: false } }));
+        void removeBlock(s.currentUserId, id);
+      },
 
       openTakenPicker: (listingId) => setS((prev) => ({ ...prev, takenPickerId: listingId })),
 
-      confirmTaken: (listingId, recipientId) =>
+      confirmTaken: (listingId, recipientId) => {
+        const src = s.listings.find((x) => x.id === listingId);
+        // snapshot the hand-off (persists even if the listing is later deleted)
+        const handoff: Handoff | null = src
+          ? { id: uuid(), listingId, giverId: s.currentUserId, recipientId, title: src.title, photo: src.photos?.[0], tint: src.tint, cat: src.cat, ts: Date.now() }
+          : null;
+        // sync taken state + handoff row to Supabase
+        void setListingTaken(listingId, recipientId);
+        if (handoff) void insertHandoff(handoff);
         setS((prev) => {
           const l = prev.listings.find((x) => x.id === listingId);
-          if (!l) return prev;
+          if (!l || !handoff) return prev;
           const listings = prev.listings.map((x) => (x.id === listingId ? { ...x, taken: true, takenBy: recipientId } : x));
-          // snapshot the hand-off so it persists even if the listing is later deleted
-          const handoff: Handoff = { id: uid('h'), listingId, giverId: prev.currentUserId, recipientId, title: l.title, photo: l.photos?.[0], tint: l.tint, cat: l.cat, ts: Date.now() };
           return {
             ...prev,
             listings,
@@ -1093,7 +1150,8 @@ export function PassProvider({ children }: { children: ReactNode }) {
               ...prev.notifications,
             ],
           };
-        }),
+        });
+      },
 
       openRate: (n) =>
         setS((prev) => {
@@ -1115,30 +1173,25 @@ export function PassProvider({ children }: { children: ReactNode }) {
           return { ...prev, rateListingId: listingId, rateGiverId: l?.ownerId ?? null, rating, rateTags: [], reviewDraft: '' };
         }),
 
-      submitRate: () =>
-        setS((prev) => {
-          // one review per listing — never add a duplicate for the same item
-          const dup = prev.rateListingId
-            ? (prev.reviews ?? []).some((r) => r.from === prev.currentUserId && r.listingId === prev.rateListingId)
-            : false;
-          const reviews =
-            prev.rateGiverId && !dup
-              ? [
-                  {
-                    id: uid('rv'),
-                    from: prev.currentUserId,
-                    to: prev.rateGiverId,
-                    listingId: prev.rateListingId ?? undefined,
-                    rating: prev.rating,
-                    tags: prev.rateTags,
-                    text: prev.reviewDraft.trim(),
-                    ts: Date.now(),
-                  },
-                  ...(prev.reviews ?? []),
-                ]
-              : (prev.reviews ?? []);
-          return { ...prev, reviews, rateListingId: null, rateGiverId: null, rating: 0, rateTags: [], reviewDraft: '' };
-        }),
+      submitRate: () => {
+        const dup = s.rateListingId
+          ? (s.reviews ?? []).some((r) => r.from === s.currentUserId && r.listingId === s.rateListingId)
+          : false;
+        const review: Review | null =
+          s.rateGiverId && !dup
+            ? { id: uuid(), from: s.currentUserId, to: s.rateGiverId, listingId: s.rateListingId ?? undefined, rating: s.rating, tags: s.rateTags, text: s.reviewDraft.trim(), ts: Date.now() }
+            : null;
+        setS((prev) => ({
+          ...prev,
+          reviews: review ? [review, ...(prev.reviews ?? [])] : prev.reviews,
+          rateListingId: null,
+          rateGiverId: null,
+          rating: 0,
+          rateTags: [],
+          reviewDraft: '',
+        }));
+        if (review) void insertReview(review);
+      },
 
       toggleRateTag: (t) =>
         setS((prev) => ({
@@ -1146,16 +1199,22 @@ export function PassProvider({ children }: { children: ReactNode }) {
           rateTags: prev.rateTags.includes(t) ? prev.rateTags.filter((x) => x !== t) : [...prev.rateTags, t],
         })),
 
-      markNotifsRead: () =>
+      markNotifsRead: () => {
         setS((prev) => ({
           ...prev,
           notifications: prev.notifications.map((n) => (n.userId === prev.currentUserId ? { ...n, read: true } : n)),
-        })),
+        }));
+        void markNotificationsRead(s.currentUserId);
+      },
 
-      deleteNotif: (id) =>
-        setS((prev) => ({ ...prev, notifications: prev.notifications.filter((n) => n.id !== id) })),
-      clearNotifs: () =>
-        setS((prev) => ({ ...prev, notifications: prev.notifications.filter((n) => n.userId !== prev.currentUserId) })),
+      deleteNotif: (id) => {
+        setS((prev) => ({ ...prev, notifications: prev.notifications.filter((n) => n.id !== id) }));
+        void deleteNotificationRemote(id);
+      },
+      clearNotifs: () => {
+        setS((prev) => ({ ...prev, notifications: prev.notifications.filter((n) => n.userId !== prev.currentUserId) }));
+        void clearNotificationsRemote(s.currentUserId);
+      },
 
       openNotif: (n) => {
         // already reviewed this item -> show the review on the giver's profile, don't re-open the form
@@ -1192,21 +1251,60 @@ export function PassProvider({ children }: { children: ReactNode }) {
             ts: Date.now(),
           });
           // count THIS listing only; it auto-delists once it crosses the threshold
+          void reportListingRemote(listingId);
           const reportCounts = { ...prev.reportCounts, [listingId]: (prev.reportCounts[listingId] ?? 0) + 1 };
           return { ...prev, reportCounts, reportDone: true };
         }),
       markOnboarded: () => setS((prev) => (prev.onboarded ? prev : { ...prev, onboarded: true })),
 
-      setName: (name) =>
-        setS((prev) => ({ ...prev, names: { ...prev.names, [prev.currentUserId]: name.trim() || userName(prev, prev.currentUserId) } })),
-      setDp: (uri) => setS((prev) => ({ ...prev, dp: { ...prev.dp, [prev.currentUserId]: uri } })),
+      setName: (name) => {
+        const finalName = name.trim() || userName(s, s.currentUserId);
+        setS((prev) => ({
+          ...prev,
+          names: { ...prev.names, [prev.currentUserId]: finalName },
+          profiles: { ...prev.profiles, [prev.currentUserId]: { ...(prev.profiles[prev.currentUserId] ?? { id: prev.currentUserId, dp: null }), name: finalName } },
+        }));
+        if (s.currentUserId) void updateProfileRemote(s.currentUserId, { name: finalName });
+      },
+      setDp: (uri) => {
+        const me = s.currentUserId;
+        // optimistic: show the local uri, then upload + persist the public URL
+        setS((prev) => ({
+          ...prev,
+          dp: { ...prev.dp, [me]: uri },
+          profiles: { ...prev.profiles, [me]: { ...(prev.profiles[me] ?? { id: me, name: userName(prev, me) }), dp: uri } },
+        }));
+        if (!me) return;
+        if (uri === null) {
+          void updateProfileRemote(me, { dp: null });
+          return;
+        }
+        (async () => {
+          const url = (await uploadImage(uri, 'avatars', `${me}/${uuid()}.jpg`)) ?? uri;
+          setS((prev) => ({
+            ...prev,
+            dp: { ...prev.dp, [me]: url },
+            profiles: { ...prev.profiles, [me]: { ...(prev.profiles[me] ?? { id: me, name: userName(prev, me) }), dp: url } },
+          }));
+          await updateProfileRemote(me, { dp: url });
+        })();
+      },
 
-      setNotifyNear: (on) =>
-        setS((prev) => ({ ...prev, notify: { ...prev.notify, [prev.currentUserId]: { ...prev.notify[prev.currentUserId], near: on } } })),
-      setNotifyChat: (on) =>
-        setS((prev) => ({ ...prev, notify: { ...prev.notify, [prev.currentUserId]: { ...prev.notify[prev.currentUserId], chat: on } } })),
-      setNotifyAddress: (coords, label) =>
-        setS((prev) => ({ ...prev, notify: { ...prev.notify, [prev.currentUserId]: { ...prev.notify[prev.currentUserId], addr: { lat: coords.lat, lng: coords.lng, label } } } })),
+      setNotifyNear: (on) => {
+        const next: NotifyPrefs = { ...DEFAULT_NOTIFY, ...s.notify[s.currentUserId], near: on };
+        setS((prev) => ({ ...prev, notify: { ...prev.notify, [prev.currentUserId]: next } }));
+        if (s.currentUserId) void upsertNotifyPrefs(s.currentUserId, next);
+      },
+      setNotifyChat: (on) => {
+        const next: NotifyPrefs = { ...DEFAULT_NOTIFY, ...s.notify[s.currentUserId], chat: on };
+        setS((prev) => ({ ...prev, notify: { ...prev.notify, [prev.currentUserId]: next } }));
+        if (s.currentUserId) void upsertNotifyPrefs(s.currentUserId, next);
+      },
+      setNotifyAddress: (coords, label) => {
+        const next: NotifyPrefs = { ...DEFAULT_NOTIFY, ...s.notify[s.currentUserId], addr: { lat: coords.lat, lng: coords.lng, label } };
+        setS((prev) => ({ ...prev, notify: { ...prev.notify, [prev.currentUserId]: next } }));
+        if (s.currentUserId) void upsertNotifyPrefs(s.currentUserId, next);
+      },
 
       restart: () => setS({ ...INITIAL, hydrated: true }),
 
@@ -1330,6 +1428,35 @@ export function PassProvider({ children }: { children: ReactNode }) {
             },
           }));
         }
+        // pull listings (source of truth) + the rest of the user's data
+        const ls = await fetchListings();
+        if (ls) setS((prev) => ({ ...prev, listings: ls }));
+        const ud = await pullUserData(userId);
+        const refIds = new Set<string>();
+        (ls ?? []).forEach((l) => refIds.add(l.ownerId));
+        if (ud) {
+          setS((prev) => ({
+            ...prev,
+            requests: ud.requests,
+            threads: ud.bundle.threads,
+            threadListing: ud.bundle.threadListing,
+            threadStarter: ud.bundle.threadStarter,
+            threadAccepted: ud.bundle.threadAccepted,
+            threadRead: ud.bundle.threadRead,
+            reviews: ud.reviews,
+            handoffs: ud.handoffs,
+            saved: Object.fromEntries(ud.saves.map((sid) => [sid, true])),
+            blocked: Object.fromEntries(ud.blocks.map((k) => [k, true])),
+            notify: { ...prev.notify, [userId]: ud.notify ?? DEFAULT_NOTIFY },
+            notifications: ud.notifications,
+          }));
+          ud.requests.forEach((r) => { refIds.add(r.fromUserId); refIds.add(r.toUserId); });
+          Object.keys(ud.bundle.threads).forEach((tid) => threadUsers(tid).forEach((u) => refIds.add(u)));
+          ud.reviews.forEach((r) => { refIds.add(r.from); refIds.add(r.to); });
+          ud.handoffs.forEach((h) => { refIds.add(h.giverId); refIds.add(h.recipientId); });
+        }
+        const profs = await fetchProfiles([...refIds]);
+        if (profs.length) setS((prev) => ({ ...prev, profiles: { ...prev.profiles, ...Object.fromEntries(profs.map((p) => [p.id, p])) } }));
       } catch {
         // offline / transient — the cache + fallback name keep the UI usable
       }
@@ -1338,6 +1465,69 @@ export function PassProvider({ children }: { children: ReactNode }) {
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => applyUser(session?.user.id ?? null));
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  // realtime: keep listings, chat, requests & notifications live across devices
+  useEffect(() => {
+    const me = s.currentUserId;
+    if (!me) return;
+    const ensureProfile = (id: string) => {
+      if (id && !s.profiles[id]) {
+        fetchProfiles([id]).then((ps) => {
+          if (ps.length) setS((prev) => ({ ...prev, profiles: { ...prev.profiles, [ps[0].id]: ps[0] } }));
+        });
+      }
+    };
+    const ch = supabase
+      .channel('rt-' + me)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'listings' }, (payload) => {
+        if (payload.eventType === 'DELETE') {
+          const id = (payload.old as { id?: string }).id;
+          setS((prev) => ({ ...prev, listings: prev.listings.filter((l) => l.id !== id) }));
+          return;
+        }
+        const row = rowToListing(payload.new as Record<string, unknown>);
+        setS((prev) => {
+          const exists = prev.listings.some((l) => l.id === row.id);
+          return { ...prev, listings: exists ? prev.listings.map((l) => (l.id === row.id ? row : l)) : [row, ...prev.listings] };
+        });
+        ensureProfile(row.ownerId);
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+        const m = payload.new as Record<string, any>;
+        const tid: string = m.thread_id;
+        if (!threadUsers(tid).includes(me) || m.from_user === me) return; // skip others' threads + my own echo
+        const msg = rowToMessage(m);
+        setS((prev) => {
+          const arr = prev.threads[tid] ?? [];
+          if (arr.some((x) => x.id === msg.id)) return prev;
+          return { ...prev, threads: { ...prev.threads, [tid]: [...arr, msg] } };
+        });
+        ensureProfile(m.from_user);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, (payload) => {
+        if (payload.eventType === 'DELETE') {
+          const id = (payload.old as { id?: string }).id;
+          setS((prev) => ({ ...prev, requests: prev.requests.filter((r) => r.id !== id) }));
+          return;
+        }
+        const r = rowToRequest(payload.new as Record<string, unknown>);
+        if (r.fromUserId !== me && r.toUserId !== me) return;
+        setS((prev) => {
+          const exists = prev.requests.some((x) => x.id === r.id);
+          return { ...prev, requests: exists ? prev.requests.map((x) => (x.id === r.id ? r : x)) : [r, ...prev.requests] };
+        });
+        ensureProfile(r.fromUserId);
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${me}` }, (payload) => {
+        const n = rowToNotification(payload.new as Record<string, unknown>);
+        setS((prev) => (prev.notifications.some((x) => x.id === n.id) ? prev : { ...prev, notifications: [n, ...prev.notifications] }));
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(ch);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.currentUserId]);
 
   // persist (debounced so the JSON.stringify never blocks the tap that triggered it)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

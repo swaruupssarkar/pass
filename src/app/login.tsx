@@ -20,7 +20,7 @@ export default function Login() {
     setBusy(true);
     const r = await signInWithEmail(e);
     setBusy(false);
-    if (!r.ok) return showAlert('Could not send code', r.error ?? 'Please try again.');
+    if (!r.ok) return showAlert('Could not send code', friendly(r.error));
     setStep('code');
   };
 
@@ -29,7 +29,7 @@ export default function Login() {
     setBusy(true);
     const r = await verifyOtp(email, code);
     setBusy(false);
-    if (!r.ok) return showAlert('Invalid code', r.error ?? 'Double-check the code and try again.');
+    if (!r.ok) return showAlert('Invalid code', friendly(r.error));
     router.replace(s.onboarded ? '/feed' : '/location');
   };
 
@@ -92,6 +92,15 @@ export default function Login() {
       </KeyboardAvoidingView>
     </Screen>
   );
+}
+
+// Supabase/network errors can be giant JSON blobs — show something human.
+function friendly(err?: string): string {
+  if (!err) return 'Please try again.';
+  if (/500|unexpected_failure|error sending|smtp/i.test(err)) return 'Email couldn’t be sent. The email (SMTP) settings need fixing.';
+  if (/rate|429|limit/i.test(err)) return 'Too many attempts. Wait a minute and try again.';
+  if (/network|fetch|timeout/i.test(err)) return 'Network issue. Check your connection and retry.';
+  return err.length > 140 ? err.slice(0, 140) + '…' : err;
 }
 
 const inputStyle = {

@@ -12,11 +12,11 @@ export default function Settings() {
   const { s, logout, setNotifyNear, setNotifyChat } = usePass();
   const tr = useT();
   const city = activeLocationLabel(s);
-  const np = s.notify[s.currentUserId];
+  const np = s.notify[s.currentUserId] ?? { near: true, chat: true, addr: null };
 
-  const onLogout = () => {
-    logout();
-    router.replace('/');
+  const onLogout = async () => {
+    await logout();
+    router.replace('/login');
   };
 
   return (
