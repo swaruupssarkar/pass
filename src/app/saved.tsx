@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
@@ -11,7 +11,8 @@ export default function Saved() {
   const router = useRouter();
   const tr = useT();
   const { s, openListing, toggleSave, openThreadFor, cancelRequest, openCancelReason, removeRequest, showConfirm } = usePass();
-  const [tab, setTab] = useState<'saved' | 'requested'>('saved');
+  const { tab: tabParam } = useLocalSearchParams<{ tab?: string }>();
+  const [tab, setTab] = useState<'saved' | 'requested'>(tabParam === 'requested' ? 'requested' : 'saved');
   const saved = savedListings(s);
   const requested = myRequests(s);
 

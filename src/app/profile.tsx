@@ -8,10 +8,11 @@ import { CITIES, handoffsTo, me, myHandoffs, myListings, reviewsFor, userName, u
 import { C } from '@/pass/theme';
 import { Avatar, BottomNav, Btn, Screen, shadow, VerifiedBadge } from '@/pass/ui';
 
-const ROWS: { icon: IconName; labelKey: string; route: '/manage' | '/impact' | '/saved' | '/safety' | '/settings' }[] = [
+const ROWS: { icon: IconName; labelKey: string; route: '/manage' | '/impact' | '/saved' | '/safety' | '/settings'; params?: Record<string, string> }[] = [
   { icon: 'clipboard', labelKey: 'profile.myListings', route: '/manage' },
   { icon: 'star', labelKey: 'profile.myImpact', route: '/impact' },
   { icon: 'heart-outline', labelKey: 'profile.savedItems', route: '/saved' },
+  { icon: 'time', labelKey: 'profile.requested', route: '/saved', params: { tab: 'requested' } },
   { icon: 'shield', labelKey: 'profile.safetyCenter', route: '/safety' },
   { icon: 'settings', labelKey: 'profile.settings', route: '/settings' },
 ];
@@ -109,7 +110,7 @@ export default function Profile() {
         {/* menu */}
         <View style={{ backgroundColor: C.surface, borderRadius: 18, marginTop: 16, overflow: 'hidden', ...shadow(8, 24, 0.3) }}>
           {ROWS.map((r, i) => (
-            <Pressable key={r.route} onPress={() => router.push(r.route)} style={{ flexDirection: 'row', alignItems: 'center', gap: 13, padding: 15, paddingHorizontal: 16, borderBottomWidth: i < ROWS.length - 1 ? 1 : 0, borderBottomColor: C.line }}>
+            <Pressable key={r.labelKey} onPress={() => router.push({ pathname: r.route, params: r.params })} style={{ flexDirection: 'row', alignItems: 'center', gap: 13, padding: 15, paddingHorizontal: 16, borderBottomWidth: i < ROWS.length - 1 ? 1 : 0, borderBottomColor: C.line }}>
               <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
                 <Icon name={r.icon} size={17} color={C.accent} />
               </View>

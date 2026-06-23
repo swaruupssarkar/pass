@@ -37,6 +37,10 @@ export type IconName =
   | 'pin'
   | 'send'
   | 'mail'
+  | 'lock'
+  | 'eye'
+  | 'eye-off'
+  | 'google'
   | 'camera'
   | 'pencil'
   | 'settings'
@@ -96,6 +100,10 @@ const MAP: Record<IconName, Glyph> = {
   pin: 'location-sharp',
   send: 'send',
   mail: 'mail-outline',
+  lock: 'lock-closed-outline',
+  eye: 'eye-outline',
+  'eye-off': 'eye-off-outline',
+  google: 'logo-google',
   camera: 'camera',
   pencil: 'create-outline',
   settings: 'settings-outline',

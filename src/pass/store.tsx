@@ -531,6 +531,9 @@ type Store = {
   // auth
   signInWithEmail: (email: string) => Promise<{ ok: boolean; error?: string }>;
   verifyOtp: (email: string, token: string) => Promise<{ ok: boolean; error?: string }>;
+  signInWithPassword: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Set/replace the current (just-verified) user's password. */
+  setPassword: (password: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
   deleteAccount: () => Promise<{ ok: boolean; error?: string }>;
   // location
@@ -647,6 +650,22 @@ export function PassProvider({ children }: { children: ReactNode }) {
         if (res.error) res = await supabase.auth.verifyOtp({ email: e, token: t, type: 'signup' });
         // on success the onAuthStateChange listener populates currentUserId + profile
         return res.error ? { ok: false, error: res.error.message } : { ok: true };
+      },
+
+      signInWithPassword: async (email, password) => {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: email.trim().toLowerCase(),
+          password,
+        });
+        // success → onAuthStateChange populates currentUserId + profile
+        return error ? { ok: false, error: error.message } : { ok: true };
+      },
+
+      // Used right after OTP verification in sign-up: the user already has a
+      // session, so we just attach a password to the account.
+      setPassword: async (password) => {
+        const { error } = await supabase.auth.updateUser({ password });
+        return error ? { ok: false, error: error.message } : { ok: true };
       },
 
       logout: async () => {

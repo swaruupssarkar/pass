@@ -1,10 +1,10 @@
 import { useRouter } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 
-import { catIcon, Icon } from '@/pass/icon';
+import { catIcon, Icon, type IconName } from '@/pass/icon';
 import { fmtAgo, fmtDate, listingById, myHandoffs, reviewsFor, userName, usePass, useT, userDp } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Avatar, EmptyState, Header, PhotoTile, ReviewCard, Screen, shadow, t } from '@/pass/ui';
+import { Avatar, Header, PhotoTile, ReviewCard, Screen, shadow, t } from '@/pass/ui';
 
 export default function Impact() {
   const router = useRouter();
@@ -43,7 +43,7 @@ export default function Impact() {
 
         <Text style={[t.title, { marginTop: 24, marginBottom: 12 }]}>{tr('impact.recentHandoffs')}</Text>
         {n === 0 ? (
-          <EmptyState compact icon="gift" title={tr('impact.noHandoffs')} />
+          <MiniEmpty icon="gift" label={tr('impact.noHandoffs')} />
         ) : (
           <View style={{ gap: 11 }}>
             {handoffs.map((h) => {
@@ -69,7 +69,7 @@ export default function Impact() {
 
         <Text style={[t.title, { marginTop: 24, marginBottom: 12 }]}>{tr('impact.reviews')}</Text>
         {reviews.length === 0 ? (
-          <EmptyState compact icon="star" title={tr('impact.noReviews')} />
+          <MiniEmpty icon="star" label={tr('impact.noReviews')} />
         ) : (
           <View style={{ gap: 11 }}>
             {reviews.map((r) => (
@@ -89,6 +89,19 @@ export default function Impact() {
         )}
       </ScrollView>
     </Screen>
+  );
+}
+
+// Compact, static empty for the impact lists — small icon + short line, no
+// animation, so the page stays clean.
+function MiniEmpty({ icon, label }: { icon: IconName; label: string }) {
+  return (
+    <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+      <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+        <Icon name={icon} size={20} color={C.accent} />
+      </View>
+      <Text style={{ fontSize: 13.5, fontWeight: '600', color: C.muted }}>{label}</Text>
+    </View>
   );
 }
 

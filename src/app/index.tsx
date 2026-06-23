@@ -1,3 +1,4 @@
+import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
@@ -11,13 +12,17 @@ export default function Splash() {
   const router = useRouter();
   const tr = useT();
   const { s } = usePass();
+  const focused = useIsFocused();
 
   // once cache + session resolve: signed-in users skip the splash (to the feed,
-  // or into the rest of onboarding); signed-out users tap to start → intro → login
+  // or into the rest of onboarding); signed-out users tap to start → intro → login.
+  // Gate on `focused`: this screen stays mounted under intro/login, so without it
+  // a fresh session (e.g. mid sign-up OTP) would redirect to the dashboard and
+  // skip the create-password step. Only redirect while the splash is foreground.
   useEffect(() => {
-    if (!s.hydrated || !s.authReady) return;
+    if (!focused || !s.hydrated || !s.authReady) return;
     if (s.currentUserId) router.replace(s.onboarded ? '/feed' : '/location');
-  }, [s.hydrated, s.authReady, s.currentUserId, s.onboarded, router]);
+  }, [focused, s.hydrated, s.authReady, s.currentUserId, s.onboarded, router]);
 
   return (
     <Pressable

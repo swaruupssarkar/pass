@@ -10,10 +10,27 @@ import { Btn, Header, Screen, Toggle, shadow } from '@/pass/ui';
 
 export default function Settings() {
   const router = useRouter();
-  const { s, logout, setNotifyNear, setNotifyChat, deleteAccount, showAlert } = usePass();
+  const { s, logout, setNotifyNear, setNotifyChat, deleteAccount, showAlert, showConfirm } = usePass();
   const tr = useT();
   const city = activeLocationLabel(s);
   const np = s.notify[s.currentUserId] ?? { near: true, chat: true, addr: null };
+
+  // "New items near me" needs a notify address — without it there's no point to
+  // measure 100 km from, so it can't be on. Show the toggle off until an address
+  // is set, and prompt the user to set one when they try to enable it.
+  const nearOn = np.near && !!np.addr;
+  const toggleNear = () => {
+    if (!np.addr) {
+      showConfirm({
+        title: tr('settings.needAddrTitle'),
+        message: tr('settings.needAddrMsg'),
+        confirmLabel: tr('settings.setAddress'),
+        onConfirm: () => router.push({ pathname: '/pickmap', params: { mode: 'notify' } }),
+      });
+      return;
+    }
+    setNotifyNear(!np.near);
+  };
 
   const [delOpen, setDelOpen] = useState(false);
   const [delText, setDelText] = useState('');
@@ -73,7 +90,7 @@ export default function Settings() {
                 {tr('settings.newItemsNearHint')}
               </Text>
             </View>
-            <Toggle on={np.near} onPress={() => setNotifyNear(!np.near)} />
+            <Toggle on={nearOn} onPress={toggleNear} />
           </View>
           <View style={row}>
             <Text style={{ flex: 1, fontSize: 14.5, color: C.ink }}>{tr('settings.chatUpdates')}</Text>
