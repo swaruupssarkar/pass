@@ -9,7 +9,14 @@ import { AppState } from 'react-native';
 
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/pass/config';
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+// createClient throws on an empty url/key. When unconfigured we still want the
+// app to boot (local-only mode, gated by hasSupabase()), not white-screen at
+// import — so fall back to harmless placeholders. Real calls are guarded by
+// hasSupabase(); any that slip through just fail the fetch (caught), not crash.
+const url = SUPABASE_URL || 'https://placeholder.supabase.co';
+const key = SUPABASE_ANON_KEY || 'placeholder-anon-key';
+
+export const supabase = createClient(url, key, {
   auth: {
     storage: AsyncStorage,
     autoRefreshToken: true,
