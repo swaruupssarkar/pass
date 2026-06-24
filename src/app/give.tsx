@@ -30,7 +30,7 @@ export default function Give() {
 
   return (
     <Screen bg={BG}>
-      <View style={{ flex: 1, paddingHorizontal: 22, paddingTop: 16 }}>
+      <View style={{ flex: 1, paddingHorizontal: 22, paddingTop: 16, paddingBottom: 24 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Text style={t.h2}>{tr('give.title')}</Text>
           <CloseButton onPress={() => router.navigate('/feed')} />
