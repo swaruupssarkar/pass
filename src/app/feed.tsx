@@ -119,7 +119,7 @@ export default function Feed() {
         {/* search bar + search button */}
         <View style={{ flexDirection: 'row', gap: 11, marginTop: 13 }}>
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: radius.lg, paddingHorizontal: 16, height: 52, ...shadow(6, 18, 0.4) }}>
-            <Icon name="search" size={15} color="#FFD60A" />
+            <Icon name="search" size={15} color={C.accent} />
             <TextInput value={query} onChangeText={setQuery} onSubmitEditing={runSearch} placeholder={tr('feed.searchPlaceholder')} placeholderTextColor={C.muted} returnKeyType="search" style={{ flex: 1, fontSize: 14.5, color: C.ink }} />
           </View>
           <Pressable onPress={runSearch} style={{ width: 52, height: 52, borderRadius: radius.lg, borderCurve: 'continuous', backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', boxShadow: `0 8px 20px -8px ${C.accent}` }}>

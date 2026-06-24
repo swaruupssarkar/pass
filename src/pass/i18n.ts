@@ -94,7 +94,7 @@ const TR: Record<string, Entry> = {
   'cat.Books': { en: 'Books', hi: 'किताबें', bn: 'বই', mr: 'पुस्तके', gu: 'પુસ્તકો', kn: 'ಪುಸ್ತಕಗಳು', ta: 'புத்தகங்கள்' },
   'cat.Kitchen': { en: 'Kitchen', hi: 'रसोई', bn: 'রান্নাঘর', mr: 'स्वयंपाकघर', gu: 'રસોડું', kn: 'ಅಡುಗೆಮನೆ', ta: 'சமையலறை' },
   'cat.Clothes': { en: 'Clothes', hi: 'कपड़े', bn: 'জামাকাপড়', mr: 'कपडे', gu: 'કપડાં', kn: 'ಬಟ್ಟೆ', ta: 'ஆடைகள்' },
-  'cat.Home & Decor': { en: 'Home & Decor', hi: 'घर और सजावट', bn: 'ঘর ও সাজসজ্জা', mr: 'घर आणि सजावट', gu: 'ઘર અને સજાવટ', kn: 'ಮನೆ ಮತ್ತು ಅಲಂಕಾರ', ta: 'வீடு & அலங்காரம்' },
+  'cat.Home & Decor': { en: 'Decor', hi: 'सजावट', bn: 'সাজসজ্জা', mr: 'सजावट', gu: 'સજાવટ', kn: 'ಅಲಂಕಾರ', ta: 'அலங்காரம்' },
   'cat.Other': { en: 'Other', hi: 'अन्य', bn: 'অন্যান্য', mr: 'इतर', gu: 'અન્ય', kn: 'ಇತರೆ', ta: 'மற்றவை' },
 
   // ---- item conditions (display only) ----

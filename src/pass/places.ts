@@ -108,7 +108,7 @@ async function googlePlaces(q: string): Promise<Suggestion[]> {
 /** As-you-type suggestions. `near` biases results toward a location. */
 export async function autocomplete(input: string, near?: { lat: number; lng: number }): Promise<Suggestion[]> {
   const q = input.trim();
-  if (q.length < 2) return [];
+  if (q.length < 3) return []; // don't suggest until the user has typed something meaningful
 
   // Prefer Google when a key is configured AND it actually returns results.
   // If Google fails (no billing / denied / error), fall through to free OSM.

@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { catIcon, Icon, type IconName } from '@/pass/icon';
@@ -26,6 +26,7 @@ export default function Post() {
   const canAdd = photos.length < 4;
   const [suggests, setSuggests] = useState<Suggestion[]>([]);
   const [busy, setBusy] = useState(false);
+  const lastQuery = useRef('');
 
   const pickFromGallery = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: 4 - photos.length, quality: 0.7 });
@@ -40,7 +41,14 @@ export default function Post() {
 
   const onAddress = async (text: string) => {
     patch({ postAddress: text, postCoords: null });
-    setSuggests(await autocomplete(text));
+    lastQuery.current = text;
+    if (text.trim().length < 3) {
+      setSuggests([]); // empty / too short → no list (clear immediately, no await)
+      return;
+    }
+    const res = await autocomplete(text);
+    if (lastQuery.current !== text) return; // a newer keystroke happened — drop this stale result
+    setSuggests(res);
   };
   const pickSuggestion = async (sug: Suggestion) => {
     setSuggests([]);
@@ -100,7 +108,6 @@ export default function Post() {
           <Text style={{ fontSize: 22, fontWeight: '800', color: C.ink, letterSpacing: -0.4 }}>{editing ? tr('post.editTitle') : tr('post.postTitle')}</Text>
           <Text style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }} numberOfLines={1}>{tr('post.subtitle')}</Text>
         </View>
-        <Image source={require('../../assets/images/post-header-illustration.png')} style={{ width: 92, height: 52 }} contentFit="contain" />
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -143,15 +150,15 @@ export default function Post() {
             </View>
           </Section>
 
-          {/* category */}
+          {/* category — uniform 3-column grid (no ragged trailing gap) */}
           <Section title={tr('post.category')}>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 9 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 9 }}>
               {CATS.map((c) => {
                 const on = s.postCat === c;
                 return (
-                  <Pressable key={c} onPress={() => patch({ postCat: c })} style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 9, paddingHorizontal: 13, borderRadius: radius.pill, backgroundColor: on ? C.accent : C.surface, borderWidth: 1, borderColor: on ? C.accent : C.line }}>
+                  <Pressable key={c} onPress={() => patch({ postCat: c })} style={{ width: '31.5%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 6, borderRadius: radius.pill, backgroundColor: on ? C.accent : C.surface, borderWidth: 1, borderColor: on ? C.accent : C.line }}>
                     <Icon name={catIcon(c)} size={15} color={on ? '#fff' : C.accent} />
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: on ? '#fff' : C.ink }}>{tr('cat.' + c)}</Text>
+                    <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={{ fontSize: 12.5, fontWeight: '700', color: on ? '#fff' : C.ink }}>{tr('cat.' + c)}</Text>
                   </Pressable>
                 );
               })}
