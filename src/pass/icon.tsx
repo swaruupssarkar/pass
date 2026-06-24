@@ -59,6 +59,7 @@ export type IconName =
   | 'star'
   | 'star-outline'
   | 'thumbs-up'
+  | 'smile'
   | 'gift'
   | 'celebrate'
   | 'clipboard'
@@ -122,6 +123,7 @@ const MAP: Record<IconName, Glyph> = {
   star: 'star',
   'star-outline': 'star-outline',
   'thumbs-up': 'thumbs-up',
+  smile: 'happy-outline',
   gift: 'gift',
   celebrate: 'sparkles',
   clipboard: 'reader-outline',

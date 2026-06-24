@@ -257,7 +257,9 @@ export function browseListings(s: State): Listing[] {
   let list = s.listings.filter(
     (l) => !l.taken && !isReserved(s, l.id) && !isDelisted(s, l.id) && l.ownerId !== s.currentUserId && !isBlocked(s, l.ownerId)
   );
-  if (s.activeMode === 'city') list = list.filter((l) => l.cityId === s.activeCityId);
+  // city mode (or GPS mode that never got a fix) scopes to the active city —
+  // never fall through to showing every listing worldwide
+  if (s.activeMode === 'city' || (s.activeMode === 'gps' && !s.userLoc)) list = list.filter((l) => l.cityId === s.activeCityId);
   // radius only makes sense from a live GPS location; a city alone has no precise origin
   const gps = s.activeMode === 'gps' && s.userLoc ? s.userLoc : null;
   if (gps) list = list.filter((l) => haversineKm(gps, { lat: l.lat, lng: l.lng }) <= s.radius);
@@ -715,6 +717,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
         setS((prev) => ({
           ...prev,
           currentUserId: '',
+          onboarded: false, // per-user; the next account re-evaluates onboarding (set from their profile on sign-in)
           activeThreadId: null,
           activeListingId: null,
           activePersonId: null,
@@ -761,7 +764,8 @@ export function PassProvider({ children }: { children: ReactNode }) {
           setS((prev) => ({ ...prev, userLocLabel: label }));
           return 'granted';
         } catch {
-          setS((prev) => ({ ...prev, locStatus: 'granted', activeMode: 'gps' }));
+          // permission granted but no fix — stay in city mode (don't switch to gps with no userLoc)
+          setS((prev) => ({ ...prev, locStatus: 'granted' }));
           return 'error';
         }
       },
@@ -941,6 +945,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
         if (!s.currentUserId) return;
         const l = s.listings.find((x) => x.id === listingId);
         if (!l) return;
+        if (l.ownerId === s.currentUserId) return; // can't request your own listing
         if (s.requests.some((r) => r.listingId === listingId && r.fromUserId === s.currentUserId)) return;
         const now = Date.now();
         const text = note.trim() || `Hi! Is the ${l.title} still available?`;
@@ -1453,6 +1458,9 @@ export function PassProvider({ children }: { children: ReactNode }) {
         if (data) {
           setS((prev) => ({
             ...prev,
+            // onboarding is per-user, derived from server state: a profile with a
+            // city means they've completed onboarding (monotonic — never un-sets)
+            onboarded: prev.onboarded || !!data.city_id,
             profiles: {
               ...prev.profiles,
               [userId]: {
@@ -1549,7 +1557,9 @@ export function PassProvider({ children }: { children: ReactNode }) {
         setS((prev) => {
           const arr = prev.threads[tid] ?? [];
           if (arr.some((x) => x.id === msg.id)) return prev;
-          return { ...prev, threads: { ...prev.threads, [tid]: [...arr, msg] } };
+          // keep messages ts-ordered: a replayed/clock-skewed insert can arrive after newer ones
+          const next = [...arr, msg].sort((a, b) => a.ts - b.ts);
+          return { ...prev, threads: { ...prev.threads, [tid]: next } };
         });
         ensureProfile(m.from_user);
       })

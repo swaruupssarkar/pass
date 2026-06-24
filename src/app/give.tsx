@@ -1,95 +1,68 @@
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
-import Animated, {
-  Easing,
-  FadeIn,
-  FadeInDown,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from 'react-native-reanimated';
+import { ScrollView, Text, useWindowDimensions, View } from 'react-native';
 
-import { Icon } from '@/pass/icon';
-import { myListings, usePass, useT } from '@/pass/store';
+import { Icon, type IconName } from '@/pass/icon';
+import { usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Btn, BottomNav, CloseButton, Screen, t } from '@/pass/ui';
+import { BottomNav, Btn, CloseButton, Screen, shadow, t } from '@/pass/ui';
 
-const LINE_KEYS = ['give.line1', 'give.line2', 'give.line3', 'give.line4', 'give.line5'];
+const BG = '#FBEFE9'; // warm tint matching the illustration backdrop
+
+const BENEFITS: { icon: IconName; key: string }[] = [
+  { icon: 'heart', key: 'give.benefit1' },
+  { icon: 'smile', key: 'give.benefit2' },
+  { icon: 'gift', key: 'give.benefit3' },
+];
 
 export default function Give() {
   const router = useRouter();
   const tr = useT();
-  const { s, startPost } = usePass();
-  const given = myListings(s).filter((l) => l.taken).length;
-  const [line, setLine] = useState(0);
-
-  const float = useSharedValue(0);
-  const pulse = useSharedValue(0);
-  const cta = useSharedValue(0);
-
-  useEffect(() => {
-    float.value = withRepeat(withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.quad) }), -1, true);
-    pulse.value = withRepeat(withTiming(1, { duration: 2400, easing: Easing.out(Easing.quad) }), -1, false);
-    cta.value = withRepeat(withTiming(1, { duration: 1300, easing: Easing.inOut(Easing.quad) }), -1, true);
-    const id = setInterval(() => setLine((p) => (p + 1) % LINE_KEYS.length), 3000);
-    return () => clearInterval(id);
-  }, [cta, float, pulse]);
-
-  const heroStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -10 * float.value }] }));
-  const ringStyle = useAnimatedStyle(() => ({ transform: [{ scale: 1 + pulse.value * 0.7 }], opacity: 0.3 * (1 - pulse.value) }));
-  const ctaStyle = useAnimatedStyle(() => ({ transform: [{ scale: 1 + cta.value * 0.02 }] }));
+  const { width } = useWindowDimensions();
+  const { startPost } = usePass();
 
   const post = () => {
     startPost();
     router.push('/post');
   };
 
+  const imgW = Math.min(340, Math.round(width * 0.86));
+
   return (
-    <Screen>
-      <View style={{ flex: 1, paddingHorizontal: 22, paddingTop: 16, paddingBottom: 16 }}>
+    <Screen bg={BG}>
+      <View style={{ flex: 1, paddingHorizontal: 22, paddingTop: 16 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Text style={t.h2}>{tr('give.title')}</Text>
           <CloseButton onPress={() => router.navigate('/feed')} />
         </View>
 
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          {/* animated hero */}
-          <View style={{ width: 200, height: 200, alignItems: 'center', justifyContent: 'center' }}>
-            <Animated.View style={[{ position: 'absolute', width: 150, height: 150, borderRadius: 75, backgroundColor: C.accent }, ringStyle]} />
-            <Animated.View style={[{ width: 140, height: 140, borderRadius: 44, borderCurve: 'continuous', backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }, heroStyle]}>
-              <Icon name="gift" size={64} color={C.accent} />
-            </Animated.View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }}>
+          <Image
+            source={require('../../assets/images/give-box-illustration.png')}
+            style={{ width: imgW, height: imgW / 0.916, alignSelf: 'center', marginTop: 4 }}
+            contentFit="contain"
+          />
+
+          <Text style={[t.h1, { fontSize: 28, marginTop: 4, textAlign: 'center', maxWidth: 300, alignSelf: 'center', lineHeight: 34 }]}>
+            {tr('give.headline')} 🧡
+          </Text>
+          <Text style={[t.muted, { fontSize: 15, marginTop: 10, textAlign: 'center' }]}>{tr('give.heroSubtitle')}</Text>
+
+          {/* benefit card */}
+          <View style={{ flexDirection: 'row', backgroundColor: C.surface, borderRadius: radius.xl, borderCurve: 'continuous', marginTop: 22, paddingVertical: 18, ...shadow(10, 26, 0.3) }}>
+            {BENEFITS.map((b, i) => (
+              <View key={b.key} style={{ flex: 1, alignItems: 'center', paddingHorizontal: 8, borderLeftWidth: i === 0 ? 0 : 1, borderLeftColor: C.line }}>
+                <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+                  <Icon name={b.icon} size={20} color={C.accent} />
+                </View>
+                <Text style={{ fontSize: 12.5, fontWeight: '600', color: C.ink, textAlign: 'center', lineHeight: 17 }}>{tr(b.key)}</Text>
+              </View>
+            ))}
           </View>
+        </ScrollView>
 
-          <Animated.Text entering={FadeInDown.delay(120).springify()} style={[t.h1, { fontSize: 27, marginTop: 30, textAlign: 'center', maxWidth: 290, lineHeight: 32 }]}>
-            {tr('give.headline')}
-          </Animated.Text>
-
-          {/* rotating motivational line */}
-          <View style={{ height: 44, justifyContent: 'center', marginTop: 10 }}>
-            <Animated.Text key={line} entering={FadeIn.duration(500)} style={[t.muted, { fontSize: 15, textAlign: 'center', maxWidth: 300, lineHeight: 22 }]}>
-              {tr(LINE_KEYS[line])}
-            </Animated.Text>
-          </View>
-
-          {/* impact chip */}
-          <Animated.View entering={FadeIn.delay(300)} style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: C.surface, borderRadius: radius.pill, paddingVertical: 8, paddingHorizontal: 14, marginTop: 18 }}>
-            <Icon name="heart" size={14} color={C.accent} />
-            <Text style={{ fontSize: 13, fontWeight: '700', color: C.ink }}>
-              {given > 0 ? tr(given > 1 ? 'give.giftedPlural' : 'give.giftedOne', { count: given }) : tr('give.beFirst')}
-            </Text>
-          </Animated.View>
-        </View>
-
-        <Animated.View entering={FadeInDown.delay(200)} style={ctaStyle}>
-          <Btn icon="add" label={tr('give.postItem')} onPress={post} block />
-        </Animated.View>
-        <Animated.View entering={FadeInDown.delay(300)} style={{ flexDirection: 'row', gap: 11, marginTop: 11 }}>
-          <Btn icon="clipboard" label={tr('give.myListings')} variant="outline" onPress={() => router.push('/manage')} style={{ flex: 1, paddingVertical: 13 }} textStyle={{ fontSize: 14 }} />
-          <Btn icon="star" label={tr('give.myImpact')} variant="outline" onPress={() => router.push('/impact')} style={{ flex: 1, paddingVertical: 13 }} textStyle={{ fontSize: 14 }} />
-        </Animated.View>
+        <Btn icon="add" label={tr('give.postItem')} onPress={post} block style={{ borderRadius: radius.lg }} />
+        <Btn icon="clipboard" label={tr('give.myListings')} variant="outline" onPress={() => router.push('/manage')} block style={{ marginTop: 11, paddingVertical: 14, borderRadius: radius.lg }} textStyle={{ fontSize: 15, color: C.accent }} />
       </View>
       <BottomNav active="give" />
     </Screen>

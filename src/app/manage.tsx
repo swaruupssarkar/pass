@@ -48,7 +48,8 @@ export default function Manage() {
       onConfirm: () => deleteListing(item.id),
     });
 
-  const picker = s.takenPickerId ? requestsFor(s, s.takenPickerId) : [];
+  // only offer requesters who are still in play — never a declined/cancelled one
+  const picker = s.takenPickerId ? requestsFor(s, s.takenPickerId).filter(({ request }) => request.status === 'pending' || request.status === 'accepted') : [];
   const sheetReqs = reqListId ? requestsFor(s, reqListId) : [];
   const reqItem = reqListId ? list.find((l) => l.id === reqListId) : null;
 

@@ -157,7 +157,8 @@ export async function deleteRequestRemote(id: string): Promise<void> {
   await push({ kind: 'delete', table: 'requests', match: { id } });
 }
 async function fetchRequests(me: string): Promise<Request[]> {
-  const { data } = await supabase.from('requests').select('*').or(`from_user.eq.${me},to_user.eq.${me}`);
+  const { data, error } = await supabase.from('requests').select('*').or(`from_user.eq.${me},to_user.eq.${me}`);
+  if (error) throw error; // let pullUserData treat it as a failed pull (preserve cache) rather than wiping to []
   return (data ?? []).map(rowToRequest);
 }
 
@@ -197,7 +198,8 @@ export type ThreadBundle = {
 };
 async function fetchThreadBundle(me: string): Promise<ThreadBundle> {
   const out: ThreadBundle = { threads: {}, threadListing: {}, threadStarter: {}, threadAccepted: {}, threadRead: {} };
-  const { data: ths } = await supabase.from('threads').select('*').or(`user_a.eq.${me},user_b.eq.${me}`);
+  const { data: ths, error } = await supabase.from('threads').select('*').or(`user_a.eq.${me},user_b.eq.${me}`);
+  if (error) throw error;
   const ids = (ths ?? []).map((t: Row) => t.id);
   for (const t of ths ?? []) {
     out.threads[t.id] = [];
@@ -210,7 +212,8 @@ async function fetchThreadBundle(me: string): Promise<ThreadBundle> {
     out.threadRead[t.id] = rr;
   }
   if (ids.length) {
-    const { data: ms } = await supabase.from('messages').select('*').in('thread_id', ids).order('created_at', { ascending: true });
+    const { data: ms, error: mErr } = await supabase.from('messages').select('*').in('thread_id', ids).order('created_at', { ascending: true });
+    if (mErr) throw mErr;
     for (const m of ms ?? []) (out.threads[m.thread_id] ??= []).push(rowToMessage(m));
   }
   return out;
@@ -226,7 +229,8 @@ export async function insertReview(rev: Review): Promise<void> {
 }
 /** Reviews authored by, or about, the current user. */
 async function fetchReviews(me: string): Promise<Review[]> {
-  const { data } = await supabase.from('reviews').select('*').or(`from_user.eq.${me},to_user.eq.${me}`);
+  const { data, error } = await supabase.from('reviews').select('*').or(`from_user.eq.${me},to_user.eq.${me}`);
+  if (error) throw error;
   return (data ?? []).map(rowToReview);
 }
 /** All reviews about a given user (for their public profile). */
@@ -244,7 +248,8 @@ export async function insertHandoff(h: Handoff): Promise<void> {
   await push({ kind: 'upsert', table: 'handoffs', row: { id: h.id, listing_id: h.listingId, giver_id: h.giverId, recipient_id: h.recipientId, title: h.title, photo: h.photo ?? null, tint: h.tint, cat: h.cat } });
 }
 async function fetchHandoffs(me: string): Promise<Handoff[]> {
-  const { data } = await supabase.from('handoffs').select('*').or(`giver_id.eq.${me},recipient_id.eq.${me}`);
+  const { data, error } = await supabase.from('handoffs').select('*').or(`giver_id.eq.${me},recipient_id.eq.${me}`);
+  if (error) throw error;
   return (data ?? []).map(rowToHandoff);
 }
 /** Public given/received counts for any user (handoffs are participant-only via RLS). */
@@ -262,7 +267,8 @@ export async function removeSave(me: string, listingId: string): Promise<void> {
   await push({ kind: 'delete', table: 'saves', match: { user_id: me, listing_id: listingId } });
 }
 async function fetchSaves(me: string): Promise<string[]> {
-  const { data } = await supabase.from('saves').select('listing_id').eq('user_id', me);
+  const { data, error } = await supabase.from('saves').select('listing_id').eq('user_id', me);
+  if (error) throw error;
   return (data ?? []).map((r: Row) => r.listing_id);
 }
 
@@ -274,7 +280,8 @@ export async function removeBlock(me: string, blocked: string): Promise<void> {
 }
 /** Returns block keys "blocker>blocked" for rows where I block or am blocked. */
 async function fetchBlocks(me: string): Promise<string[]> {
-  const { data } = await supabase.from('blocks').select('blocker,blocked').or(`blocker.eq.${me},blocked.eq.${me}`);
+  const { data, error } = await supabase.from('blocks').select('blocker,blocked').or(`blocker.eq.${me},blocked.eq.${me}`);
+  if (error) throw error;
   return (data ?? []).map((r: Row) => `${r.blocker}>${r.blocked}`);
 }
 
@@ -283,7 +290,8 @@ export async function upsertNotifyPrefs(me: string, p: NotifyPrefsRow): Promise<
   await push({ kind: 'upsert', table: 'notify_prefs', row: { user_id: me, near: p.near, chat: p.chat, addr_lat: p.addr?.lat ?? null, addr_lng: p.addr?.lng ?? null, addr_label: p.addr?.label ?? null } });
 }
 async function fetchNotifyPrefs(me: string): Promise<NotifyPrefsRow | null> {
-  const { data } = await supabase.from('notify_prefs').select('*').eq('user_id', me).maybeSingle();
+  const { data, error } = await supabase.from('notify_prefs').select('*').eq('user_id', me).maybeSingle();
+  if (error) throw error; // null here means "no prefs yet" (valid); an error must not be mistaken for that
   if (!data) return null;
   return { near: !!data.near, chat: !!data.chat, addr: data.addr_lat != null ? { lat: data.addr_lat, lng: data.addr_lng, label: data.addr_label ?? '' } : null };
 }
@@ -292,7 +300,8 @@ export function rowToNotification(r: Row): Notification {
   return { id: r.id, userId: r.user_id, title: r.title ?? '', body: r.body ?? '', ts: r.created_at ? Date.parse(r.created_at) : Date.now(), read: !!r.read, kind: r.kind, threadId: r.thread_id ?? undefined, listingId: r.listing_id ?? undefined, route: r.route ?? undefined };
 }
 async function fetchNotifications(me: string): Promise<Notification[]> {
-  const { data } = await supabase.from('notifications').select('*').eq('user_id', me).order('created_at', { ascending: false }).limit(100);
+  const { data, error } = await supabase.from('notifications').select('*').eq('user_id', me).order('created_at', { ascending: false }).limit(100);
+  if (error) throw error;
   return (data ?? []).map(rowToNotification);
 }
 export async function markNotificationsRead(me: string): Promise<void> {

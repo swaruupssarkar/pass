@@ -15,7 +15,7 @@ const emailOk = (e: string) => /^\S+@\S+\.\S+$/.test(e);
 
 export default function Login() {
   const router = useRouter();
-  const { s, signInWithEmail, verifyOtp, signInWithPassword, setPassword, getAuthIdentities, signInWithGoogle, showAlert, showConfirm } = usePass();
+  const { signInWithEmail, verifyOtp, signInWithPassword, setPassword, getAuthIdentities, signInWithGoogle, showAlert, showConfirm } = usePass();
 
   const [mode, setMode] = useState<Mode>('signin');
   const [step, setStep] = useState<Step>('email'); // sign-up sub-step
@@ -34,8 +34,6 @@ export default function Login() {
     const id = setTimeout(() => setCooldown(cooldown - 1), 1000);
     return () => clearTimeout(id);
   }, [cooldown]);
-
-  const go = () => router.replace(s.onboarded ? '/feed' : '/location');
 
   // Step back through the flow; never leaves the logged-out login screen.
   const back = () => {
@@ -146,15 +144,14 @@ export default function Login() {
       setBusy(false);
       if (!r.ok) return showAlert('Could not save password', friendly(r.error));
       // brand-new account → run onboarding; forgot/reset (existing user) → feed
-      if (mode === 'signup') router.replace('/location');
-      else go();
+      router.replace(mode === 'signup' ? '/location' : '/feed');
     } else {
       if (!pw) return showAlert('Enter your password', 'Your password is required to sign in.');
       setBusy(true);
       const r = await signInWithPassword(email.trim(), pw);
       setBusy(false);
       if (!r.ok) return showAlert('Wrong password', friendly(r.error));
-      go();
+      router.replace('/feed'); // existing account → straight to feed
     }
   };
 
@@ -165,8 +162,7 @@ export default function Login() {
     if (r.cancelled) return;
     if (!r.ok) return showAlert('Google sign-in failed', friendly(r.error));
     // first-time Google account → onboarding; returning → feed
-    if (r.isNew) router.replace('/location');
-    else go();
+    router.replace(r.isNew ? '/location' : '/feed');
   };
 
   const showBack = step !== 'email' || mode === 'signup';
@@ -363,7 +359,7 @@ function headingFor(mode: Mode, step: Step, reset: boolean, email: string): { ti
 // On sign-in with shouldCreateUser:false, Supabase rejects an unknown email with
 // one of these — meaning "this email has no account yet".
 function isNoAccount(err?: string): boolean {
-  return !!err && /signups? not allowed|user not found|otp_disabled|not allowed for otp/i.test(err);
+  return !!err && /signups? not allowed|user not found/i.test(err);
 }
 
 // Supabase/network errors can be giant JSON blobs — show something human.

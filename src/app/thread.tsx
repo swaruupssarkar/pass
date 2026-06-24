@@ -27,7 +27,8 @@ export default function Thread() {
   const iBlk = meta ? iBlocked(s, meta.otherId) : false; // I'm the blocker (can unblock)
   const incomingReq = meta ? pendingIncomingFrom(s, meta.otherId) : null;
   const reqListing = incomingReq ? s.listings.find((l) => l.id === incomingReq.listingId) : null;
-  const locShared = msgs.some((m) => m.text.toLowerCase().includes('live location'));
+  // I've already shared a real location pin (not just any message mentioning the phrase)
+  const locShared = msgs.some((m) => m.from === s.currentUserId && /maps\.google\.com\/\?q=/.test(m.text));
   const openItem = () => {
     if (meta?.listingId) {
       openListing(meta.listingId);

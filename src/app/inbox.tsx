@@ -54,7 +54,7 @@ export default function Inbox() {
         <View style={{ flexDirection: 'row', backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: radius.md, padding: 4, gap: 4 }}>
           {(['chats', 'requests'] as const).map((k) => {
             const on = tab === k;
-            const badge = k === 'chats' ? rows.length : pending;
+            const badge = k === 'chats' ? rows.filter((r) => r.unread).length : pending;
             return (
               <Pressable key={k} onPress={() => setTab(k)} style={{ flex: 1, paddingVertical: 9, borderRadius: 11, backgroundColor: on ? C.accent : 'transparent', alignItems: 'center' }}>
                 <Text style={{ fontSize: 14, fontWeight: '700', color: on ? '#fff' : C.ink }}>
