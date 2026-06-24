@@ -15,6 +15,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false, // RN has no URL session callback
+    flowType: 'pkce', // deep-link OAuth returns a ?code= to exchange for a session
   },
 });
 

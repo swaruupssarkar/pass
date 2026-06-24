@@ -8,11 +8,13 @@
     "scheme": "daata",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "app.daata",
       "config": {
         "googleMapsApiKey": "YOUR_IOS_GOOGLE_MAPS_API_KEY"
       }
     },
     "android": {
+      "package": "app.daata",
       "adaptiveIcon": {
         "backgroundColor": "#FA6023",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

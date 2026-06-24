@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Linking from 'expo-linking';
 import * as Location from 'expo-location';
+import * as WebBrowser from 'expo-web-browser';
 import { createContext, use, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import {
@@ -22,6 +24,9 @@ import {
 import { REPORT_DELIST_THRESHOLD, REPORT_EMAIL, REPORT_ENDPOINT } from '@/pass/config';
 import { supabase } from '@/pass/supabase';
 import { flushOutbox, initOutbox } from '@/pass/outbox';
+
+// finalize any pending auth browser session (OAuth redirect) on load
+WebBrowser.maybeCompleteAuthSession();
 import {
   addBlock, addSave, clearNotificationsRemote, deleteAccount as deleteAccountRemote, deleteListingRemote, deleteNotificationRemote, deleteRequestRemote,
   deleteThreadRemote, fetchListings, fetchProfiles, fetchProfileStats, fetchReviewsFor, insertHandoff, insertMessage, insertRequest, insertReview,
@@ -534,6 +539,10 @@ type Store = {
   signInWithPassword: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   /** Set/replace the current (just-verified) user's password. */
   setPassword: (password: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Providers linked to the signed-in user, e.g. ['email','google']. */
+  getAuthIdentities: () => Promise<string[]>;
+  /** Google OAuth via an in-app browser tab; auto-links to the same-email account. */
+  signInWithGoogle: () => Promise<{ ok: boolean; error?: string; cancelled?: boolean }>;
   logout: () => Promise<void>;
   deleteAccount: () => Promise<{ ok: boolean; error?: string }>;
   // location
@@ -666,6 +675,35 @@ export function PassProvider({ children }: { children: ReactNode }) {
       setPassword: async (password) => {
         const { error } = await supabase.auth.updateUser({ password });
         return error ? { ok: false, error: error.message } : { ok: true };
+      },
+
+      getAuthIdentities: async () => {
+        const { data } = await supabase.auth.getUser();
+        return (data.user?.identities ?? []).map((i) => i.provider);
+      },
+
+      signInWithGoogle: async () => {
+        try {
+          // Must exactly match a Supabase "Redirect URLs" allow-list entry. In
+          // Expo Go the scheme differs (exp://…) so OAuth deep-link needs the dev
+          // build, where the app scheme is `daata`.
+          const redirectTo = Linking.createURL('auth-callback', { scheme: 'daata' });
+          const { data, error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: { redirectTo, skipBrowserRedirect: true },
+          });
+          if (error || !data?.url) return { ok: false, error: error?.message };
+          // opens an in-app browser tab; returns when Google redirects back to us
+          const res = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+          if (res.type !== 'success' || !res.url) return { ok: false, cancelled: true };
+          const code = new URL(res.url).searchParams.get('code');
+          if (!code) return { ok: false, error: 'No authorization code returned.' };
+          const { error: exErr } = await supabase.auth.exchangeCodeForSession(code);
+          // success → onAuthStateChange sets currentUserId + pulls data
+          return exErr ? { ok: false, error: exErr.message } : { ok: true };
+        } catch (e) {
+          return { ok: false, error: e instanceof Error ? e.message : 'Google sign-in failed' };
+        }
       },
 
       logout: async () => {

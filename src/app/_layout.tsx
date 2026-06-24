@@ -8,10 +8,11 @@ import { PassProvider } from '@/pass/store';
 import { C } from '@/pass/theme';
 import { CancelReasonSheet, PassDialog } from '@/pass/ui';
 
-// App-wide: kill the spell-check / autocorrect underline under typed text.
+// App-wide: kill the spell-check / autocorrect underline under typed text, plus
+// Android's default TextInput underline (which renders in the accent color).
 // (Individual inputs can still override these props.)
 const TI = TextInput as unknown as { defaultProps?: Record<string, unknown> };
-TI.defaultProps = { ...(TI.defaultProps ?? {}), autoCorrect: false, spellCheck: false };
+TI.defaultProps = { ...(TI.defaultProps ?? {}), autoCorrect: false, spellCheck: false, underlineColorAndroid: 'transparent' };
 
 export default function RootLayout() {
   return (

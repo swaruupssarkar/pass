@@ -68,7 +68,7 @@ export default function Profile() {
                     autoFocus
                     onSubmitEditing={saveName}
                     returnKeyType="done"
-                    style={{ flex: 1, fontSize: 19, fontWeight: '800', color: C.ink, borderBottomWidth: 1.5, borderBottomColor: C.accent, paddingVertical: 2 }}
+                    style={{ flex: 1, fontSize: 19, fontWeight: '800', color: C.ink, paddingVertical: 2 }}
                   />
                   <Pressable onPress={saveName} hitSlop={8} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' }}>
                     <Icon name="check" size={16} color="#fff" />

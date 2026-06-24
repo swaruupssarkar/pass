@@ -1,7 +1,8 @@
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { BackHandler, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
+import { GoogleG } from '@/pass/google-icon';
 import { Icon, type IconName } from '@/pass/icon';
 import { usePass } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
@@ -14,7 +15,7 @@ const emailOk = (e: string) => /^\S+@\S+\.\S+$/.test(e);
 
 export default function Login() {
   const router = useRouter();
-  const { s, signInWithEmail, verifyOtp, signInWithPassword, setPassword, showAlert } = usePass();
+  const { s, signInWithEmail, verifyOtp, signInWithPassword, setPassword, getAuthIdentities, signInWithGoogle, showAlert } = usePass();
 
   const [mode, setMode] = useState<Mode>('signin');
   const [step, setStep] = useState<Step>('email'); // sign-up sub-step
@@ -25,14 +26,22 @@ export default function Login() {
   const [pw2, setPw2] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [cooldown, setCooldown] = useState(0); // seconds until "Resend code" is allowed again
+
+  // tick the resend cooldown down to zero
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = setTimeout(() => setCooldown(cooldown - 1), 1000);
+    return () => clearTimeout(id);
+  }, [cooldown]);
 
   const go = () => router.replace(s.onboarded ? '/feed' : '/location');
 
-  // Step back through the sign-up flow; never leaves the logged-out login screen.
+  // Step back through the flow; never leaves the logged-out login screen.
   const back = () => {
-    if (mode === 'signup' && step === 'password') return setStep('otp');
-    if (mode === 'signup' && step === 'otp') return setStep('email');
-    if (mode === 'signup' && step === 'email') return toSignin();
+    if (step === 'password') return setStep('otp');
+    if (step === 'otp') return setStep('email');
+    if (step === 'email' && mode === 'signup') return toSignin();
   };
 
   // Logged out → dead-end. Hardware-back steps back within sign-up, otherwise no-op.
@@ -64,57 +73,87 @@ export default function Login() {
     setPw2('');
   };
 
-  // sign in with email + password
-  const doSignIn = async () => {
-    const e = email.trim();
-    if (!emailOk(e)) return showAlert('Enter a valid email', 'Use the email you signed up with.');
-    if (!pw) return showAlert('Enter your password', 'Your password is required to sign in.');
-    setBusy(true);
-    const r = await signInWithPassword(e, pw);
-    setBusy(false);
-    if (!r.ok) return showAlert('Sign in failed', friendly(r.error));
-    go();
+  // at the sign-in password step: forgot → switch to setting a new password
+  // (email is already OTP-verified, so the session exists to update it).
+  const forgot = () => {
+    setReset(true);
+    setPw('');
+    setPw2('');
   };
 
-  // sign-up / reset: send the one-time email code
-  const sendCode = async (isReset: boolean) => {
+  // send the one-time email code (both sign-in and sign-up verify email first)
+  const sendCode = async () => {
     const e = email.trim();
-    if (!emailOk(e)) return showAlert('Enter a valid email', isReset ? 'We’ll send a reset code.' : 'We’ll send you a verification code.');
+    if (!emailOk(e)) return showAlert('Enter a valid email', mode === 'signin' ? 'Use the email you signed up with.' : 'We’ll send you a verification code.');
     setBusy(true);
     const r = await signInWithEmail(e);
     setBusy(false);
     if (!r.ok) return showAlert('Could not send code', friendly(r.error));
-    setReset(isReset);
-    setMode('signup');
     setStep('otp');
     setCode('');
+    setCooldown(30);
   };
 
-  // verify the code → user now has a session; move on to set a password
+  // resend the OTP from the code screen (rate-limited by the cooldown)
+  const resend = async () => {
+    if (cooldown > 0 || busy) return;
+    setBusy(true);
+    const r = await signInWithEmail(email.trim());
+    setBusy(false);
+    if (!r.ok) return showAlert('Could not resend', friendly(r.error));
+    setCode('');
+    setCooldown(30);
+    showAlert('Code sent', `We’ve sent a new code to ${email}.`);
+  };
+
+  // verify the code → user now has a session; move on to the password step.
+  // For sign-in, if the account has no email/password identity yet (e.g. it was
+  // created via Google), switch to "create a password" instead of asking for one.
   const verify = async () => {
-    if (code.trim().length < 6) return showAlert('Enter the code', 'Check your email for the 6-digit code.');
+    if (code.trim().length < 8) return showAlert('Enter the code', 'Check your email for the 8-digit code.');
     setBusy(true);
     const r = await verifyOtp(email, code);
+    if (r.ok && mode === 'signin') {
+      const ids = await getAuthIdentities();
+      if (!ids.includes('email')) setReset(true); // passwordless (Google-only) → create one
+    }
     setBusy(false);
     if (!r.ok) return showAlert('Invalid code', friendly(r.error));
     setStep('password');
   };
 
-  // set the password → done
+  // final step. Sign-up / reset → set a new password; sign-in → verify the
+  // existing one (email is already OTP-verified at this point).
+  const needsNew = mode === 'signup' || reset;
   const finish = async () => {
-    if (pw.length < 8) return showAlert('Weak password', 'Use at least 8 characters.');
-    if (pw !== pw2) return showAlert('Passwords don’t match', 'Re-enter the same password.');
+    if (needsNew) {
+      if (pw.length < 8) return showAlert('Weak password', 'Use at least 8 characters.');
+      if (pw !== pw2) return showAlert('Passwords don’t match', 'Re-enter the same password.');
+      setBusy(true);
+      const r = await setPassword(pw);
+      setBusy(false);
+      if (!r.ok) return showAlert('Could not save password', friendly(r.error));
+      go();
+    } else {
+      if (!pw) return showAlert('Enter your password', 'Your password is required to sign in.');
+      setBusy(true);
+      const r = await signInWithPassword(email.trim(), pw);
+      setBusy(false);
+      if (!r.ok) return showAlert('Wrong password', friendly(r.error));
+      go();
+    }
+  };
+
+  const googleSignIn = async () => {
     setBusy(true);
-    const r = await setPassword(pw);
+    const r = await signInWithGoogle();
     setBusy(false);
-    if (!r.ok) return showAlert('Could not save password', friendly(r.error));
+    if (r.cancelled) return;
+    if (!r.ok) return showAlert('Google sign-in failed', friendly(r.error));
     go();
   };
 
-  const googleDemo = () =>
-    showAlert('Google sign-in', 'Coming soon — this will be wired up shortly. For now, use your email.');
-
-  const showBack = mode === 'signup';
+  const showBack = step !== 'email' || mode === 'signup';
   const heading = headingFor(mode, step, reset, email);
 
   return (
@@ -157,35 +196,17 @@ export default function Login() {
 
           {/* form */}
           <View style={{ gap: 13 }}>
-            {mode === 'signin' ? (
+            {step === 'email' ? (
               <>
-                <Field icon="mail" value={email} onChangeText={setEmail} placeholder="Email" keyboardType="email-address" autoCapitalize="none" textContentType="emailAddress" />
-                <Field
-                  icon="lock"
-                  value={pw}
-                  onChangeText={setPw}
-                  placeholder="Password"
-                  secureTextEntry={!showPw}
-                  autoCapitalize="none"
-                  textContentType="password"
-                  trailing={<EyeToggle on={showPw} onPress={() => setShowPw((v) => !v)} />}
-                />
-                <Pressable onPress={() => sendCode(true)} hitSlop={8} style={{ alignSelf: 'flex-end', paddingVertical: 2 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: C.accent }}>Forgot password?</Text>
-                </Pressable>
-                <Btn label={busy ? 'Signing in…' : 'Sign in'} onPress={doSignIn} block style={{ marginTop: 4, borderRadius: radius.lg }} />
-              </>
-            ) : step === 'email' ? (
-              <>
-                <Field icon="mail" value={email} onChangeText={setEmail} placeholder="Email" keyboardType="email-address" autoCapitalize="none" textContentType="emailAddress" returnKeyType="send" onSubmitEditing={() => sendCode(false)} />
-                <Btn label={busy ? 'Sending…' : 'Send code'} onPress={() => sendCode(false)} block style={{ marginTop: 4, borderRadius: radius.lg }} />
+                <Field icon="mail" value={email} onChangeText={setEmail} placeholder="Email" keyboardType="email-address" autoCapitalize="none" textContentType="emailAddress" returnKeyType="send" onSubmitEditing={sendCode} />
+                <Btn label={busy ? 'Sending…' : 'Send code'} onPress={sendCode} block style={{ marginTop: 4, borderRadius: radius.lg }} />
               </>
             ) : step === 'otp' ? (
               <>
                 <TextInput
                   value={code}
                   onChangeText={(v) => setCode(v.replace(/[^0-9]/g, '').slice(0, 8))}
-                  placeholder="••••••"
+                  placeholder="••••••••"
                   placeholderTextColor={C.muted}
                   keyboardType="number-pad"
                   textContentType="oneTimeCode"
@@ -195,21 +216,51 @@ export default function Login() {
                   style={[inputBase, { letterSpacing: 8, textAlign: 'center', fontSize: 22, fontWeight: '800', paddingVertical: 16 }]}
                 />
                 <Btn label={busy ? 'Verifying…' : 'Verify'} onPress={verify} block style={{ marginTop: 4, borderRadius: radius.lg }} />
-                <Pressable onPress={() => setStep('email')} hitSlop={8} style={{ alignSelf: 'center', marginTop: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5, marginTop: 10 }}>
+                  <Text style={{ fontSize: 14, color: C.muted }}>Didn’t get it?</Text>
+                  <Pressable onPress={resend} disabled={cooldown > 0 || busy} hitSlop={8}>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: cooldown > 0 ? C.muted : C.accent }}>
+                      {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
+                    </Text>
+                  </Pressable>
+                </View>
+                <Pressable onPress={() => setStep('email')} hitSlop={8} style={{ alignSelf: 'center', marginTop: 10 }}>
                   <Text style={{ fontSize: 14, fontWeight: '600', color: C.muted }}>Use a different email</Text>
                 </Pressable>
               </>
             ) : (
               <>
-                <Field icon="lock" value={pw} onChangeText={setPw} placeholder="Password (at least 8 characters)" secureTextEntry={!showPw} autoCapitalize="none" textContentType="newPassword" trailing={<EyeToggle on={showPw} onPress={() => setShowPw((v) => !v)} />} />
-                <Field icon="lock" value={pw2} onChangeText={setPw2} placeholder="Re-enter password" secureTextEntry={!showPw} autoCapitalize="none" textContentType="newPassword" returnKeyType="done" onSubmitEditing={finish} />
-                <Btn label={busy ? 'Saving…' : reset ? 'Save password' : 'Create account'} onPress={finish} block style={{ marginTop: 4, borderRadius: radius.lg }} />
+                <Field
+                  icon="lock"
+                  value={pw}
+                  onChangeText={setPw}
+                  placeholder={needsNew ? 'Password (at least 8 characters)' : 'Password'}
+                  secureTextEntry={!showPw}
+                  autoCapitalize="none"
+                  textContentType={needsNew ? 'newPassword' : 'password'}
+                  returnKeyType={needsNew ? 'next' : 'done'}
+                  onSubmitEditing={needsNew ? undefined : finish}
+                  trailing={<EyeToggle on={showPw} onPress={() => setShowPw((v) => !v)} />}
+                />
+                {needsNew ? (
+                  <Field icon="lock" value={pw2} onChangeText={setPw2} placeholder="Re-enter password" secureTextEntry={!showPw} autoCapitalize="none" textContentType="newPassword" returnKeyType="done" onSubmitEditing={finish} />
+                ) : (
+                  <Pressable onPress={forgot} hitSlop={8} style={{ alignSelf: 'flex-end', paddingVertical: 2 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: C.accent }}>Forgot password?</Text>
+                  </Pressable>
+                )}
+                <Btn
+                  label={busy ? (needsNew ? 'Saving…' : 'Signing in…') : needsNew ? (reset ? 'Save password' : 'Create account') : 'Sign in'}
+                  onPress={finish}
+                  block
+                  style={{ marginTop: 4, borderRadius: radius.lg }}
+                />
               </>
             )}
           </View>
 
-          {/* social — only on the entry steps */}
-          {(mode === 'signin' || (mode === 'signup' && step === 'email')) ? (
+          {/* social — only on the email step */}
+          {step === 'email' ? (
             <>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 18 }}>
                 <View style={{ flex: 1, height: 1, backgroundColor: C.line }} />
@@ -217,7 +268,8 @@ export default function Login() {
                 <View style={{ flex: 1, height: 1, backgroundColor: C.line }} />
               </View>
               <Pressable
-                onPress={googleDemo}
+                onPress={googleSignIn}
+                disabled={busy}
                 style={({ pressed }) => ({
                   flexDirection: 'row',
                   alignItems: 'center',
@@ -231,7 +283,7 @@ export default function Login() {
                   paddingVertical: 15,
                   opacity: pressed ? 0.7 : 1,
                 })}>
-                <Icon name="google" size={19} color="#4285F4" />
+                <GoogleG size={18} />
                 <Text style={{ fontSize: 15, fontWeight: '700', color: C.ink }}>Continue with Google</Text>
               </Pressable>
             </>
@@ -282,12 +334,14 @@ function EyeToggle({ on, onPress }: { on: boolean; onPress: () => void }) {
 }
 
 function headingFor(mode: Mode, step: Step, reset: boolean, email: string): { title: string; subtitle: string } {
-  if (mode === 'signin') return { title: 'Welcome back', subtitle: 'Sign in to continue to Daata.' };
-  if (step === 'email') return { title: 'Let’s get started', subtitle: 'Create your Daata account to continue.' };
-  if (step === 'otp') return { title: 'Enter your code', subtitle: `We sent a 6-digit code to ${email}.` };
-  return reset
-    ? { title: 'Set a new password', subtitle: 'Choose a new password for your account.' }
-    : { title: 'Create a password', subtitle: 'Almost done — secure your account with a password.' };
+  if (step === 'email')
+    return mode === 'signin'
+      ? { title: 'Welcome back', subtitle: 'Enter your email to sign in to Daata.' }
+      : { title: 'Let’s get started', subtitle: 'Create your Daata account to continue.' };
+  if (step === 'otp') return { title: 'Verify your email', subtitle: `We sent an 8-digit code to ${email}.` };
+  if (reset) return { title: 'Set a new password', subtitle: 'Choose a new password for your account.' };
+  if (mode === 'signup') return { title: 'Create a password', subtitle: 'Almost done — secure your account with a password.' };
+  return { title: 'Enter your password', subtitle: 'Email verified — enter your password to sign in.' };
 }
 
 // Supabase/network errors can be giant JSON blobs — show something human.
