@@ -144,7 +144,7 @@ export default function Login() {
       setBusy(false);
       if (!r.ok) return showAlert('Could not save password', friendly(r.error));
       // brand-new account → run onboarding; forgot/reset (existing user) → feed
-      router.replace(mode === 'signup' ? '/location' : '/feed');
+      router.replace(mode === 'signup' ? '/notif' : '/feed');
     } else {
       if (!pw) return showAlert('Enter your password', 'Your password is required to sign in.');
       setBusy(true);
@@ -162,7 +162,7 @@ export default function Login() {
     if (r.cancelled) return;
     if (!r.ok) return showAlert('Google sign-in failed', friendly(r.error));
     // first-time Google account → onboarding; returning → feed
-    router.replace(r.isNew ? '/location' : '/feed');
+    router.replace(r.isNew ? '/notif' : '/feed');
   };
 
   const showBack = step !== 'email' || mode === 'signup';

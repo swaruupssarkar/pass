@@ -21,7 +21,7 @@ export default function Splash() {
   // skip the create-password step. Only redirect while the splash is foreground.
   useEffect(() => {
     if (!focused || !s.hydrated || !s.authReady) return;
-    if (s.currentUserId) router.replace(s.onboarded ? '/feed' : '/location');
+    if (s.currentUserId) router.replace(s.onboarded ? '/feed' : '/notif');
   }, [focused, s.hydrated, s.authReady, s.currentUserId, s.onboarded, router]);
 
   return (
