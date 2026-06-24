@@ -2,6 +2,7 @@ import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { BackHandler, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
+import { capture } from '@/pass/analytics';
 import { GoogleG } from '@/pass/google-icon';
 import { Icon, type IconName } from '@/pass/icon';
 import { usePass } from '@/pass/store';
@@ -15,7 +16,7 @@ const emailOk = (e: string) => /^\S+@\S+\.\S+$/.test(e);
 
 export default function Login() {
   const router = useRouter();
-  const { signInWithEmail, verifyOtp, signInWithPassword, setPassword, getAuthIdentities, signInWithGoogle, showAlert, showConfirm } = usePass();
+  const { signInWithEmail, verifyOtp, signInWithPassword, setPassword, hasPassword, signInWithGoogle, showAlert, showConfirm } = usePass();
 
   const [mode, setMode] = useState<Mode>('signin');
   const [step, setStep] = useState<Step>('email'); // sign-up sub-step
@@ -124,8 +125,10 @@ export default function Login() {
     setBusy(true);
     const r = await verifyOtp(email, code);
     if (r.ok && mode === 'signin') {
-      const ids = await getAuthIdentities();
-      if (!ids.includes('email')) setReset(true); // passwordless (Google-only) → create one
+      // only force "create a password" when there genuinely isn't one yet
+      // (Google-only account that never set one) — not on every Google sign-in
+      const hasPwd = await hasPassword();
+      if (!hasPwd) setReset(true);
     }
     setBusy(false);
     if (!r.ok) return showAlert('Invalid code', friendly(r.error));
@@ -143,6 +146,7 @@ export default function Login() {
       const r = await setPassword(pw);
       setBusy(false);
       if (!r.ok) return showAlert('Could not save password', friendly(r.error));
+      if (mode === 'signup') capture('signed_up', { method: 'email' });
       // brand-new account → run onboarding; forgot/reset (existing user) → feed
       router.replace(mode === 'signup' ? '/notif' : '/feed');
     } else {
@@ -161,6 +165,7 @@ export default function Login() {
     setBusy(false);
     if (r.cancelled) return;
     if (!r.ok) return showAlert('Google sign-in failed', friendly(r.error));
+    if (r.isNew) capture('signed_up', { method: 'google' });
     // first-time Google account → onboarding; returning → feed
     router.replace(r.isNew ? '/notif' : '/feed');
   };

@@ -3,6 +3,8 @@ import { Image } from 'expo-image';
 import { memo, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
+  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -28,6 +30,9 @@ import Animated, {
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import { Icon, type IconName } from '@/pass/icon';
+import { capture } from '@/pass/analytics';
+import { isExpoGo } from '@/pass/config';
+import { isPushGranted, registerForPush } from '@/pass/push';
 import { hasUnreadChats, usePass, userName, useT } from '@/pass/store';
 import { C, hatch, radius } from '@/pass/theme';
 
@@ -748,6 +753,54 @@ export function SyncOverlay() {
       </View>
     </View>
   );
+}
+
+// Daily "turn on notifications" nudge for signed-in users who haven't granted it.
+// Fires 5s after the app opens / returns to foreground, at most once per calendar
+// day (persisted). "Enable" runs the OS prompt + registers the token; if the user
+// has permanently denied, it sends them to system Settings. Skipped in Expo Go.
+export function NotifyNudge() {
+  const tr = useT();
+  const { s, showConfirm, recordNotifyNudge } = usePass();
+  const me = s.currentUserId;
+  const lastDate = s.notifyNudgeDate;
+  useEffect(() => {
+    if (isExpoGo || !me) return;
+    const today = () => new Date().toISOString().slice(0, 10);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const maybeNudge = async () => {
+      if (cancelled || timer || lastDate === today()) return; // already pending / shown today
+      if (await isPushGranted()) return; // already enabled → never nudge
+      if (cancelled || lastDate === today()) return;
+      timer = setTimeout(() => {
+        timer = undefined;
+        if (cancelled) return;
+        recordNotifyNudge(); // mark shown today (once/day)
+        capture('notify_nudge_shown');
+        showConfirm({
+          title: tr('notifyNudge.title'),
+          message: tr('notifyNudge.body'),
+          confirmLabel: tr('notifyNudge.enable'),
+          cancelLabel: tr('notifyNudge.later'),
+          onConfirm: async () => {
+            const token = await registerForPush(me);
+            if (!token) void Linking.openSettings(); // denied / can't re-ask → Settings
+          },
+        });
+      }, 5000);
+    };
+    void maybeNudge();
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st === 'active') void maybeNudge();
+    });
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      sub.remove();
+    };
+  }, [me, lastDate, tr, showConfirm, recordNotifyNudge]);
+  return null;
 }
 
 const CLIENT_REASONS = ['cancel.reason.money', 'cancel.reason.privacy', 'cancel.reason.personal', 'cancel.reason.spam', 'cancel.reason.changedMind', 'cancel.reason.other'];

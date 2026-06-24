@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Keyboard, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { capture } from '@/pass/analytics';
 import { catIcon, Icon } from '@/pass/icon';
 import {
   activeLocationLabel,
@@ -48,7 +49,9 @@ export default function Feed() {
 
   // search button / keyboard "search" key: apply immediately (skip the debounce) + close keyboard
   const runSearch = () => {
-    patch({ q: query.trim() });
+    const q = query.trim();
+    if (q) capture('search_performed', { query: q.toLowerCase(), length: q.length });
+    patch({ q });
     Keyboard.dismiss();
   };
 

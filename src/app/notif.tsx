@@ -1,7 +1,9 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
+import { useEffect } from 'react';
 import { ScrollView, Text, useWindowDimensions, View } from 'react-native';
 
+import { capture } from '@/pass/analytics';
 import { Icon, type IconName } from '@/pass/icon';
 import { usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
@@ -18,6 +20,10 @@ export default function Notif() {
   const tr = useT();
   const { width } = useWindowDimensions();
   const { requestNotifications } = usePass();
+  // first onboarding screen — anchors the onboarding funnel (drop-off analysis)
+  useEffect(() => {
+    capture('onboarding_started');
+  }, []);
   const toCity = () => router.push('/city');
   const enable = async () => {
     await requestNotifications();

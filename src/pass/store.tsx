@@ -22,8 +22,9 @@ import {
   REPORT_REASONS,
   type UserId,
 } from '@/pass/data';
-import { REPORT_DELIST_THRESHOLD, REPORT_EMAIL, REPORT_ENDPOINT } from '@/pass/config';
+import { isExpoGo, REPORT_DELIST_THRESHOLD, REPORT_EMAIL, REPORT_ENDPOINT } from '@/pass/config';
 import { supabase } from '@/pass/supabase';
+import { capture, identifyUser, resetAnalytics } from '@/pass/analytics';
 import { drainOutbox, flushOutbox, initOutbox, pendingCount, track } from '@/pass/outbox';
 import { configureForegroundNotifications, registerForPush } from '@/pass/push';
 
@@ -139,6 +140,7 @@ type State = {
   onboarded: boolean;
   hydrated: boolean;
   syncing: boolean; // logout is blocking the UI while it drains pending writes
+  notifyNudgeDate: string; // YYYY-MM-DD the "enable notifications" nudge last showed (once/day)
   dialog: Dialog | null;
 };
 
@@ -202,6 +204,7 @@ const INITIAL: State = {
   onboarded: false,
   hydrated: false,
   syncing: false,
+  notifyNudgeDate: '',
   dialog: null,
 };
 
@@ -546,7 +549,7 @@ type Store = {
   /** Set/replace the current (just-verified) user's password. */
   setPassword: (password: string) => Promise<{ ok: boolean; error?: string }>;
   /** Providers linked to the signed-in user, e.g. ['email','google']. */
-  getAuthIdentities: () => Promise<string[]>;
+  hasPassword: () => Promise<boolean>;
   /** Google OAuth via an in-app browser tab; auto-links to the same-email account. `isNew` = account just created. */
   signInWithGoogle: () => Promise<{ ok: boolean; error?: string; cancelled?: boolean; isNew?: boolean }>;
   logout: () => Promise<{ ok: boolean; pending?: number }>;
@@ -603,6 +606,7 @@ type Store = {
   // report / onboarding
   submitReport: () => void;
   markOnboarded: () => void;
+  recordNotifyNudge: () => void;
   // profile editing
   setName: (name: string) => void;
   setDp: (uri: string | null) => void;
@@ -679,13 +683,21 @@ export function PassProvider({ children }: { children: ReactNode }) {
       // Used right after OTP verification in sign-up: the user already has a
       // session, so we just attach a password to the account.
       setPassword: async (password) => {
-        const { error } = await supabase.auth.updateUser({ password });
+        // stamp has_password so future sign-ins know a password exists (Google
+        // accounts that set one have no 'email' identity to detect it otherwise).
+        const { error } = await supabase.auth.updateUser({ password, data: { has_password: true } });
         return error ? { ok: false, error: error.message } : { ok: true };
       },
 
-      getAuthIdentities: async () => {
+      hasPassword: async () => {
         const { data } = await supabase.auth.getUser();
-        return (data.user?.identities ?? []).map((i) => i.provider);
+        const u = data.user;
+        if (!u) return false;
+        // setPassword stamps user_metadata.has_password (the reliable signal —
+        // updateUser({password}) does NOT add an 'email' identity, so identities
+        // alone wrongly look "passwordless" forever). Email-signup users still
+        // have a real 'email' identity, so honour that too.
+        return !!u.user_metadata?.has_password || (u.identities ?? []).some((i) => i.provider === 'email');
       },
 
       signInWithGoogle: async () => {
@@ -732,6 +744,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
         try {
           await supabase.auth.signOut();
         } catch {}
+        resetAnalytics(); // un-link analytics so the next account isn't merged in
         setS((prev) => ({
           ...prev,
           syncing: false,
@@ -758,6 +771,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
       },
 
       setCity: (cityId) => {
+        const finishingOnboarding = !s.onboarded; // first city = last onboarding step
         setS((prev) => ({
           ...prev,
           activeMode: 'city',
@@ -768,6 +782,10 @@ export function PassProvider({ children }: { children: ReactNode }) {
             : prev.profiles,
         }));
         if (s.currentUserId) track(updateProfileRemote(s.currentUserId, { city_id: cityId }));
+        capture('city_selected', { cityId });
+        if (finishingOnboarding) {
+          capture('onboarding_completed', undefined, { set: { onboarded: true }, setOnce: { onboarded_at: new Date().toISOString() } });
+        }
       },
 
       useCurrentLocation: async () => {
@@ -808,6 +826,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
       // expo-notifications is lazy-loaded so its native module is never touched
       // at app boot — in Expo Go (no notifications module) that would crash.
       requestNotifications: async () => {
+        if (isExpoGo) return 'error'; // expo-notifications throws on import in Expo Go
         try {
           const Notifications = await import('expo-notifications');
           const current = await Notifications.getPermissionsAsync();
@@ -819,13 +838,21 @@ export function PassProvider({ children }: { children: ReactNode }) {
         }
       },
 
-      openListing: (id) => setS((prev) => ({ ...prev, activeListingId: id, galleryIdx: 0, sheetExpanded: false })),
+      openListing: (id) => {
+        capture('listing_viewed', { listingId: id });
+        setS((prev) => ({ ...prev, activeListingId: id, galleryIdx: 0, sheetExpanded: false }));
+      },
       toggleSave: (id) => {
         if (!s.currentUserId) return;
         const willSave = !s.saved[id];
         setS((prev) => ({ ...prev, saved: { ...prev.saved, [id]: !prev.saved[id] } }));
-        if (willSave) track(addSave(s.currentUserId, id));
-        else track(removeSave(s.currentUserId, id));
+        if (willSave) {
+          track(addSave(s.currentUserId, id));
+          capture('listing_saved', { listingId: id }, { set: { has_saved: true } });
+        } else {
+          track(removeSave(s.currentUserId, id));
+          capture('listing_unsaved', { listingId: id });
+        }
       },
       viewPerson: (id) => setS((prev) => ({ ...prev, activePersonId: id })),
 
@@ -940,6 +967,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
         const pending = toSync as Listing | null; // assigned in the setS closure
         if (pending) {
           const l = pending;
+          capture('listing_posted', { category: l.cat, condition: l.cond, photos: (l.photos ?? []).length }, { set: { has_listed: true }, setOnce: { first_listed_at: new Date().toISOString() } });
           track((async () => {
             const remote = (l.photos ?? []).filter((p) => /^https?:\/\//.test(p));
             await upsertListing({ ...l, photos: remote });
@@ -999,6 +1027,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
           };
         });
         track(insertRequest(req));
+        capture('listing_requested', { listingId }, { set: { has_requested: true }, setOnce: { first_requested_at: new Date().toISOString() } });
         if (hasThread && msg) {
           // await thread upsert before the message so m_ins RLS (thread must exist) passes
           track((async () => {
@@ -1033,6 +1062,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
           };
         });
         track(updateRequestStatus(requestId, 'accepted'));
+        capture('request_accepted', { listingId: req.listingId });
         track((async () => {
           await upsertThread(id, { listingId: req.listingId, starter: s.threadStarter[id] ?? req.fromUserId, accepted: true });
           // note: the requester's note isn't re-inserted as a message — RLS only lets
@@ -1145,6 +1175,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
         const msg: Message = { id: uuid(), from: s.currentUserId, text: body, ts: Date.now() };
         const starter = s.threadStarter[id] ?? s.currentUserId;
         const accepts = starter !== s.currentUserId; // replying accepts a cold DM
+        capture('message_sent');
         setS((prev) => {
           const other = otherInThread(prev, id);
           const meta = threadMeta(prev, id);
@@ -1243,6 +1274,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
           : null;
         // sync taken state + handoff row to Supabase
         track(setListingTaken(listingId, recipientId));
+        capture('item_given', { listingId });
         if (handoff) track(insertHandoff(handoff));
         setS((prev) => {
           const l = prev.listings.find((x) => x.id === listingId);
@@ -1371,6 +1403,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
           return { ...prev, reportCounts, reportDone: true };
         }),
       markOnboarded: () => setS((prev) => (prev.onboarded ? prev : { ...prev, onboarded: true })),
+      recordNotifyNudge: () => setS((prev) => ({ ...prev, notifyNudgeDate: new Date().toISOString().slice(0, 10) })),
 
       setName: (name) => {
         const finalName = name.trim() || userName(s, s.currentUserId);
@@ -1468,6 +1501,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
     // tapping a push notification → open the relevant listing
     let sub: { remove: () => void } | undefined;
     (async () => {
+      if (isExpoGo) return; // expo-notifications throws on import in Expo Go
       try {
         const Notifications = await import('expo-notifications');
         sub = Notifications.addNotificationResponseReceivedListener((resp) => {
@@ -1496,6 +1530,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
       if (pull) void registerForPush(userId);
       try {
         const email = (await supabase.auth.getUser()).data.user?.email ?? '';
+        if (pull) identifyUser(userId, email ? { email } : undefined); // tie analytics to this user (enables retention)
         // safety net in case the signup trigger didn't run (keeps existing row)
         await supabase.from('profiles').upsert({ id: userId }, { onConflict: 'id', ignoreDuplicates: true });
         const { data } = await supabase
@@ -1699,6 +1734,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
       activeCityId: s.activeCityId,
       userCity: s.userCity,
       onboarded: s.onboarded,
+      notifyNudgeDate: s.notifyNudgeDate,
     };
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
