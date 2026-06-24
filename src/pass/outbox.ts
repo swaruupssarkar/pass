@@ -136,20 +136,23 @@ export function track<T>(p: Promise<T>): Promise<T> {
   return p;
 }
 
-/** Await all in-flight writers, then replay the queue. Use before sign-out so
- *  nothing optimistic is stranded on an account switch. Bounded by `timeoutMs` so
- *  a stalled upload can't hang logout forever — anything unfinished stays in the
- *  durable, uid-tagged queue and replays when its author next signs in. */
-export async function drainOutbox(timeoutMs = 8000): Promise<void> {
-  const work = (async () => {
-    // a writer can enqueue more work as it settles (upload → upsert → queue), so
-    // loop until no writers remain (bounded to avoid a runaway loop).
-    for (let i = 0; inflight.size && i < 20; i++) {
-      await Promise.allSettled([...inflight]);
-    }
-    await flushOutbox();
-  })();
-  await Promise.race([work, new Promise<void>((resolve) => setTimeout(resolve, timeoutMs))]);
+/** Writes not yet confirmed in the database — queued (failed/offline) + in-flight. */
+export function pendingCount(): number {
+  return queue.length + inflight.size;
+}
+
+/** Await all in-flight writers, then replay the queue. Returns true only when
+ *  EVERYTHING reached the database (nothing queued or in-flight remains). No
+ *  timeout — logout blocks on this until fully synced, and refuses if offline
+ *  (a queued/in-flight op means a write couldn't be confirmed). */
+export async function drainOutbox(): Promise<boolean> {
+  // a writer can enqueue more work as it settles (upload → upsert → queue), so
+  // loop until no writers remain (bounded to avoid a runaway loop).
+  for (let i = 0; inflight.size && i < 20; i++) {
+    await Promise.allSettled([...inflight]);
+  }
+  await flushOutbox();
+  return pendingCount() === 0;
 }
 
 let inited = false;

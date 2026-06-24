@@ -37,8 +37,9 @@ export default function Settings() {
   const [delBusy, setDelBusy] = useState(false);
 
   const onLogout = async () => {
-    await logout();
-    router.replace('/login');
+    const r = await logout();
+    if (r.ok) router.replace('/login');
+    else showAlert(tr('sync.cantLogoutTitle'), tr('sync.cantLogoutBody'));
   };
 
   const confirmDelete = async () => {

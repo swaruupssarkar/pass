@@ -6,7 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { PassProvider } from '@/pass/store';
 import { C } from '@/pass/theme';
-import { CancelReasonSheet, PassDialog } from '@/pass/ui';
+import { CancelReasonSheet, PassDialog, SyncOverlay } from '@/pass/ui';
 
 // App-wide: kill the spell-check / autocorrect underline under typed text, plus
 // Android's default TextInput underline (which renders in the accent color).
@@ -31,6 +31,7 @@ export default function RootLayout() {
           />
           <PassDialog />
           <CancelReasonSheet />
+          <SyncOverlay />
         </PassProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

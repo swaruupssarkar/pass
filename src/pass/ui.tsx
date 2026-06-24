@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { memo, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
@@ -726,6 +727,24 @@ export function PassDialog() {
             );
           })}
         </View>
+      </View>
+    </View>
+  );
+}
+
+/** Blocking overlay shown while logout drains pending writes to the database.
+ *  Non-dismissable: the user can't leave until everything is synced (or logout
+ *  refuses because they're offline). */
+export function SyncOverlay() {
+  const tr = useT();
+  const { s } = usePass();
+  if (!s.syncing) return null;
+  return (
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(17,17,17,0.55)', alignItems: 'center', justifyContent: 'center', padding: 32 }]}>
+      <View style={{ alignItems: 'center', backgroundColor: C.surface, borderRadius: 22, borderCurve: 'continuous', paddingVertical: 30, paddingHorizontal: 34, boxShadow: '0 24px 60px -20px rgba(0,0,0,0.55)' }}>
+        <ActivityIndicator size="large" color={C.accent} />
+        <Text style={{ fontSize: 16, fontWeight: '800', color: C.ink, marginTop: 18, letterSpacing: -0.2 }}>{tr('sync.title')}</Text>
+        <Text style={{ fontSize: 13.5, color: C.muted, marginTop: 6, textAlign: 'center', lineHeight: 19, maxWidth: 220 }}>{tr('sync.body')}</Text>
       </View>
     </View>
   );

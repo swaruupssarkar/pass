@@ -23,7 +23,7 @@ import {
 } from '@/pass/data';
 import { REPORT_DELIST_THRESHOLD, REPORT_EMAIL, REPORT_ENDPOINT } from '@/pass/config';
 import { supabase } from '@/pass/supabase';
-import { drainOutbox, flushOutbox, initOutbox, track } from '@/pass/outbox';
+import { drainOutbox, flushOutbox, initOutbox, pendingCount, track } from '@/pass/outbox';
 
 // finalize any pending auth browser session (OAuth redirect) on load
 WebBrowser.maybeCompleteAuthSession();
@@ -136,6 +136,7 @@ type State = {
   names: Record<string, string>;
   onboarded: boolean;
   hydrated: boolean;
+  syncing: boolean; // logout is blocking the UI while it drains pending writes
   dialog: Dialog | null;
 };
 
@@ -198,6 +199,7 @@ const INITIAL: State = {
   names: {},
   onboarded: false,
   hydrated: false,
+  syncing: false,
   dialog: null,
 };
 
@@ -545,7 +547,7 @@ type Store = {
   getAuthIdentities: () => Promise<string[]>;
   /** Google OAuth via an in-app browser tab; auto-links to the same-email account. `isNew` = account just created. */
   signInWithGoogle: () => Promise<{ ok: boolean; error?: string; cancelled?: boolean; isNew?: boolean }>;
-  logout: () => Promise<void>;
+  logout: () => Promise<{ ok: boolean; pending?: number }>;
   deleteAccount: () => Promise<{ ok: boolean; error?: string }>;
   // location
   setCity: (cityId: string) => void;
@@ -713,14 +715,24 @@ export function PassProvider({ children }: { children: ReactNode }) {
       },
 
       logout: async () => {
-        // wait for any in-flight optimistic writes (photo uploads, message/thread
-        // upserts, profile changes) to finish AND drain the queue WHILE still authed
-        // — otherwise half-written data is lost, or an op queued by this user would
-        // later replay under the next account's session (RLS denies it).
-        await drainOutbox();
-        await supabase.auth.signOut();
+        // Block logout until EVERYTHING is synced. Show the syncing overlay, drain
+        // all in-flight + queued writes while still authed. If anything can't be
+        // confirmed (offline), REFUSE to log out — keep the session and the data so
+        // nothing is lost; the user reconnects and tries again.
+        setS((prev) => ({ ...prev, syncing: true }));
+        const synced = await drainOutbox();
+        if (!synced) {
+          setS((prev) => ({ ...prev, syncing: false }));
+          return { ok: false, pending: pendingCount() };
+        }
+        // everything synced — sign out. The network revoke can fail offline; that's
+        // fine (the local session still clears), so don't let it strand the overlay.
+        try {
+          await supabase.auth.signOut();
+        } catch {}
         setS((prev) => ({
           ...prev,
+          syncing: false,
           currentUserId: '',
           onboarded: false, // per-user; the next account re-evaluates onboarding (set from their profile on sign-in)
           activeThreadId: null,
@@ -730,6 +742,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
           catFilter: null,
           draft: '',
         }));
+        return { ok: true };
       },
 
       // permanently delete the account: all images + every DB row + the auth user
