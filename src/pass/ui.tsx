@@ -526,13 +526,13 @@ function DaataBrandHero({ size = 132 }: { size?: number }) {
       </Animated.View>
 
       <FloatItem p={p} dx={-size * 0.66} y0={size * 0.04} y1={-size * 0.22} start={0.56}>
-        <MaterialCommunityIcons name="book-open-outline" size={size * 0.22} color={BRAND_ORANGE} />
+        <Icon name="cat-furniture" size={size * 0.22} color={BRAND_ORANGE} />
       </FloatItem>
       <FloatItem p={p} dx={0} y0={-size * 0.36} y1={-size * 0.66} start={0.6}>
-        <MaterialCommunityIcons name="teddy-bear" size={size * 0.24} color={BRAND_ORANGE} />
+        <MaterialCommunityIcons name="teddy-bear" size={size * 0.23} color={BRAND_ORANGE} />
       </FloatItem>
       <FloatItem p={p} dx={size * 0.66} y0={size * 0.04} y1={-size * 0.22} start={0.64}>
-        <MaterialCommunityIcons name="tshirt-crew-outline" size={size * 0.22} color={BRAND_ORANGE} />
+        <Icon name="cat-books" size={size * 0.22} color={BRAND_ORANGE} />
       </FloatItem>
     </View>
   );
@@ -550,7 +550,7 @@ function FloatItem({ p, dx, y0, y1, start, children }: { p: { value: number }; d
       {children}
       <View style={{ position: 'absolute', top: '100%', alignItems: 'center', gap: 5, paddingTop: 6 }}>
         {[0, 1, 2].map((i) => (
-          <View key={i} style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: BRAND_ORANGE, opacity: 0.4 - i * 0.11 }} />
+          <View key={i} style={{ width: 2.5, height: 2.5, borderRadius: 1.25, backgroundColor: BRAND_ORANGE, opacity: 0.4 - i * 0.11 }} />
         ))}
       </View>
     </Animated.View>

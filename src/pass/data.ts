@@ -100,11 +100,13 @@ export type Notification = {
 // ---- cities ----
 
 export const CITIES: City[] = [
-  { id: 'kol', name: 'Kolkata', initial: 'K', lat: 22.5726, lng: 88.3639, landmark: 'Victoria Memorial', img: 'https://loremflickr.com/600/400/victoria,memorial,kolkata?lock=21' },
-  { id: 'ban', name: 'Bangalore', initial: 'B', lat: 12.9716, lng: 77.5946, landmark: 'Vidhana Soudha', img: 'https://loremflickr.com/600/400/vidhana,soudha,bengaluru?lock=22' },
-  { id: 'mum', name: 'Mumbai', initial: 'M', lat: 19.076, lng: 72.8777, landmark: 'Gateway of India', img: 'https://loremflickr.com/600/400/gateway,of,india,mumbai?lock=23' },
-  { id: 'pun', name: 'Pune', initial: 'P', lat: 18.5204, lng: 73.8567, landmark: 'Shaniwar Wada', img: 'https://loremflickr.com/600/400/shaniwar,wada,pune?lock=24' },
-  { id: 'che', name: 'Chennai', initial: 'C', lat: 13.0827, lng: 80.2707, landmark: 'Marina Beach', img: 'https://loremflickr.com/600/400/marina,beach,chennai?lock=25' },
+  { id: 'del', name: 'Delhi', initial: 'D', lat: 28.6139, lng: 77.209, landmark: 'India Gate', img: 'https://loremflickr.com/640/480/india,gate,new,delhi/all?lock=26' },
+  { id: 'mum', name: 'Mumbai', initial: 'M', lat: 19.076, lng: 72.8777, landmark: 'Gateway of India', img: 'https://loremflickr.com/640/480/gateway,of,india,mumbai/all?lock=23' },
+  { id: 'ban', name: 'Bangalore', initial: 'B', lat: 12.9716, lng: 77.5946, landmark: 'Vidhana Soudha', img: 'https://loremflickr.com/640/480/vidhana,soudha,bengaluru/all?lock=22' },
+  { id: 'hyd', name: 'Hyderabad', initial: 'H', lat: 17.385, lng: 78.4867, landmark: 'Charminar', img: 'https://loremflickr.com/640/480/charminar,hyderabad/all?lock=27' },
+  { id: 'kol', name: 'Kolkata', initial: 'K', lat: 22.5726, lng: 88.3639, landmark: 'Victoria Memorial', img: 'https://loremflickr.com/640/480/victoria,memorial,kolkata/all?lock=21' },
+  { id: 'che', name: 'Chennai', initial: 'C', lat: 13.0827, lng: 80.2707, landmark: 'Kapaleeshwarar Temple', img: 'https://loremflickr.com/640/480/kapaleeshwarar,temple,chennai/all?lock=42' },
+  { id: 'pun', name: 'Pune', initial: 'P', lat: 18.5204, lng: 73.8567, landmark: 'Aga Khan Palace', img: 'https://loremflickr.com/640/480/aga,khan,palace,pune/all?lock=47' },
 ];
 
 export const cityById = (id: string): City => CITIES.find((c) => c.id === id) ?? CITIES[0];

@@ -534,15 +534,15 @@ type Store = {
   s: State;
   patch: (p: Partial<State>) => void;
   // auth
-  signInWithEmail: (email: string) => Promise<{ ok: boolean; error?: string }>;
+  signInWithEmail: (email: string, createUser?: boolean) => Promise<{ ok: boolean; error?: string }>;
   verifyOtp: (email: string, token: string) => Promise<{ ok: boolean; error?: string }>;
   signInWithPassword: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   /** Set/replace the current (just-verified) user's password. */
   setPassword: (password: string) => Promise<{ ok: boolean; error?: string }>;
   /** Providers linked to the signed-in user, e.g. ['email','google']. */
   getAuthIdentities: () => Promise<string[]>;
-  /** Google OAuth via an in-app browser tab; auto-links to the same-email account. */
-  signInWithGoogle: () => Promise<{ ok: boolean; error?: string; cancelled?: boolean }>;
+  /** Google OAuth via an in-app browser tab; auto-links to the same-email account. `isNew` = account just created. */
+  signInWithGoogle: () => Promise<{ ok: boolean; error?: string; cancelled?: boolean; isNew?: boolean }>;
   logout: () => Promise<void>;
   deleteAccount: () => Promise<{ ok: boolean; error?: string }>;
   // location
@@ -642,10 +642,10 @@ export function PassProvider({ children }: { children: ReactNode }) {
       s,
       patch,
 
-      signInWithEmail: async (email) => {
+      signInWithEmail: async (email, createUser = true) => {
         const { error } = await supabase.auth.signInWithOtp({
           email: email.trim().toLowerCase(),
-          options: { shouldCreateUser: true },
+          options: { shouldCreateUser: createUser },
         });
         return error ? { ok: false, error: error.message } : { ok: true };
       },
@@ -698,9 +698,13 @@ export function PassProvider({ children }: { children: ReactNode }) {
           if (res.type !== 'success' || !res.url) return { ok: false, cancelled: true };
           const code = new URL(res.url).searchParams.get('code');
           if (!code) return { ok: false, error: 'No authorization code returned.' };
-          const { error: exErr } = await supabase.auth.exchangeCodeForSession(code);
+          const { data: sess, error: exErr } = await supabase.auth.exchangeCodeForSession(code);
+          if (exErr) return { ok: false, error: exErr.message };
+          // brand-new account if it was created on (≈) this sign-in
+          const u = sess?.user;
+          const isNew = !!u && !!u.created_at && Math.abs(Date.parse(u.last_sign_in_at ?? u.created_at) - Date.parse(u.created_at)) < 10000;
           // success → onAuthStateChange sets currentUserId + pulls data
-          return exErr ? { ok: false, error: exErr.message } : { ok: true };
+          return { ok: true, isNew };
         } catch (e) {
           return { ok: false, error: e instanceof Error ? e.message : 'Google sign-in failed' };
         }

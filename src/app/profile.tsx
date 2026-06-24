@@ -76,7 +76,7 @@ export default function Profile() {
                 </View>
               ) : (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                  <Text style={{ fontSize: 21, fontWeight: '800', color: C.ink, letterSpacing: -0.4 }} numberOfLines={1}>{name}</Text>
+                  <Text style={{ flexShrink: 1, fontSize: 21, fontWeight: '800', color: C.ink, letterSpacing: -0.4 }} numberOfLines={1}>{name}</Text>
                   <VerifiedBadge size={18} />
                   <Pressable onPress={startEditName} hitSlop={8}>
                     <Icon name="pencil" size={15} color={C.muted} />

@@ -34,6 +34,7 @@ export type IconName =
   | 'map'
   | 'sort'
   | 'bell'
+  | 'flash'
   | 'pin'
   | 'send'
   | 'mail'
@@ -97,6 +98,7 @@ const MAP: Record<IconName, Glyph> = {
   map: 'map-outline',
   sort: 'swap-vertical',
   bell: 'notifications-outline',
+  flash: 'flash',
   pin: 'location-sharp',
   send: 'send',
   mail: 'mail-outline',

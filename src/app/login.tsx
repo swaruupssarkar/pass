@@ -15,7 +15,7 @@ const emailOk = (e: string) => /^\S+@\S+\.\S+$/.test(e);
 
 export default function Login() {
   const router = useRouter();
-  const { s, signInWithEmail, verifyOtp, signInWithPassword, setPassword, getAuthIdentities, signInWithGoogle, showAlert } = usePass();
+  const { s, signInWithEmail, verifyOtp, signInWithPassword, setPassword, getAuthIdentities, signInWithGoogle, showAlert, showConfirm } = usePass();
 
   const [mode, setMode] = useState<Mode>('signin');
   const [step, setStep] = useState<Step>('email'); // sign-up sub-step
@@ -81,14 +81,26 @@ export default function Login() {
     setPw2('');
   };
 
-  // send the one-time email code (both sign-in and sign-up verify email first)
+  // send the one-time email code. Sign-up may create the account; sign-in must
+  // NOT — a non-existent email on sign-in should be told to sign up instead.
   const sendCode = async () => {
     const e = email.trim();
     if (!emailOk(e)) return showAlert('Enter a valid email', mode === 'signin' ? 'Use the email you signed up with.' : 'We’ll send you a verification code.');
     setBusy(true);
-    const r = await signInWithEmail(e);
+    const r = await signInWithEmail(e, mode === 'signup');
     setBusy(false);
-    if (!r.ok) return showAlert('Could not send code', friendly(r.error));
+    if (!r.ok) {
+      if (mode === 'signin' && isNoAccount(r.error)) {
+        return showConfirm({
+          title: 'No account found',
+          message: `We couldn’t find an account for ${e}. Create one?`,
+          confirmLabel: 'Sign up',
+          cancelLabel: 'Try again',
+          onConfirm: () => { setMode('signup'); setStep('email'); setReset(false); },
+        });
+      }
+      return showAlert('Could not send code', friendly(r.error));
+    }
     setStep('otp');
     setCode('');
     setCooldown(30);
@@ -98,7 +110,7 @@ export default function Login() {
   const resend = async () => {
     if (cooldown > 0 || busy) return;
     setBusy(true);
-    const r = await signInWithEmail(email.trim());
+    const r = await signInWithEmail(email.trim(), mode === 'signup');
     setBusy(false);
     if (!r.ok) return showAlert('Could not resend', friendly(r.error));
     setCode('');
@@ -133,7 +145,9 @@ export default function Login() {
       const r = await setPassword(pw);
       setBusy(false);
       if (!r.ok) return showAlert('Could not save password', friendly(r.error));
-      go();
+      // brand-new account → run onboarding; forgot/reset (existing user) → feed
+      if (mode === 'signup') router.replace('/location');
+      else go();
     } else {
       if (!pw) return showAlert('Enter your password', 'Your password is required to sign in.');
       setBusy(true);
@@ -150,7 +164,9 @@ export default function Login() {
     setBusy(false);
     if (r.cancelled) return;
     if (!r.ok) return showAlert('Google sign-in failed', friendly(r.error));
-    go();
+    // first-time Google account → onboarding; returning → feed
+    if (r.isNew) router.replace('/location');
+    else go();
   };
 
   const showBack = step !== 'email' || mode === 'signup';
@@ -342,6 +358,12 @@ function headingFor(mode: Mode, step: Step, reset: boolean, email: string): { ti
   if (reset) return { title: 'Set a new password', subtitle: 'Choose a new password for your account.' };
   if (mode === 'signup') return { title: 'Create a password', subtitle: 'Almost done — secure your account with a password.' };
   return { title: 'Enter your password', subtitle: 'Email verified — enter your password to sign in.' };
+}
+
+// On sign-in with shouldCreateUser:false, Supabase rejects an unknown email with
+// one of these — meaning "this email has no account yet".
+function isNoAccount(err?: string): boolean {
+  return !!err && /signups? not allowed|user not found|otp_disabled|not allowed for otp/i.test(err);
 }
 
 // Supabase/network errors can be giant JSON blobs — show something human.
