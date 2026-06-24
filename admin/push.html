@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Daata · Push Broadcast</title>
+<style>
+  :root{
+    --orange:#FA6023; --orange-d:#e44e16; --ink:#1c140f; --muted:#8a7a70;
+    --bg:#FBEFE9; --card:#ffffff; --line:#efe3da; --field:#fbf6f2;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;background:radial-gradient(1200px 600px at 50% -10%,#fff5ef,var(--bg));
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);
+    display:flex;align-items:flex-start;justify-content:center;padding:40px 18px}
+  .card{width:100%;max-width:520px;background:var(--card);border:1px solid var(--line);border-radius:24px;
+    padding:26px 24px 24px;box-shadow:0 30px 70px -30px rgba(120,60,20,.35)}
+  .brand{display:flex;align-items:center;gap:10px;margin-bottom:2px}
+  .dot{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--orange),#ff8a4c);
+    display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px}
+  h1{font-size:21px;margin:0;letter-spacing:-.4px}
+  .sub{color:var(--muted);font-size:13.5px;margin:6px 0 20px}
+  label{display:block;font-size:13px;font-weight:700;margin:16px 0 7px;color:#3a2c23}
+  .hint{color:var(--muted);font-size:12px;margin-top:6px;line-height:1.45}
+  input,textarea{width:100%;background:var(--field);border:1px solid var(--line);border-radius:12px;
+    padding:13px 14px;font-size:15px;color:var(--ink);outline:none;font-family:inherit}
+  input:focus,textarea:focus{border-color:var(--orange);background:#fff}
+  input::placeholder,textarea::placeholder{color:#bca99d}
+  textarea{resize:vertical;min-height:96px}
+  .seg{display:flex;gap:8px;background:var(--field);border:1px solid var(--line);border-radius:14px;padding:5px}
+  .seg button{flex:1;border:0;background:transparent;padding:11px;border-radius:10px;font-size:14px;font-weight:700;
+    color:var(--muted);cursor:pointer}
+  .seg button.on{background:var(--orange);color:#fff;box-shadow:0 6px 16px -6px rgba(250,96,35,.6)}
+  .row{display:flex;gap:12px;margin-top:24px}
+  .btn{flex:1;border:0;border-radius:14px;padding:15px;font-size:15px;font-weight:800;cursor:pointer}
+  .btn.ghost{background:#fff;border:1.5px solid var(--line);color:var(--ink)}
+  .btn.send{background:var(--orange);color:#fff;box-shadow:0 12px 24px -10px rgba(250,96,35,.7)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .out{margin-top:18px;font-size:14px;font-weight:600;padding:12px 14px;border-radius:12px;display:none}
+  .out.ok{display:block;background:#eafaf0;color:#137a3e;border:1px solid #bdeccd}
+  .out.err{display:block;background:#fdecec;color:#c0392b;border:1px solid #f5c6c6}
+  .hide{display:none}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand"><div class="dot">d</div><h1>Push Broadcast</h1></div>
+    <div class="sub">Send a notification to all users or specific people.</div>
+
+    <label>Supabase project URL</label>
+    <input id="url" value="https://kugmucssfdlzsqotxvoy.supabase.co" spellcheck="false" />
+    <div class="hint">This page origin must be in the function secret <b>ADMIN_ALLOWED_ORIGINS</b>.</div>
+
+    <label>Admin push token</label>
+    <input id="token" type="password" placeholder="ADMIN_PUSH_TOKEN" autocomplete="off" />
+    <div class="hint">Kept in this browser only — never persisted.</div>
+
+    <label>Send to</label>
+    <div class="seg">
+      <button id="segAll" class="on" type="button">All users</button>
+      <button id="segSpecific" type="button">Specific users</button>
+    </div>
+
+    <div id="emailsWrap" class="hide">
+      <label>Emails</label>
+      <textarea id="emails" placeholder="one per line, or comma-separated&#10;alice@example.com, bob@example.com"></textarea>
+    </div>
+
+    <label>Title</label>
+    <input id="title" placeholder="e.g. New free items just dropped 🎁" />
+
+    <label>Message</label>
+    <textarea id="message" placeholder="What do you want to tell everyone?"></textarea>
+
+    <label>Image URL (optional)</label>
+    <input id="image" placeholder="https://.../banner.jpg" spellcheck="false" />
+    <div class="hint">Public HTTPS image. Shows on Android. iOS needs extra native setup (won't show yet).</div>
+
+    <div class="row">
+      <button id="preview" class="btn ghost" type="button">Preview count</button>
+      <button id="send" class="btn send" type="button">Send</button>
+    </div>
+    <div id="out" class="out"></div>
+  </div>
+
+<script>
+  var target = 'all';
+  var $ = function(id){ return document.getElementById(id); };
+  $('segAll').onclick = function(){ target='all'; $('segAll').classList.add('on'); $('segSpecific').classList.remove('on'); $('emailsWrap').classList.add('hide'); };
+  $('segSpecific').onclick = function(){ target='specific'; $('segSpecific').classList.add('on'); $('segAll').classList.remove('on'); $('emailsWrap').classList.remove('hide'); };
+
+  function show(msg, ok){ var o=$('out'); o.className='out '+(ok?'ok':'err'); o.textContent=msg; }
+  function parseEmails(){ return $('emails').value.split(/[\s,;]+/).map(function(s){return s.trim();}).filter(Boolean); }
+
+  function call(mode){
+    var base = $('url').value.trim().replace(/\/+$/,'');
+    var token = $('token').value.trim();
+    if(!base){ return show('Enter the Supabase project URL.', false); }
+    if(!token){ return show('Enter the admin push token.', false); }
+    var payload = {
+      token: token, mode: mode, target: target,
+      emails: target==='specific' ? parseEmails() : [],
+      title: $('title').value, message: $('message').value, image: $('image').value
+    };
+    if(target==='specific' && payload.emails.length===0){ return show('Add at least one email.', false); }
+    if(mode==='send' && !payload.title.trim() && !payload.message.trim()){ return show('Add a title or message.', false); }
+
+    $('preview').disabled = $('send').disabled = true;
+    show(mode==='send'?'Sending…':'Counting…', true);
+    fetch(base + '/functions/v1/admin-push', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    }).then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
+      .then(function(res){
+        if(!res.ok){ show('Error: ' + (res.j.error||'request failed'), false); return; }
+        if(mode==='preview'){ show(res.j.count + ' device(s) will receive this.', true); }
+        else { show('Sent to ' + (res.j.sent||0) + ' device(s).', true); }
+      })
+      .catch(function(e){ show('Network error: ' + e.message, false); })
+      .finally(function(){ $('preview').disabled = $('send').disabled = false; });
+  }
+  $('preview').onclick = function(){ call('preview'); };
+  $('send').onclick = function(){ call('send'); };
+</script>
+</body>
+</html>

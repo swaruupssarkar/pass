@@ -289,6 +289,12 @@ export type NotifyPrefsRow = { near: boolean; chat: boolean; addr: { lat: number
 export async function upsertNotifyPrefs(me: string, p: NotifyPrefsRow): Promise<void> {
   await push({ kind: 'upsert', table: 'notify_prefs', row: { user_id: me, near: p.near, chat: p.chat, addr_lat: p.addr?.lat ?? null, addr_lng: p.addr?.lng ?? null, addr_label: p.addr?.label ?? null } });
 }
+
+/** Register this device's Expo push token so the server can notify it of nearby
+ *  listings. Keyed on (user_id, token) so re-registering is idempotent. */
+export async function upsertPushToken(userId: UserId, token: string, platform: string): Promise<void> {
+  await push({ kind: 'upsert', table: 'push_tokens', row: { user_id: userId, token, platform } });
+}
 async function fetchNotifyPrefs(me: string): Promise<NotifyPrefsRow | null> {
   const { data, error } = await supabase.from('notify_prefs').select('*').eq('user_id', me).maybeSingle();
   if (error) throw error; // null here means "no prefs yet" (valid); an error must not be mistaken for that

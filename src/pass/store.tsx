@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Linking from 'expo-linking';
 import * as Location from 'expo-location';
+import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { createContext, use, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
@@ -24,6 +25,7 @@ import {
 import { REPORT_DELIST_THRESHOLD, REPORT_EMAIL, REPORT_ENDPOINT } from '@/pass/config';
 import { supabase } from '@/pass/supabase';
 import { drainOutbox, flushOutbox, initOutbox, pendingCount, track } from '@/pass/outbox';
+import { configureForegroundNotifications, registerForPush } from '@/pass/push';
 
 // finalize any pending auth browser session (OAuth redirect) on load
 WebBrowser.maybeCompleteAuthSession();
@@ -1407,6 +1409,8 @@ export function PassProvider({ children }: { children: ReactNode }) {
         const next: NotifyPrefs = { ...DEFAULT_NOTIFY, ...s.notify[s.currentUserId], near: on };
         setS((prev) => ({ ...prev, notify: { ...prev.notify, [prev.currentUserId]: next } }));
         if (s.currentUserId) track(upsertNotifyPrefs(s.currentUserId, next));
+        // turning it on → make sure this device has a push token registered
+        if (on && s.currentUserId) void registerForPush(s.currentUserId);
       },
       setNotifyChat: (on) => {
         const next: NotifyPrefs = { ...DEFAULT_NOTIFY, ...s.notify[s.currentUserId], chat: on };
@@ -1460,6 +1464,24 @@ export function PassProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     initOutbox();
     void flushOutbox();
+    void configureForegroundNotifications();
+    // tapping a push notification → open the relevant listing
+    let sub: { remove: () => void } | undefined;
+    (async () => {
+      try {
+        const Notifications = await import('expo-notifications');
+        sub = Notifications.addNotificationResponseReceivedListener((resp) => {
+          const data = resp.notification.request.content.data as { listingId?: string; route?: string };
+          if (data?.listingId) setS((prev) => ({ ...prev, activeListingId: data.listingId as string }));
+          try {
+            router.navigate((data?.route ?? '/feed') as Parameters<typeof router.navigate>[0]);
+          } catch {}
+        });
+      } catch {
+        /* native module unavailable — ignore */
+      }
+    })();
+    return () => sub?.remove();
   }, []);
 
   // auth: mirror the Supabase session into the store + bootstrap the profile row
@@ -1470,6 +1492,8 @@ export function PassProvider({ children }: { children: ReactNode }) {
         return;
       }
       setS((prev) => ({ ...prev, currentUserId: userId, authReady: true }));
+      // register this device for "new items near you" push on real sign-in
+      if (pull) void registerForPush(userId);
       try {
         const email = (await supabase.auth.getUser()).data.user?.email ?? '';
         // safety net in case the signup trigger didn't run (keeps existing row)

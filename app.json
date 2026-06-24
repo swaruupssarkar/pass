@@ -15,6 +15,7 @@
     },
     "android": {
       "package": "app.daata",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#FA6023",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -64,7 +65,13 @@
           "cameraPermission": "Allow Daata to use your camera to take item pictures."
         }
       ],
-      "expo-notifications"
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#FA6023"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

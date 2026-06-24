@@ -8,7 +8,7 @@ import { fmtAgo, notificationsFor, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { EmptyState, Header, Screen, shadow } from '@/pass/ui';
 
-const ICON_FOR = (kind: Notification['kind']) => (kind === 'taken' ? 'gift' : 'chat');
+const ICON_FOR = (kind: Notification['kind']) => (kind === 'taken' ? 'gift' : kind === 'item' ? 'pin' : 'chat');
 
 export default function Notifs() {
   const router = useRouter();

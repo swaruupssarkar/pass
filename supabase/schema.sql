@@ -426,3 +426,92 @@ end; $$;
 drop trigger if exists on_listing_deleted on public.listings;
 create trigger on_listing_deleted after delete on public.listings
   for each row execute function public.cleanup_listing_storage();
+
+-- ============================================================================
+-- "NEW ITEMS NEAR ME" — in-app notification + mobile-push fan-out on new listing
+-- ============================================================================
+
+-- Expo push tokens, one row per device (a user can sign in on several phones).
+create table if not exists public.push_tokens (
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  token text not null,
+  platform text,
+  updated_at timestamptz default now(),
+  primary key (user_id, token)
+);
+alter table public.push_tokens enable row level security;
+drop policy if exists pt_all on public.push_tokens;
+create policy pt_all on public.push_tokens for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- Great-circle distance (km) between two lat/lng points.
+create or replace function public.km_between(lat1 double precision, lng1 double precision, lat2 double precision, lng2 double precision)
+returns double precision language sql immutable as $$
+  select 6371 * acos(least(1, greatest(-1,
+    cos(radians(lat1)) * cos(radians(lat2)) * cos(radians(lng2) - radians(lng1))
+    + sin(radians(lat1)) * sin(radians(lat2))
+  )));
+$$;
+
+-- In-app: when a listing is posted, drop a notification for everyone with "near"
+-- on whose notify address is within 100 km (excluding the poster). Realtime
+-- delivers it to open apps; it also shows in the notifications list.
+create or replace function public.notify_on_listing()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.lat is null or new.lng is null then return new; end if;
+  insert into public.notifications (user_id, title, body, kind, listing_id, route)
+  select np.user_id,
+         'New item near you',
+         coalesce(new.title, 'A free item') || ' · ' ||
+           case when public.km_between(new.lat, new.lng, np.addr_lat, np.addr_lng) < 1
+                then 'less than 1 km away'
+                else round(public.km_between(new.lat, new.lng, np.addr_lat, np.addr_lng)::numeric, 0)::text || ' km away'
+           end,
+         'item', new.id, '/detail'
+  from public.notify_prefs np
+  where np.near = true
+    and np.addr_lat is not null and np.addr_lng is not null
+    and np.user_id <> new.owner_id
+    and public.km_between(new.lat, new.lng, np.addr_lat, np.addr_lng) <= 100;
+  return new;
+end; $$;
+drop trigger if exists on_listing_created on public.listings;
+create trigger on_listing_created after insert on public.listings
+  for each row execute function public.notify_on_listing();
+
+-- Push fan-out target list for the edge function (service-role). Returns each
+-- nearby user's distance + their device tokens, so the function can send a
+-- personalised "X km away" push to every device.
+create or replace function public.nearby_push_targets(p_lat double precision, p_lng double precision, p_owner uuid)
+returns table(user_id uuid, distance_km double precision, tokens text[])
+language sql security definer set search_path = public as $$
+  select np.user_id,
+         public.km_between(p_lat, p_lng, np.addr_lat, np.addr_lng) as distance_km,
+         coalesce(array_agg(pt.token) filter (where pt.token is not null), '{}') as tokens
+  from public.notify_prefs np
+  left join public.push_tokens pt on pt.user_id = np.user_id
+  where np.near = true
+    and np.addr_lat is not null and np.addr_lng is not null
+    and np.user_id <> p_owner
+    and public.km_between(p_lat, p_lng, np.addr_lat, np.addr_lng) <= 100
+  group by np.user_id, np.addr_lat, np.addr_lng;
+$$;
+
+-- Mobile push: POST each new listing to the notify-nearby edge function via
+-- pg_net (async, fire-and-forget). The function fans out the Expo push. (This
+-- replaces a dashboard Database Webhook — same effect, kept in code.)
+create extension if not exists pg_net;
+create or replace function public.push_nearby_webhook()
+returns trigger language plpgsql security definer set search_path = public, net as $$
+begin
+  if new.lat is null or new.lng is null then return new; end if;
+  perform net.http_post(
+    url := 'https://kugmucssfdlzsqotxvoy.supabase.co/functions/v1/notify-nearby',
+    body := jsonb_build_object('type', 'INSERT', 'table', 'listings', 'record', to_jsonb(new)),
+    headers := jsonb_build_object('Content-Type', 'application/json')
+  );
+  return new;
+end; $$;
+drop trigger if exists on_listing_push on public.listings;
+create trigger on_listing_push after insert on public.listings
+  for each row execute function public.push_nearby_webhook();

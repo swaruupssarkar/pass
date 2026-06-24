@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "168083504278",
+    "project_id": "daata-379fb",
+    "storage_bucket": "daata-379fb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:168083504278:android:586cd5ee3a71a5bf1f16b7",
+        "android_client_info": {
+          "package_name": "app.daata"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBj-AQ9mhuq6Kpag9OO3bphGc7jycwoyVw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
