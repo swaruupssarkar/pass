@@ -26,7 +26,12 @@
         "googleMaps": {
           "apiKey": "AIzaSyCoExv8thO4VMEtiLjcUtj3mhrWDIcU3F4"
         }
-      }
+      },
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "output": "static",
@@ -64,6 +69,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "a73f9eb6-9074-4631-8d57-f954e50082e2"
+      }
+    },
+    "owner": "swaruup"
   }
 }
