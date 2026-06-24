@@ -23,7 +23,7 @@ import {
 } from '@/pass/data';
 import { REPORT_DELIST_THRESHOLD, REPORT_EMAIL, REPORT_ENDPOINT } from '@/pass/config';
 import { supabase } from '@/pass/supabase';
-import { flushOutbox, initOutbox } from '@/pass/outbox';
+import { drainOutbox, flushOutbox, initOutbox, track } from '@/pass/outbox';
 
 // finalize any pending auth browser session (OAuth redirect) on load
 WebBrowser.maybeCompleteAuthSession();
@@ -713,6 +713,11 @@ export function PassProvider({ children }: { children: ReactNode }) {
       },
 
       logout: async () => {
+        // wait for any in-flight optimistic writes (photo uploads, message/thread
+        // upserts, profile changes) to finish AND drain the queue WHILE still authed
+        // — otherwise half-written data is lost, or an op queued by this user would
+        // later replay under the next account's session (RLS denies it).
+        await drainOutbox();
         await supabase.auth.signOut();
         setS((prev) => ({
           ...prev,
@@ -747,7 +752,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
             ? { ...prev.profiles, [prev.currentUserId]: { ...prev.profiles[prev.currentUserId], cityId } }
             : prev.profiles,
         }));
-        if (s.currentUserId) void updateProfileRemote(s.currentUserId, { city_id: cityId });
+        if (s.currentUserId) track(updateProfileRemote(s.currentUserId, { city_id: cityId }));
       },
 
       useCurrentLocation: async () => {
@@ -804,8 +809,8 @@ export function PassProvider({ children }: { children: ReactNode }) {
         if (!s.currentUserId) return;
         const willSave = !s.saved[id];
         setS((prev) => ({ ...prev, saved: { ...prev.saved, [id]: !prev.saved[id] } }));
-        if (willSave) void addSave(s.currentUserId, id);
-        else void removeSave(s.currentUserId, id);
+        if (willSave) track(addSave(s.currentUserId, id));
+        else track(removeSave(s.currentUserId, id));
       },
       viewPerson: (id) => setS((prev) => ({ ...prev, activePersonId: id })),
 
@@ -912,15 +917,21 @@ export function PassProvider({ children }: { children: ReactNode }) {
           toSync = listing;
           return { ...prev, listings: [listing, ...prev.listings], activeListingId: id };
         });
-        // push to Supabase: upload local photos, swap in their URLs, upsert the row
+        // push to Supabase. Persist the ROW FIRST (fast, while authed) so a quick
+        // logout / account-switch can't strand it — photo uploads are slow, and if
+        // they ran first the row could be lost. Strip not-yet-uploaded local file://
+        // paths from this first write (useless to other devices); fill in the real
+        // Storage URLs with a second upsert once the uploads finish.
         const pending = toSync as Listing | null; // assigned in the setS closure
         if (pending) {
           const l = pending;
-          (async () => {
+          track((async () => {
+            const remote = (l.photos ?? []).filter((p) => /^https?:\/\//.test(p));
+            await upsertListing({ ...l, photos: remote });
             const photos = await uploadListingPhotos(l.ownerId, l.id, l.photos ?? []);
             setS((p) => ({ ...p, listings: p.listings.map((x) => (x.id === l.id ? { ...x, photos } : x)) }));
             await upsertListing({ ...l, photos });
-          })();
+          })());
         }
         return outId;
       },
@@ -936,7 +947,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
           activeListingId: prev.activeListingId === id ? null : prev.activeListingId,
         }));
         // remove the row + its Storage images (skips external seed URLs)
-        if (listing) void deleteListingRemote(listing);
+        if (listing) track(deleteListingRemote(listing));
       },
 
       // send a request to the owner. If a chat with them already exists, the request
@@ -972,13 +983,13 @@ export function PassProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
-        void insertRequest(req);
+        track(insertRequest(req));
         if (hasThread && msg) {
           // await thread upsert before the message so m_ins RLS (thread must exist) passes
-          (async () => {
+          track((async () => {
             await upsertThread(tid, { listingId, starter: s.threadStarter[tid] ?? s.currentUserId, accepted: true });
             await insertMessage(tid, msg);
-          })();
+          })());
         }
       },
 
@@ -1006,13 +1017,13 @@ export function PassProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
-        void updateRequestStatus(requestId, 'accepted');
-        (async () => {
+        track(updateRequestStatus(requestId, 'accepted'));
+        track((async () => {
           await upsertThread(id, { listingId: req.listingId, starter: s.threadStarter[id] ?? req.fromUserId, accepted: true });
           // note: the requester's note isn't re-inserted as a message — RLS only lets
           // a user insert their own messages, and it already lives on the request row
           await insertMessage(id, accept);
-        })();
+        })());
       },
 
       declineRequest: (requestId) => {
@@ -1029,7 +1040,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
-        void updateRequestStatus(requestId, 'declined');
+        track(updateRequestStatus(requestId, 'declined'));
       },
 
       // remove a request (pending or accepted). Removing an accepted one un-reserves
@@ -1040,7 +1051,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
         // soft-cancel: mark 'cancelled' so the DB trigger notifies the other party
         // cross-device; remove it from our own list. The listing relists (not accepted).
         setS((prev) => ({ ...prev, requests: prev.requests.filter((r) => r.id !== requestId), cancelTarget: null }));
-        void updateRequestStatus(requestId, 'cancelled');
+        track(updateRequestStatus(requestId, 'cancelled'));
       },
 
       openCancelReason: (requestId, role) => setS((prev) => ({ ...prev, cancelTarget: { requestId, role } })),
@@ -1050,7 +1061,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
       // settled (item given) or already declined, just to clear it off the screen
       removeRequest: (requestId) => {
         setS((prev) => ({ ...prev, requests: prev.requests.filter((r) => r.id !== requestId) }));
-        void deleteRequestRemote(requestId);
+        track(deleteRequestRemote(requestId));
       },
 
       openThreadFor: (listingId) => {
@@ -1068,7 +1079,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
             : { ...prev.threadStarter, [id]: prev.currentUserId };
           return { ...prev, threads, threadListing, threadStarter, activeThreadId: id };
         });
-        void upsertThread(id, { listingId, starter: s.threadStarter[id] ?? s.currentUserId });
+        track(upsertThread(id, { listingId, starter: s.threadStarter[id] ?? s.currentUserId }));
         return id;
       },
 
@@ -1092,12 +1103,12 @@ export function PassProvider({ children }: { children: ReactNode }) {
           activeThreadId: prev.activeThreadId === id ? null : prev.activeThreadId,
           notifications: prev.notifications.filter((n) => n.threadId !== id),
         }));
-        void deleteThreadRemote(id);
+        track(deleteThreadRemote(id));
       },
 
       acceptThread: (id) => {
         setS((prev) => ({ ...prev, threadAccepted: { ...prev.threadAccepted, [id]: true } }));
-        void upsertThread(id, { accepted: true });
+        track(upsertThread(id, { accepted: true }));
       },
 
       // stamp that the current user has seen this thread up to now (for read receipts)
@@ -1107,7 +1118,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
           ...prev,
           threadRead: { ...prev.threadRead, [id]: { ...(prev.threadRead[id] ?? {}), [prev.currentUserId]: ts } },
         }));
-        void updateThreadRead(id, s.currentUserId, ts);
+        track(updateThreadRead(id, s.currentUserId, ts));
       },
 
       // text is passed in from the composer's local state so typing never touches
@@ -1135,10 +1146,10 @@ export function PassProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
-        (async () => {
+        track((async () => {
           await upsertThread(id, { starter, accepted: accepts ? true : undefined });
           await insertMessage(id, msg);
-        })();
+        })());
       },
 
       shareLoc: async () => {
@@ -1165,8 +1176,8 @@ export function PassProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
-        await upsertThread(id, { starter: s.threadStarter[id] ?? s.currentUserId, accepted: true });
-        await insertMessage(id, msg);
+        await track(upsertThread(id, { starter: s.threadStarter[id] ?? s.currentUserId, accepted: true }));
+        await track(insertMessage(id, msg));
       },
 
       sendImage: (uri) => {
@@ -1186,25 +1197,25 @@ export function PassProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
-        (async () => {
+        track((async () => {
           const folder = id.replace(/[^a-zA-Z0-9]/g, '_');
           const url = await uploadImage(uri, 'chat-images', `${s.currentUserId}/${folder}/${uuid()}.jpg`);
           const image = url ?? uri;
           if (url) setS((prev) => ({ ...prev, threads: { ...prev.threads, [id]: (prev.threads[id] ?? []).map((m) => (m.id === msgId ? { ...m, image } : m)) } }));
           await upsertThread(id, { starter: s.threadStarter[id] ?? s.currentUserId, accepted: true });
           await insertMessage(id, { ...msg, image });
-        })();
+        })());
       },
 
       blockUser: (id) => {
         if (!s.currentUserId) return;
         setS((prev) => ({ ...prev, blocked: { ...prev.blocked, [blockKey(prev.currentUserId, id)]: true } }));
-        void addBlock(s.currentUserId, id);
+        track(addBlock(s.currentUserId, id));
       },
       unblockUser: (id) => {
         if (!s.currentUserId) return;
         setS((prev) => ({ ...prev, blocked: { ...prev.blocked, [blockKey(prev.currentUserId, id)]: false } }));
-        void removeBlock(s.currentUserId, id);
+        track(removeBlock(s.currentUserId, id));
       },
 
       openTakenPicker: (listingId) => setS((prev) => ({ ...prev, takenPickerId: listingId })),
@@ -1216,8 +1227,8 @@ export function PassProvider({ children }: { children: ReactNode }) {
           ? { id: uuid(), listingId, giverId: s.currentUserId, recipientId, title: src.title, photo: src.photos?.[0], tint: src.tint, cat: src.cat, ts: Date.now() }
           : null;
         // sync taken state + handoff row to Supabase
-        void setListingTaken(listingId, recipientId);
-        if (handoff) void insertHandoff(handoff);
+        track(setListingTaken(listingId, recipientId));
+        if (handoff) track(insertHandoff(handoff));
         setS((prev) => {
           const l = prev.listings.find((x) => x.id === listingId);
           if (!l || !handoff) return prev;
@@ -1279,7 +1290,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
           rateTags: [],
           reviewDraft: '',
         }));
-        if (review) void insertReview(review);
+        if (review) track(insertReview(review));
       },
 
       toggleRateTag: (t) =>
@@ -1293,16 +1304,16 @@ export function PassProvider({ children }: { children: ReactNode }) {
           ...prev,
           notifications: prev.notifications.map((n) => (n.userId === prev.currentUserId ? { ...n, read: true } : n)),
         }));
-        void markNotificationsRead(s.currentUserId);
+        track(markNotificationsRead(s.currentUserId));
       },
 
       deleteNotif: (id) => {
         setS((prev) => ({ ...prev, notifications: prev.notifications.filter((n) => n.id !== id) }));
-        void deleteNotificationRemote(id);
+        track(deleteNotificationRemote(id));
       },
       clearNotifs: () => {
         setS((prev) => ({ ...prev, notifications: prev.notifications.filter((n) => n.userId !== prev.currentUserId) }));
-        void clearNotificationsRemote(s.currentUserId);
+        track(clearNotificationsRemote(s.currentUserId));
       },
 
       openNotif: (n) => {
@@ -1340,7 +1351,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
             ts: Date.now(),
           });
           // count THIS listing only; it auto-delists once it crosses the threshold
-          void reportListingRemote(listingId);
+          track(reportListingRemote(listingId));
           const reportCounts = { ...prev.reportCounts, [listingId]: (prev.reportCounts[listingId] ?? 0) + 1 };
           return { ...prev, reportCounts, reportDone: true };
         }),
@@ -1353,7 +1364,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
           names: { ...prev.names, [prev.currentUserId]: finalName },
           profiles: { ...prev.profiles, [prev.currentUserId]: { ...(prev.profiles[prev.currentUserId] ?? { id: prev.currentUserId, dp: null }), name: finalName } },
         }));
-        if (s.currentUserId) void updateProfileRemote(s.currentUserId, { name: finalName });
+        if (s.currentUserId) track(updateProfileRemote(s.currentUserId, { name: finalName }));
       },
       setDp: (uri) => {
         const me = s.currentUserId;
@@ -1365,10 +1376,10 @@ export function PassProvider({ children }: { children: ReactNode }) {
         }));
         if (!me) return;
         if (uri === null) {
-          void updateProfileRemote(me, { dp: null });
+          track(updateProfileRemote(me, { dp: null }));
           return;
         }
-        (async () => {
+        track((async () => {
           const url = (await uploadImage(uri, 'avatars', `${me}/${uuid()}.jpg`)) ?? uri;
           setS((prev) => ({
             ...prev,
@@ -1376,23 +1387,23 @@ export function PassProvider({ children }: { children: ReactNode }) {
             profiles: { ...prev.profiles, [me]: { ...(prev.profiles[me] ?? { id: me, name: userName(prev, me) }), dp: url } },
           }));
           await updateProfileRemote(me, { dp: url });
-        })();
+        })());
       },
 
       setNotifyNear: (on) => {
         const next: NotifyPrefs = { ...DEFAULT_NOTIFY, ...s.notify[s.currentUserId], near: on };
         setS((prev) => ({ ...prev, notify: { ...prev.notify, [prev.currentUserId]: next } }));
-        if (s.currentUserId) void upsertNotifyPrefs(s.currentUserId, next);
+        if (s.currentUserId) track(upsertNotifyPrefs(s.currentUserId, next));
       },
       setNotifyChat: (on) => {
         const next: NotifyPrefs = { ...DEFAULT_NOTIFY, ...s.notify[s.currentUserId], chat: on };
         setS((prev) => ({ ...prev, notify: { ...prev.notify, [prev.currentUserId]: next } }));
-        if (s.currentUserId) void upsertNotifyPrefs(s.currentUserId, next);
+        if (s.currentUserId) track(upsertNotifyPrefs(s.currentUserId, next));
       },
       setNotifyAddress: (coords, label) => {
         const next: NotifyPrefs = { ...DEFAULT_NOTIFY, ...s.notify[s.currentUserId], addr: { lat: coords.lat, lng: coords.lng, label } };
         setS((prev) => ({ ...prev, notify: { ...prev.notify, [prev.currentUserId]: next } }));
-        if (s.currentUserId) void upsertNotifyPrefs(s.currentUserId, next);
+        if (s.currentUserId) track(upsertNotifyPrefs(s.currentUserId, next));
       },
 
       restart: () => setS({ ...INITIAL, hydrated: true }),

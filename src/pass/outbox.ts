@@ -15,8 +15,24 @@ export type Op =
   | { kind: 'delete'; table: string; match: Record<string, unknown> }
   | { kind: 'rpc'; fn: string; args: Record<string, unknown> };
 
+// Queued ops carry the uid of the user who created them. RLS ties most writes to
+// auth.uid() (e.g. listings.owner_id = auth.uid()), so a write queued by user A
+// must NEVER be replayed under user B's session — it would be denied forever and,
+// worse, could corrupt another account's data. We replay an op only when its uid
+// matches the current session (or is unknown), and keep foreign-user ops for when
+// that user signs back in on this device.
+type Queued = Op & { uid?: string };
+
 const KEY = 'pass.outbox.v1';
-let queue: Op[] = [];
+let queue: Queued[] = [];
+
+async function currentUid(): Promise<string | undefined> {
+  try {
+    return (await supabase.auth.getSession()).data.session?.user.id;
+  } catch {
+    return undefined;
+  }
+}
 let loaded = false;
 let flushing = false;
 
@@ -32,7 +48,7 @@ async function load(): Promise<void> {
   loaded = true;
   try {
     const raw = await AsyncStorage.getItem(KEY);
-    if (raw) queue = JSON.parse(raw) as Op[];
+    if (raw) queue = JSON.parse(raw) as Queued[];
   } catch {
     /* ignore */
   }
@@ -67,22 +83,32 @@ export async function exec(op: Op): Promise<boolean> {
 /** Try a write now; queue it for retry if it fails. (UI already updated optimistically.) */
 export async function push(op: Op): Promise<void> {
   await load();
+  // capture the author BEFORE the write — so even an op queued the instant before
+  // a sign-out is reliably attributed and can't later replay under another account
+  const uid = await currentUid();
   const ok = await exec(op);
   if (!ok) {
-    queue.push(op);
+    queue.push({ ...op, uid });
     await persist();
   }
 }
 
-/** Replay queued writes in order; keep any that still fail. */
+/** Replay queued writes in order; keep any that still fail or belong to another user. */
 export async function flushOutbox(): Promise<void> {
   await load();
   if (flushing || queue.length === 0) return;
   flushing = true;
   try {
+    const uid = await currentUid();
     const pending = [...queue];
-    const keep: Op[] = [];
+    const keep: Queued[] = [];
     for (const op of pending) {
+      // skip (but keep) ops authored by a different signed-in user — RLS would
+      // deny them under this session; they replay when that user returns
+      if (op.uid && uid && op.uid !== uid) {
+        keep.push(op);
+        continue;
+      }
       const ok = await exec(op);
       if (!ok) keep.push(op);
     }
@@ -91,6 +117,39 @@ export async function flushOutbox(): Promise<void> {
   } finally {
     flushing = false;
   }
+}
+
+// ---- in-flight write tracking ----
+// Optimistic fire-and-forget writes (e.g. upload a photo, THEN upsert the row) do
+// async work that hasn't reached the queue yet. track() registers those promises so
+// drainOutbox() (called at logout) can await them before sign-out — otherwise a
+// half-finished write would be lost when the next account signs in.
+const inflight = new Set<Promise<unknown>>();
+
+/** Register a fire-and-forget write so logout can wait for it. Never rejects. */
+export function track<T>(p: Promise<T>): Promise<T> {
+  inflight.add(p);
+  void p.then(
+    () => inflight.delete(p),
+    () => inflight.delete(p),
+  );
+  return p;
+}
+
+/** Await all in-flight writers, then replay the queue. Use before sign-out so
+ *  nothing optimistic is stranded on an account switch. Bounded by `timeoutMs` so
+ *  a stalled upload can't hang logout forever — anything unfinished stays in the
+ *  durable, uid-tagged queue and replays when its author next signs in. */
+export async function drainOutbox(timeoutMs = 8000): Promise<void> {
+  const work = (async () => {
+    // a writer can enqueue more work as it settles (upload → upsert → queue), so
+    // loop until no writers remain (bounded to avoid a runaway loop).
+    for (let i = 0; inflight.size && i < 20; i++) {
+      await Promise.allSettled([...inflight]);
+    }
+    await flushOutbox();
+  })();
+  await Promise.race([work, new Promise<void>((resolve) => setTimeout(resolve, timeoutMs))]);
 }
 
 let inited = false;
