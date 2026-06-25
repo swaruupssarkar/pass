@@ -65,8 +65,10 @@ const STORAGE_KEY = 'pass.state.v5';
 type State = {
   /** Supabase auth user id ('' when logged out). */
   currentUserId: UserId;
+  currentUserEmail: string; // the signed-in user's email (for the Account screen)
   /** cache of user records (current user + everyone referenced), hydrated from Supabase. */
   profiles: Record<string, Profile>;
+  publicStats: Record<string, { given: number; received: number }>; // cached giver hand-off counts (no 0-flash on revisit)
   /** false until the initial Supabase session check resolves (gates the splash). */
   authReady: boolean;
   lang: LangCode;
@@ -107,6 +109,7 @@ type State = {
   galleryIdx: number;
   sheetExpanded: boolean;
   showRadius: boolean;
+  safetyHidden: boolean; // chat safety banner dismissed by the user; resets on logout
   // post form
   postTitle: string;
   postCat: string;
@@ -149,7 +152,9 @@ type State = {
 
 const INITIAL: State = {
   currentUserId: '',
+  currentUserEmail: '',
   profiles: {},
+  publicStats: {},
   authReady: false,
   lang: DEFAULT_LANG,
   listings: [],
@@ -181,6 +186,7 @@ const INITIAL: State = {
   galleryIdx: 0,
   sheetExpanded: false,
   showRadius: false,
+  safetyHidden: false,
   postTitle: '',
   postCat: 'Furniture',
   postCond: 'Good',
@@ -792,6 +798,8 @@ export function PassProvider({ children }: { children: ReactNode }) {
           ...prev,
           syncing: false,
           currentUserId: '',
+          currentUserEmail: '',
+          safetyHidden: false, // show the chat safety banner again for the next sign-in
           onboarded: false, // per-user; the next account re-evaluates onboarding (set from their profile on sign-in)
           activeThreadId: null,
           activeListingId: null,
@@ -931,6 +939,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
             ...prev,
             reviews: [...revById.values()],
             profiles: { ...prev.profiles, ...Object.fromEntries(profs.map((p) => [p.id, p])) },
+            publicStats: { ...prev.publicStats, [userId]: stats }, // cache so a revisit shows instantly
           };
         });
         return stats;
@@ -1687,7 +1696,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const applyUser = async (userId: string | null, pull: boolean) => {
       if (!userId) {
-        setS((prev) => ({ ...prev, currentUserId: '', authReady: true }));
+        setS((prev) => ({ ...prev, currentUserId: '', currentUserEmail: '', authReady: true }));
         return;
       }
       setS((prev) => ({ ...prev, currentUserId: userId, authReady: true }));
@@ -1695,6 +1704,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
       if (pull) void registerForPush(userId);
       try {
         const email = (await supabase.auth.getUser()).data.user?.email ?? '';
+        setS((prev) => ({ ...prev, currentUserEmail: email }));
         if (pull) identifyUser(userId, email ? { email } : undefined); // tie analytics to this user (enables retention)
         // safety net in case the signup trigger didn't run (keeps existing row)
         await supabase.from('profiles').upsert({ id: userId }, { onConflict: 'id', ignoreDuplicates: true });
@@ -1938,6 +1948,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
     if (!s.hydrated) return;
     const snapshot = {
       currentUserId: s.currentUserId,
+      currentUserEmail: s.currentUserEmail,
       profiles: s.profiles,
       lang: s.lang,
       listings: s.listings,
@@ -1963,6 +1974,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
       userCity: s.userCity,
       onboarded: s.onboarded,
       notifyNudgeDate: s.notifyNudgeDate,
+      safetyHidden: s.safetyHidden,
     };
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {

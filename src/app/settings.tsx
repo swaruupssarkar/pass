@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { langInfo } from '@/pass/i18n';
 import { Icon } from '@/pass/icon';
@@ -60,6 +61,20 @@ export default function Settings() {
     <Screen>
       <Header title={tr('settings.title')} />
       <ScrollView contentContainerStyle={{ padding: 18, paddingTop: 0, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
+        <Section title={tr('settings.account')}>
+          <View style={[row, { borderBottomWidth: 1, borderBottomColor: C.line }]}>
+            <Text style={{ fontSize: 14.5, color: C.ink }}>{tr('settings.email')}</Text>
+            <Text style={{ flex: 1, textAlign: 'right', fontSize: 14, color: C.muted, fontWeight: '600' }} numberOfLines={1}>{s.currentUserEmail || '—'}</Text>
+          </View>
+          <Pressable onPress={() => router.push('/change-password')} style={row}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1 }}>
+              <Icon name="lock" size={16} color={C.accent} />
+              <Text style={{ fontSize: 14.5, color: C.ink }}>{tr('settings.changePassword')}</Text>
+            </View>
+            <Icon name="forward" size={16} color={C.muted} />
+          </Pressable>
+        </Section>
+
         <Section title={tr('settings.location')}>
           <Pressable onPress={() => router.push('/city')} style={[row, { borderBottomWidth: 1, borderBottomColor: C.line }]}>
             <Text style={{ flex: 1, fontSize: 14.5, color: C.ink }}>{tr('settings.city')}</Text>
@@ -143,7 +158,7 @@ export default function Settings() {
       </ScrollView>
 
       <Modal visible={delOpen} transparent animationType="fade" onRequestClose={() => !delBusy && setDelOpen(false)}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
           <View style={{ flex: 1, backgroundColor: 'rgba(17,17,17,0.55)', justifyContent: 'center', padding: 24 }}>
             <View style={{ backgroundColor: C.surface, borderRadius: 22, borderCurve: 'continuous', padding: 22, ...shadow(16, 40, 0.4) }}>
               <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: C.dangerBg, alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>

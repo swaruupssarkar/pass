@@ -26,24 +26,17 @@ export default function Giver() {
 
   // another user's reviews/hand-offs aren't in the synced cache — fetch on open.
   // reviews get merged into the store (so reviewsFor/userRating work); the
-  // given/received counts come back from the RPC (handoffs are RLS-private).
-  const [stats, setStats] = useState<{ given: number; received: number } | null>(null);
+  // given/received counts come from the RPC (handoffs are RLS-private). The result
+  // is cached in the store (s.publicStats), so a revisit shows instantly; the very
+  // first view shows a skeleton instead of a misleading 0 until the RPC lands.
+  const cachedStats = isMe ? null : s.publicStats?.[id] ?? null;
   useEffect(() => {
-    if (isMe) {
-      setStats(null);
-      return;
-    }
-    let alive = true;
-    loadPublicProfile(id).then((r) => {
-      if (alive) setStats(r);
-    });
-    return () => {
-      alive = false;
-    };
+    if (!isMe) void loadPublicProfile(id); // populates/refreshes s.publicStats on resolve
   }, [id, isMe, loadPublicProfile]);
 
-  const given = isMe ? handoffsBy(s, id).length : stats?.given ?? 0;
-  const received = isMe ? handoffsTo(s, id).length : stats?.received ?? 0;
+  const statsLoading = !isMe && !cachedStats;
+  const given = isMe ? handoffsBy(s, id).length : cachedStats?.given ?? 0;
+  const received = isMe ? handoffsTo(s, id).length : cachedStats?.received ?? 0;
   const reviews = reviewsFor(s, id);
   const rating = userRating(s, id);
   const [reviewLimit, setReviewLimit] = useState(5);
@@ -90,11 +83,11 @@ export default function Giver() {
             </View>
 
             <View style={{ flexDirection: 'row', marginTop: 18, borderTopWidth: 1, borderTopColor: C.line, paddingTop: 16 }}>
-              <Stat n={live.length} label={tr('giver.liveListings')} />
+              <Stat n={live.length} label={tr('giver.liveListings')} loading={statsLoading} />
               <View style={{ width: 1, backgroundColor: C.line, marginVertical: 2 }} />
-              <Stat n={given} label={tr('giver.given')} />
+              <Stat n={given} label={tr('giver.given')} loading={statsLoading} />
               <View style={{ width: 1, backgroundColor: C.line, marginVertical: 2 }} />
-              <Stat n={received} label={tr('profile.received')} />
+              <Stat n={received} label={tr('profile.received')} loading={statsLoading} />
             </View>
 
             {!isMe ? (
@@ -172,10 +165,15 @@ export default function Giver() {
   );
 }
 
-function Stat({ n, label }: { n: number; label: string }) {
+function Stat({ n, label, loading }: { n: number; label: string; loading?: boolean }) {
   return (
     <View style={{ flex: 1, alignItems: 'center', gap: 3, paddingHorizontal: 2 }}>
-      <Text style={{ fontSize: 23, fontWeight: '800', color: C.ink }}>{n}</Text>
+      {loading ? (
+        // skeleton instead of a misleading "0" while the count loads (same height → no jump)
+        <View style={{ width: 26, height: 22, borderRadius: 7, backgroundColor: C.line, marginVertical: 3 }} />
+      ) : (
+        <Text style={{ fontSize: 23, lineHeight: 28, fontWeight: '800', color: C.ink }}>{n}</Text>
+      )}
       <Text style={{ fontSize: 11, color: C.muted, textAlign: 'center' }} numberOfLines={2}>{label}</Text>
     </View>
   );

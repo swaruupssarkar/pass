@@ -2,7 +2,8 @@ import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, TextInput, useWindowDimensions, Vibration, View } from 'react-native';
+import { Linking, Pressable, ScrollView, Text, TextInput, useWindowDimensions, Vibration, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import ReanimatedSwipeable, { SwipeDirection, type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 
 import type { Message } from '@/pass/data';
@@ -64,7 +65,7 @@ export default function Thread() {
   const tr = useT();
   const { width } = useWindowDimensions();
   const chatImg = Math.min(220, Math.round(width * 0.62)); // fits the 80%-max bubble on any width
-  const { s, sendMsg, sendImage, deleteMessage, setReply, shareLoc, viewPerson, openListing, blockUser, unblockUser, showConfirm, acceptRequest, declineRequest, acceptThread, deleteThread, markThreadRead, startRateForListing } = usePass();
+  const { s, patch, sendMsg, sendImage, deleteMessage, setReply, shareLoc, viewPerson, openListing, blockUser, unblockUser, showConfirm, acceptRequest, declineRequest, acceptThread, deleteThread, markThreadRead, startRateForListing } = usePass();
   const replyDraft = s.replyDraft;
   const [draft, setDraft] = useState('');
   const send = () => {
@@ -136,7 +137,19 @@ export default function Thread() {
   const pendingChat = !incomingReq && msgs.length > 0 && threadPendingForMe(s, meta.id);
   // my messages are "read" once the other person viewed the thread after they were sent
   const otherLastRead = s.threadRead[meta.id]?.[meta.otherId] ?? 0;
-  const headerListing = meta.listingId ? listingById(s, meta.listingId) : null;
+  // product card = the item of the LATEST request between these two users, shown ONLY
+  // while that request is pending or accepted. Declined or cancelled (by either side)
+  // → no card; a new request for a different item swaps the card to it. (cancel removes
+  // the request row entirely, decline marks it 'declined' — either way: not active → no card.)
+  const latestReq = s.requests
+    .filter((r) => (r.fromUserId === s.currentUserId && r.toUserId === meta.otherId) || (r.fromUserId === meta.otherId && r.toUserId === s.currentUserId))
+    .sort((a, b) => b.createdAt - a.createdAt)[0];
+  const headerListing =
+    latestReq && (latestReq.status === 'pending' || latestReq.status === 'accepted') ? listingById(s, latestReq.listingId) : null;
+  // "Share location" appears ONLY once the request is accepted by the owner, and
+  // disappears once the item is marked taken/given. Both parties get it until they
+  // each share (locShared is per-me).
+  const canShareLoc = latestReq?.status === 'accepted' && !headerListing?.taken && !blocked;
   // an item this person handed me that I haven't reviewed yet -> show an in-chat rate prompt
   const reviewListing = blocked ? null : pendingReviewFrom(s, meta.otherId);
   const rate = (n: number) => {
@@ -169,7 +182,7 @@ export default function Thread() {
 
   return (
     <Screen edges={['top', 'bottom']} bg={C.bg}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
       {/* header */}
       <View style={{ backgroundColor: C.surface, borderBottomWidth: 1, borderBottomColor: C.line, paddingHorizontal: 16, paddingVertical: 12 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -192,8 +205,8 @@ export default function Thread() {
             </Pressable>
           ) : null}
         </View>
-        {/* product card only while the item is still up for grabs — once it's given
-            (taken) or the listing was deleted, this is just a normal conversation */}
+        {/* product card shows only for a live (pending/accepted) request — see headerListing.
+            Hidden once the item is given (taken), the listing deleted, or the request gone. */}
         {headerListing && !headerListing.taken ? (
           <Pressable onPress={openItem} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.bg, borderRadius: 12, padding: 8, marginTop: 11, opacity: pressed ? 0.7 : 1 })}>
             <PhotoTile tint={meta.tint} uri={headerListing.photos?.[0]} icon={catIcon(headerListing.cat)} iconSize={18} style={{ width: 38, height: 38, borderRadius: 9 }} />
@@ -210,11 +223,16 @@ export default function Thread() {
         ) : null}
       </View>
 
-      {/* safety strip */}
-      <View style={{ backgroundColor: C.warnBg, paddingVertical: 8, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: 1, borderBottomColor: C.warnBorder }}>
-        <Icon name="warning" size={12} color={C.warnInk} />
-        <Text style={{ fontSize: 11.5, color: C.warnInk, fontWeight: '600' }}>{tr('thread.safety')}</Text>
-      </View>
+      {/* safety strip — dismissible with the ✕; reappears after logout → login */}
+      {!s.safetyHidden ? (
+        <View style={{ backgroundColor: C.warnBg, paddingVertical: 8, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: 1, borderBottomColor: C.warnBorder }}>
+          <Icon name="warning" size={12} color={C.warnInk} />
+          <Text style={{ flex: 1, fontSize: 11.5, color: C.warnInk, fontWeight: '600' }}>{tr('thread.safety')}</Text>
+          <Pressable onPress={() => patch({ safetyHidden: true })} hitSlop={8} style={{ padding: 2 }}>
+            <Icon name="close" size={14} color={C.warnInk} />
+          </Pressable>
+        </View>
+      ) : null}
 
       {/* messages */}
       <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 10 }}>
@@ -283,7 +301,7 @@ export default function Thread() {
             </Fragment>
           );
         })}
-        {!locShared && !blocked && !pendingChat && (
+        {canShareLoc && !locShared && (
           <Btn icon="pin" label={tr('thread.shareLocation')} variant="accentOutline" onPress={shareLoc} style={{ alignSelf: 'flex-start', paddingVertical: 9, paddingHorizontal: 14 }} textStyle={{ fontSize: 12.5 }} />
         )}
       </ScrollView>
