@@ -94,7 +94,8 @@ export default function Post() {
       }
     }
     submitPost();
-    router.replace('/manage');
+    // new posts → celebration; edits → back to My listings
+    router.replace(editing ? '/manage' : '/posted');
   };
 
   return (

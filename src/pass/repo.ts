@@ -128,10 +128,27 @@ export async function setListingTaken(id: string, takenBy: UserId): Promise<void
   await push({ kind: 'update', table: 'listings', values: { taken: true, taken_by: takenBy }, match: { id } });
 }
 
-/** Delete a listing. Its Storage images are removed server-side by the
- * on_listing_deleted trigger (covers cascade/account-delete paths too). */
+/** Delete a listing row (its child rows cascade in the DB). */
 export async function deleteListingRemote(l: Listing): Promise<void> {
   await push({ kind: 'delete', table: 'listings', match: { id: l.id } });
+}
+
+/** Remove a listing's photos from Storage via the Storage API — Supabase blocks
+ * direct DB deletes of storage.objects, so this can't be a DB trigger. Best-effort
+ * (owner-scoped by the st_del policy); orphaned files are harmless. */
+export async function deleteListingPhotos(l: Listing): Promise<void> {
+  const paths = (l.photos ?? [])
+    .map((u) => {
+      const m = u.match(/\/listing-photos\/(.+?)(?:\?|$)/);
+      return m ? decodeURIComponent(m[1]) : null;
+    })
+    .filter((p): p is string => !!p);
+  if (!paths.length) return;
+  try {
+    await supabase.storage.from('listing-photos').remove(paths);
+  } catch {
+    /* orphaned files are harmless */
+  }
 }
 
 // ---------- requests ----------
@@ -164,7 +181,13 @@ async function fetchRequests(me: string): Promise<Request[]> {
 
 // ---------- threads + messages ----------
 
-const threadPair = (id: string) => id.replace(/^p:/, '').split('-') as [string, string];
+// thread id = `p:<uuidA>-<uuidB>` (sorted). UUIDs are 36 chars and CONTAIN hyphens,
+// so split by fixed width — NOT on '-' (which would shred the uuids into garbage and
+// make every threads insert fail its uuid cast).
+const threadPair = (id: string): [string, string] => {
+  const s = id.replace(/^p:/, '');
+  return [s.slice(0, 36), s.slice(37)];
+};
 
 export function rowToMessage(m: Row): Message {
   return { id: m.id, from: m.from_user, text: m.body ?? '', ts: m.created_at ? Date.parse(m.created_at) : Date.now(), image: m.image ?? undefined };
@@ -312,6 +335,12 @@ async function fetchNotifications(me: string): Promise<Notification[]> {
 }
 export async function markNotificationsRead(me: string): Promise<void> {
   await push({ kind: 'update', table: 'notifications', values: { read: true }, match: { user_id: me, read: false } });
+}
+
+/** Mark a thread's coalesced message notification read in the DB so the unread dot
+ *  doesn't come back after logout/re-login (local read-state alone doesn't persist). */
+export async function markThreadRead(me: string, threadId: string): Promise<void> {
+  await push({ kind: 'update', table: 'notifications', values: { read: true }, match: { user_id: me, thread_id: threadId, kind: 'message' } });
 }
 export async function deleteNotificationRemote(id: string): Promise<void> {
   await push({ kind: 'delete', table: 'notifications', match: { id } });

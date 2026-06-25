@@ -72,7 +72,8 @@
           "color": "#FA6023"
         }
       ],
-      "expo-localization"
+      "expo-localization",
+      "expo-mail-composer"
     ],
     "experiments": {
       "typedRoutes": true,

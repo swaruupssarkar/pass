@@ -21,9 +21,10 @@ export type Op =
 // worse, could corrupt another account's data. We replay an op only when its uid
 // matches the current session (or is unknown), and keep foreign-user ops for when
 // that user signs back in on this device.
-type Queued = Op & { uid?: string };
+type Queued = Op & { uid?: string; tries?: number };
 
 const KEY = 'pass.outbox.v1';
+const MAX_TRIES = 25; // drop a permanently-failing ("poison") op after this many flushes
 let queue: Queued[] = [];
 
 async function currentUid(): Promise<string | undefined> {
@@ -110,7 +111,13 @@ export async function flushOutbox(): Promise<void> {
         continue;
       }
       const ok = await exec(op);
-      if (!ok) keep.push(op);
+      if (!ok) {
+        // self-heal: drop an op that keeps failing (a "poison" write that can never
+        // succeed — e.g. malformed/rejected) after many attempts, so it can't jam
+        // the queue forever. Transient/offline ops succeed long before this.
+        const tries = (op.tries ?? 0) + 1;
+        if (tries < MAX_TRIES) keep.push({ ...op, tries });
+      }
     }
     queue = keep;
     await persist();

@@ -212,19 +212,44 @@ drop trigger if exists on_request_status on public.requests;
 create trigger on_request_status after update on public.requests
   for each row execute function public.notify_on_request_status();
 
+-- in-app message notifications are COALESCED: one row per recipient+thread, refreshed
+-- with each new message (WhatsApp-style), not one row per message. Needs this index.
+create unique index if not exists notifications_msg_thread_uq
+  on public.notifications (user_id, thread_id) where kind = 'message';
 create or replace function public.notify_on_message()
 returns trigger language plpgsql security definer set search_path = public as $$
-declare other uuid; th record;
+declare other uuid; th record; sender text;
 begin
   select * into th from public.threads where id = new.thread_id;
+  if th is null then return new; end if;
   other := case when th.user_a = new.from_user then th.user_b else th.user_a end;
-  insert into public.notifications (user_id, title, body, kind, thread_id, route)
-  values (other, 'New message', coalesce(nullif(new.body,''), 'Sent a photo'), 'message', new.thread_id, '/thread');
+  select coalesce(nullif(name, ''), 'New message') into sender from public.profiles where id = new.from_user;
+  insert into public.notifications (user_id, title, body, kind, thread_id, route, read, created_at)
+  values (other, coalesce(sender, 'New message'),
+          coalesce(nullif(new.body, ''), 'Sent a photo'), 'message', new.thread_id, '/thread', false, now())
+  on conflict (user_id, thread_id) where kind = 'message'
+  do update set body = excluded.body, title = excluded.title, read = false, created_at = now();
   return new;
 end; $$;
 drop trigger if exists on_message_created on public.messages;
 create trigger on_message_created after insert on public.messages
   for each row execute function public.notify_on_message();
+
+-- mobile push for new messages → notify-message edge function (WhatsApp-style;
+-- collapses per conversation via collapseId = thread id, respects the chat toggle).
+create or replace function public.push_message_webhook()
+returns trigger language plpgsql security definer set search_path = public, net as $$
+begin
+  perform net.http_post(
+    url := 'https://kugmucssfdlzsqotxvoy.supabase.co/functions/v1/notify-message',
+    body := jsonb_build_object('type', 'INSERT', 'table', 'messages', 'record', to_jsonb(new)),
+    headers := jsonb_build_object('Content-Type', 'application/json')
+  );
+  return new;
+end; $$;
+drop trigger if exists on_message_push on public.messages;
+create trigger on_message_push after insert on public.messages
+  for each row execute function public.push_message_webhook();
 
 create or replace function public.notify_on_handoff()
 returns trigger language plpgsql security definer set search_path = public as $$
@@ -414,18 +439,13 @@ alter publication supabase_realtime add table public.profiles;
 alter table public.listings add column if not exists delisted boolean default false;
 -- (report_listing updated to set listings.delisted = true when count >= 5)
 -- (notify_on_request_status extended to notify the other party on status='cancelled')
--- storage cleanup: drop a listing's images on ANY delete path
-create or replace function public.cleanup_listing_storage()
-returns trigger language plpgsql security definer set search_path = public, storage as $$
-begin
-  delete from storage.objects
-  where bucket_id = 'listing-photos'
-    and name like old.owner_id::text || '/' || old.id::text || '/%';
-  return old;
-end; $$;
+-- storage cleanup for deleted listings is done CLIENT-SIDE via the Storage API
+-- (repo.deleteListingPhotos). Supabase's platform `protect_delete` trigger now
+-- BLOCKS direct `delete from storage.objects` ("Use the Storage API instead"),
+-- which made this DB trigger throw and roll back EVERY listing delete (rows never
+-- deleted + the delete op poisoned the offline outbox). Trigger + function removed:
 drop trigger if exists on_listing_deleted on public.listings;
-create trigger on_listing_deleted after delete on public.listings
-  for each row execute function public.cleanup_listing_storage();
+drop function if exists public.cleanup_listing_storage();
 
 -- ============================================================================
 -- "NEW ITEMS NEAR ME" — in-app notification + mobile-push fan-out on new listing

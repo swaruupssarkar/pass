@@ -16,7 +16,7 @@ const emailOk = (e: string) => /^\S+@\S+\.\S+$/.test(e);
 
 export default function Login() {
   const router = useRouter();
-  const { signInWithEmail, verifyOtp, signInWithPassword, setPassword, hasPassword, signInWithGoogle, showAlert, showConfirm } = usePass();
+  const { signInWithEmail, verifyOtp, signInWithPassword, setPassword, hasPassword, dropSession, signInWithGoogle, showAlert, showConfirm } = usePass();
 
   const [mode, setMode] = useState<Mode>('signin');
   const [step, setStep] = useState<Step>('email'); // sign-up sub-step
@@ -85,6 +85,7 @@ export default function Login() {
   const sendCode = async () => {
     const e = email.trim();
     if (!emailOk(e)) return showAlert('Enter a valid email', mode === 'signin' ? 'Use the email you signed up with.' : 'We’ll send you a verification code.');
+    setReset(false); // fresh attempt — don't carry a prior account's create-password state
     setBusy(true);
     const r = await signInWithEmail(e, mode === 'signup');
     setBusy(false);
@@ -125,10 +126,11 @@ export default function Login() {
     setBusy(true);
     const r = await verifyOtp(email, code);
     if (r.ok && mode === 'signin') {
-      // only force "create a password" when there genuinely isn't one yet
-      // (Google-only account that never set one) — not on every Google sign-in
+      // set OR clear per this account — only a passwordless (Google-only) account
+      // creates one; an account that has a password must ENTER it. (Setting only,
+      // never clearing, made a stale `reset` from a prior account leak in.)
       const hasPwd = await hasPassword();
-      if (!hasPwd) setReset(true);
+      setReset(!hasPwd);
     }
     setBusy(false);
     if (!r.ok) return showAlert('Invalid code', friendly(r.error));
@@ -153,8 +155,14 @@ export default function Login() {
       if (!pw) return showAlert('Enter your password', 'Your password is required to sign in.');
       setBusy(true);
       const r = await signInWithPassword(email.trim(), pw);
+      if (!r.ok) {
+        // wrong password — revoke the OTP-created session so it does NOT grant
+        // access, then let them retry. (Without this, OTP alone logged them in.)
+        await dropSession();
+        setBusy(false);
+        return showAlert('Wrong password', friendly(r.error));
+      }
       setBusy(false);
-      if (!r.ok) return showAlert('Wrong password', friendly(r.error));
       router.replace('/feed'); // existing account → straight to feed
     }
   };

@@ -11,14 +11,19 @@ import { Avatar, BottomNav, Btn, EmptyState, PhotoTile, Screen, shadow, t } from
 export default function Inbox() {
   const router = useRouter();
   const tr = useT();
-  const { s, openThread, viewPerson, acceptRequest, declineRequest, openThreadFor, openListing, deleteThread, showConfirm } = usePass();
+  const { s, openThread, viewPerson, acceptRequest, declineRequest, acceptThread, blockUser, openThreadFor, openListing, deleteThread, showConfirm } = usePass();
   const [tab, setTab] = useState<'chats' | 'requests'>('chats');
   const rows = inboxRows(s);
-  // Requests tab = only pending requests awaiting a decision. Once accepted the
-  // request becomes a chat (a thread is created), so it moves to the Chats tab.
-  const requests = incomingRequests(s).filter(
-    (r) => r.request.status === 'pending' && !s.threads[threadId(s.currentUserId, r.request.fromUserId)]
-  );
+  // Requests tab = pending requests awaiting MY decision. A request stays here even
+  // if the requester also messaged me (their messages show in Chats too) — it only
+  // leaves once I accept it or start replying. (Before, any thread — including one
+  // the requester created by messaging — wrongly hid the request from this tab.)
+  const requests = incomingRequests(s).filter((r) => {
+    if (r.request.status !== 'pending') return false;
+    const tid = threadId(s.currentUserId, r.request.fromUserId);
+    const iReplied = (s.threads[tid] ?? []).some((m) => m.from === s.currentUserId);
+    return !s.threadAccepted[tid] && !iReplied;
+  });
   const pending = requests.length;
 
   const openChatThread = (id: string) => {
@@ -44,6 +49,15 @@ export default function Inbox() {
       confirmLabel: tr('common.delete'),
       destructive: true,
       onConfirm: () => deleteThread(rowId),
+    });
+  };
+  const confirmBlock = (id: typeof s.currentUserId, name: string) => {
+    showConfirm({
+      title: tr('thread.blockTitle', { name }),
+      message: tr('thread.blockMsg'),
+      confirmLabel: tr('thread.block'),
+      destructive: true,
+      onConfirm: () => blockUser(id),
     });
   };
 
@@ -82,24 +96,34 @@ export default function Inbox() {
                     <Text style={{ fontSize: 11, fontWeight: '700', color: C.dangerInk, marginTop: 4 }}>{tr('common.delete')}</Text>
                   </Pressable>
                 )}>
-                <Pressable onPress={() => openChatThread(row.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: C.surface, borderRadius: radius.lg, borderCurve: 'continuous', padding: 12, ...shadow(8, 20, 0.4) }}>
-                  <Avatar name={row.otherName} uri={userDp(s, row.otherId)} size={54} square />
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, flex: 1 }}>
-                        <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: row.unread ? '800' : '700', color: C.ink, flexShrink: 1 }}>{row.otherName}</Text>
-                        {threadPendingForMe(s, row.id) ? (
-                          <View style={{ backgroundColor: C.accentSoft, borderRadius: radius.pill, paddingVertical: 2, paddingHorizontal: 8 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '800', color: C.accent }}>{tr('inbox.pendingBadge')}</Text>
-                          </View>
-                        ) : null}
+                <Pressable onPress={() => openChatThread(row.id)} style={{ backgroundColor: C.surface, borderRadius: radius.lg, borderCurve: 'continuous', padding: 12, ...shadow(8, 20, 0.4) }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
+                    <Avatar name={row.otherName} uri={userDp(s, row.otherId)} size={54} square />
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, flex: 1 }}>
+                          <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: row.unread ? '800' : '700', color: C.ink, flexShrink: 1 }}>{row.otherName}</Text>
+                          {threadPendingForMe(s, row.id) ? (
+                            <View style={{ backgroundColor: C.accentSoft, borderRadius: radius.pill, paddingVertical: 2, paddingHorizontal: 8 }}>
+                              <Text style={{ fontSize: 10, fontWeight: '800', color: C.accent }}>{tr('inbox.pendingBadge')}</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                        <Text style={{ fontSize: 11, color: row.unread ? C.accent : C.muted, fontWeight: row.unread ? '700' : '400' }}>{row.time}</Text>
                       </View>
-                      <Text style={{ fontSize: 11, color: row.unread ? C.accent : C.muted, fontWeight: row.unread ? '700' : '400' }}>{row.time}</Text>
+                      {row.item ? <Text style={{ fontSize: 11.5, color: C.accent, fontWeight: '700', marginTop: 2 }} numberOfLines={1}>{row.item}</Text> : null}
+                      <Text style={{ fontSize: 12.5, color: row.unread ? C.ink : C.muted, fontWeight: row.unread ? '600' : '400', marginTop: 3 }} numberOfLines={1}>{row.last}</Text>
                     </View>
-                    <Text style={{ fontSize: 11.5, color: C.accent, fontWeight: '700', marginTop: 2 }} numberOfLines={1}>{row.item}</Text>
-                    <Text style={{ fontSize: 12.5, color: row.unread ? C.ink : C.muted, fontWeight: row.unread ? '600' : '400', marginTop: 3 }} numberOfLines={1}>{row.last}</Text>
+                    <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: row.unread ? C.accent : 'transparent' }} />
                   </View>
-                  <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: row.unread ? C.accent : 'transparent' }} />
+                  {/* new-contact gate: accept / delete / block right here in the list */}
+                  {threadPendingForMe(s, row.id) ? (
+                    <View style={{ flexDirection: 'row', gap: 7, marginTop: 11 }}>
+                      <Btn icon="check" label={tr('common.accept')} onPress={() => acceptThread(row.id)} style={{ flex: 1, paddingVertical: 8 }} textStyle={{ fontSize: 12 }} />
+                      <Btn label={tr('common.delete')} variant="outline" onPress={() => confirmDelete(row.id, row.otherName)} style={{ flex: 1, paddingVertical: 8 }} textStyle={{ fontSize: 12 }} />
+                      <Btn label={tr('thread.block')} variant="outline" onPress={() => confirmBlock(row.otherId, row.otherName)} style={{ flex: 1, paddingVertical: 8, borderColor: C.dangerBorder }} textStyle={{ fontSize: 12, color: C.dangerInk }} />
+                    </View>
+                  ) : null}
                 </Pressable>
               </ReanimatedSwipeable>
             ))

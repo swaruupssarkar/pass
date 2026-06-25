@@ -131,18 +131,22 @@ export default function Thread() {
             </Pressable>
           ) : null}
         </View>
-        <Pressable onPress={openItem} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.bg, borderRadius: 12, padding: 8, marginTop: 11, opacity: pressed ? 0.7 : 1 })}>
-          <PhotoTile tint={meta.tint} uri={headerListing?.photos?.[0]} icon={headerListing ? catIcon(headerListing.cat) : undefined} iconSize={18} style={{ width: 38, height: 38, borderRadius: 9 }} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: C.ink }} numberOfLines={1}>{meta.item}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Icon name="pin" size={11} color={C.muted} />
-              <Text style={{ fontSize: 11, color: C.muted }}>{meta.area}</Text>
+        {/* product card only while the item is still up for grabs — once it's given
+            (taken) or the listing was deleted, this is just a normal conversation */}
+        {headerListing && !headerListing.taken ? (
+          <Pressable onPress={openItem} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.bg, borderRadius: 12, padding: 8, marginTop: 11, opacity: pressed ? 0.7 : 1 })}>
+            <PhotoTile tint={meta.tint} uri={headerListing.photos?.[0]} icon={catIcon(headerListing.cat)} iconSize={18} style={{ width: 38, height: 38, borderRadius: 9 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: C.ink }} numberOfLines={1}>{headerListing.title}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Icon name="pin" size={11} color={C.muted} />
+                <Text style={{ fontSize: 11, color: C.muted }}>{meta.area}</Text>
+              </View>
             </View>
-          </View>
-          <FreeTag small />
-          <Icon name="forward" size={18} color={C.muted} />
-        </Pressable>
+            <FreeTag small />
+            <Icon name="forward" size={18} color={C.muted} />
+          </Pressable>
+        ) : null}
       </View>
 
       {/* safety strip */}

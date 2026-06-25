@@ -25,15 +25,15 @@ import {
 import { isExpoGo, REPORT_DELIST_THRESHOLD, REPORT_EMAIL, REPORT_ENDPOINT } from '@/pass/config';
 import { supabase } from '@/pass/supabase';
 import { capture, identifyUser, resetAnalytics } from '@/pass/analytics';
-import { drainOutbox, flushOutbox, initOutbox, pendingCount, track } from '@/pass/outbox';
+import { drainOutbox, flushOutbox, initOutbox, track } from '@/pass/outbox';
 import { configureForegroundNotifications, registerForPush } from '@/pass/push';
 
 // finalize any pending auth browser session (OAuth redirect) on load
 WebBrowser.maybeCompleteAuthSession();
 import {
-  addBlock, addSave, clearNotificationsRemote, deleteAccount as deleteAccountRemote, deleteListingRemote, deleteNotificationRemote, deleteRequestRemote,
+  addBlock, addSave, clearNotificationsRemote, deleteAccount as deleteAccountRemote, deleteListingPhotos, deleteListingRemote, deleteNotificationRemote, deleteRequestRemote,
   deleteThreadRemote, fetchListings, fetchProfiles, fetchProfileStats, fetchReviewsFor, insertHandoff, insertMessage, insertRequest, insertReview,
-  markNotificationsRead, pullUserData, removeBlock, removeSave, reportListingRemote, rowToListing, rowToMessage,
+  markNotificationsRead, markThreadRead, pullUserData, removeBlock, removeSave, reportListingRemote, rowToListing, rowToMessage,
   rowToNotification, rowToRequest, setListingTaken, updateProfileRemote, updateRequestStatus, updateThreadRead,
   uploadImage, uploadListingPhotos, upsertListing, upsertNotifyPrefs, upsertThread, uuid,
 } from '@/pass/repo';
@@ -344,7 +344,12 @@ export const myRequestFor = (s: State, listingId: string): Request | null =>
 // threadId = `p:<userA>-<userB>` (sorted). threadListing[id] remembers the latest listing context.
 
 export const threadId = (a: UserId, b: UserId): string => `p:${[a, b].sort().join('-')}`;
-export const threadUsers = (id: string): UserId[] => id.replace(/^p:/, '').split('-') as UserId[];
+// id = `p:<uuidA>-<uuidB>`; uuids are 36 chars and contain hyphens, so slice by
+// fixed width rather than splitting on '-'.
+export const threadUsers = (id: string): UserId[] => {
+  const s = id.replace(/^p:/, '');
+  return [s.slice(0, 36), s.slice(37)] as UserId[];
+};
 
 export function otherInThread(s: State, id: string): UserId {
   const [a, b] = threadUsers(id);
@@ -356,9 +361,22 @@ export function otherInThread(s: State, id: string): UserId {
  * current user has not accepted it yet. The recipient sees accept / delete /
  * block instead of a reply box until they accept.
  */
+// A chat needs the accept/delete/block gate ONLY when it's from a stranger: the
+// other person started it, I haven't accepted, AND we have no REAL relationship.
+// A real relationship = we actually chatted (the thread was accepted, or I replied)
+// OR a product changed hands / a request was ACCEPTED. A bare request that got no
+// reply and no acceptance does NOT count — that's still a stranger, so a later
+// message from them stays gated.
 export const threadPendingForMe = (s: State, id: string): boolean => {
+  const me = s.currentUserId;
   const starter = s.threadStarter?.[id];
-  return !!starter && starter !== s.currentUserId && !s.threadAccepted?.[id];
+  if (!starter || starter === me || s.threadAccepted?.[id]) return false;
+  const [a, b] = threadUsers(id);
+  const other = a === me ? b : a;
+  const handed = s.handoffs.some((h) => (h.giverId === me && h.recipientId === other) || (h.giverId === other && h.recipientId === me));
+  const acceptedReq = s.requests.some((r) => r.status === 'accepted' && ((r.fromUserId === me && r.toUserId === other) || (r.fromUserId === other && r.toUserId === me)));
+  const iReplied = (s.threads[id] ?? []).some((m) => m.from === me);
+  return !handed && !acceptedReq && !iReplied;
 };
 
 export type ThreadMeta = {
@@ -552,7 +570,8 @@ type Store = {
   hasPassword: () => Promise<boolean>;
   /** Google OAuth via an in-app browser tab; auto-links to the same-email account. `isNew` = account just created. */
   signInWithGoogle: () => Promise<{ ok: boolean; error?: string; cancelled?: boolean; isNew?: boolean }>;
-  logout: () => Promise<{ ok: boolean; pending?: number }>;
+  logout: () => Promise<{ ok: boolean }>;
+  dropSession: () => Promise<void>;
   deleteAccount: () => Promise<{ ok: boolean; error?: string }>;
   // location
   setCity: (cityId: string) => void;
@@ -621,6 +640,11 @@ type Store = {
 };
 
 const PassContext = createContext<Store | null>(null);
+
+// Listings deleted this session. A slow edit (photo upload + trailing upsert) must
+// not re-create a row the user deleted mid-upload — the upsert checks this set and
+// bails, so delete wins.
+const deletedListings = new Set<string>();
 
 export function PassProvider({ children }: { children: ReactNode }) {
   const [s, setS] = useState<State>(INITIAL);
@@ -728,19 +752,23 @@ export function PassProvider({ children }: { children: ReactNode }) {
         }
       },
 
+      // Light, silent sign-out used mid-login to revoke the OTP-created session when
+      // the password is wrong (so OTP alone can't grant access). No drain/overlay.
+      dropSession: async () => {
+        try {
+          await supabase.auth.signOut();
+        } catch {}
+      },
+
       logout: async () => {
-        // Block logout until EVERYTHING is synced. Show the syncing overlay, drain
-        // all in-flight + queued writes while still authed. If anything can't be
-        // confirmed (offline), REFUSE to log out — keep the session and the data so
-        // nothing is lost; the user reconnects and tries again.
+        // Try to sync everything, but NEVER trap the user: show the overlay, drain
+        // for a short bounded window, then sign out regardless. Anything not synced
+        // stays in the durable, uid-tagged outbox and replays on THIS user's next
+        // sign-in (never under another account) — so logout is fast AND lossless.
         setS((prev) => ({ ...prev, syncing: true }));
-        const synced = await drainOutbox();
-        if (!synced) {
-          setS((prev) => ({ ...prev, syncing: false }));
-          return { ok: false, pending: pendingCount() };
-        }
-        // everything synced — sign out. The network revoke can fail offline; that's
-        // fine (the local session still clears), so don't let it strand the overlay.
+        await Promise.race([drainOutbox(), new Promise<void>((r) => setTimeout(r, 6000))]);
+        // sign out. The network revoke can fail offline; that's fine (the local
+        // session still clears), so don't let it strand the overlay.
         try {
           await supabase.auth.signOut();
         } catch {}
@@ -969,9 +997,11 @@ export function PassProvider({ children }: { children: ReactNode }) {
           const l = pending;
           capture('listing_posted', { category: l.cat, condition: l.cond, photos: (l.photos ?? []).length }, { set: { has_listed: true }, setOnce: { first_listed_at: new Date().toISOString() } });
           track((async () => {
+            if (deletedListings.has(l.id)) return; // deleted before we even started
             const remote = (l.photos ?? []).filter((p) => /^https?:\/\//.test(p));
             await upsertListing({ ...l, photos: remote });
             const photos = await uploadListingPhotos(l.ownerId, l.id, l.photos ?? []);
+            if (deletedListings.has(l.id)) return; // deleted during the slow upload — don't resurrect it
             setS((p) => ({ ...p, listings: p.listings.map((x) => (x.id === l.id ? { ...x, photos } : x)) }));
             await upsertListing({ ...l, photos });
           })());
@@ -981,6 +1011,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
 
       deleteListing: (id) => {
         const listing = s.listings.find((l) => l.id === id) ?? null;
+        deletedListings.add(id); // stop any in-flight edit upsert from re-creating it
         setS((prev) => ({
           ...prev,
           listings: prev.listings.filter((l) => l.id !== id),
@@ -989,8 +1020,13 @@ export function PassProvider({ children }: { children: ReactNode }) {
           takenPickerId: prev.takenPickerId === id ? null : prev.takenPickerId,
           activeListingId: prev.activeListingId === id ? null : prev.activeListingId,
         }));
-        // remove the row + its Storage images (skips external seed URLs)
-        if (listing) track(deleteListingRemote(listing));
+        // remove the row (children cascade), then its Storage images (client-side —
+        // Supabase blocks DB-side storage deletes). Photo cleanup is best-effort and
+        // must NOT block logout, so it's not tracked.
+        if (listing) {
+          track(deleteListingRemote(listing));
+          void deleteListingPhotos(listing);
+        }
       },
 
       // send a request to the owner. If a chat with them already exists, the request
@@ -1122,20 +1158,31 @@ export function PassProvider({ children }: { children: ReactNode }) {
           const threadStarter = prev.threadStarter[id]
             ? prev.threadStarter
             : { ...prev.threadStarter, [id]: prev.currentUserId };
-          return { ...prev, threads, threadListing, threadStarter, activeThreadId: id };
+          return {
+            ...prev,
+            threads,
+            threadListing,
+            threadStarter,
+            activeThreadId: id,
+            notifications: prev.notifications.map((n) => (n.userId === prev.currentUserId && n.threadId === id ? { ...n, read: true } : n)),
+          };
         });
         track(upsertThread(id, { listingId, starter: s.threadStarter[id] ?? s.currentUserId }));
+        track(markThreadRead(s.currentUserId, id)); // clear unread persistently
         return id;
       },
 
-      openThread: (id) =>
+      openThread: (id) => {
         setS((prev) => ({
           ...prev,
           activeThreadId: id,
           notifications: prev.notifications.map((n) =>
             n.userId === prev.currentUserId && n.threadId === id ? { ...n, read: true } : n
           ),
-        })),
+        }));
+        // persist the read so the unread dot doesn't return after re-login
+        if (s.currentUserId) track(markThreadRead(s.currentUserId, id));
+      },
 
       deleteThread: (id) => {
         setS((prev) => ({
@@ -1505,8 +1552,20 @@ export function PassProvider({ children }: { children: ReactNode }) {
       try {
         const Notifications = await import('expo-notifications');
         sub = Notifications.addNotificationResponseReceivedListener((resp) => {
-          const data = resp.notification.request.content.data as { listingId?: string; route?: string };
-          if (data?.listingId) setS((prev) => ({ ...prev, activeListingId: data.listingId as string }));
+          const data = resp.notification.request.content.data as { listingId?: string; threadId?: string; route?: string };
+          if (data?.threadId) {
+            // open the conversation + clear its unread (mark read locally AND in the DB
+            // so the dot doesn't return after re-login). uid comes from the session
+            // because this listener was set up at mount when currentUserId was empty.
+            const tid = data.threadId;
+            setS((prev) => ({ ...prev, activeThreadId: tid, notifications: prev.notifications.map((x) => (x.threadId === tid ? { ...x, read: true } : x)) }));
+            void supabase.auth.getUser().then(({ data: u }) => {
+              const me = u.user?.id;
+              if (me) void track(markThreadRead(me, tid));
+            });
+          } else if (data?.listingId) {
+            setS((prev) => ({ ...prev, activeListingId: data.listingId as string }));
+          }
           try {
             router.navigate((data?.route ?? '/feed') as Parameters<typeof router.navigate>[0]);
           } catch {}
@@ -1694,9 +1753,20 @@ export function PassProvider({ children }: { children: ReactNode }) {
             : prev
         );
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${me}` }, (payload) => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${me}` }, (payload) => {
+        // listen to UPDATE too: message notifications are coalesced server-side (one
+        // row per thread, updated with each new message) — so an UPDATE must refresh
+        // the existing local entry, not add a duplicate.
+        if (payload.eventType === 'DELETE') {
+          const id = (payload.old as { id?: string }).id;
+          setS((prev) => ({ ...prev, notifications: prev.notifications.filter((x) => x.id !== id) }));
+          return;
+        }
         const n = rowToNotification(payload.new as Record<string, unknown>);
-        setS((prev) => (prev.notifications.some((x) => x.id === n.id) ? prev : { ...prev, notifications: [n, ...prev.notifications] }));
+        setS((prev) => {
+          const exists = prev.notifications.some((x) => x.id === n.id);
+          return { ...prev, notifications: exists ? prev.notifications.map((x) => (x.id === n.id ? n : x)) : [n, ...prev.notifications] };
+        });
       })
       .subscribe();
     return () => {

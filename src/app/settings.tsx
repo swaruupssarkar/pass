@@ -37,9 +37,8 @@ export default function Settings() {
   const [delBusy, setDelBusy] = useState(false);
 
   const onLogout = async () => {
-    const r = await logout();
-    if (r.ok) router.replace('/login');
-    else showAlert(tr('sync.cantLogoutTitle'), tr('sync.cantLogoutBody'));
+    await logout(); // syncs briefly then signs out; anything left replays next sign-in
+    router.replace('/login');
   };
 
   const confirmDelete = async () => {
@@ -112,6 +111,16 @@ export default function Settings() {
         <Section title={tr('settings.safety')}>
           <Pressable onPress={() => router.push('/blocked')} style={row}>
             <Text style={{ flex: 1, fontSize: 14.5, color: C.ink }}>{tr('settings.blockedUsers')}</Text>
+            <Icon name="forward" size={18} color={C.muted} />
+          </Pressable>
+        </Section>
+
+        <Section title={tr('settings.support')}>
+          <Pressable onPress={() => router.push('/feedback')} style={row}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1 }}>
+              <Icon name="chat" size={17} color={C.accent} />
+              <Text style={{ fontSize: 14.5, color: C.ink }}>{tr('settings.feedback')}</Text>
+            </View>
             <Icon name="forward" size={18} color={C.muted} />
           </Pressable>
         </Section>

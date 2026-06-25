@@ -20,7 +20,7 @@ const ROWS: { icon: IconName; labelKey: string; route: '/manage' | '/impact' | '
 export default function Profile() {
   const router = useRouter();
   const tr = useT();
-  const { s, logout, setName, setDp, showAlert } = usePass();
+  const { s, logout, setName, setDp } = usePass();
   const user = me(s);
   const mine = myListings(s);
   const givenCount = myHandoffs(s).length;
@@ -126,9 +126,8 @@ export default function Profile() {
           label={tr('profile.logout')}
           variant="outline"
           onPress={async () => {
-            const r = await logout();
-            if (r.ok) router.replace('/login');
-            else showAlert(tr('sync.cantLogoutTitle'), tr('sync.cantLogoutBody'));
+            await logout();
+            router.replace('/login');
           }}
           block
           style={{ marginTop: 16, paddingVertical: 14 }}

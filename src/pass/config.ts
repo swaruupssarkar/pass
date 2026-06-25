@@ -61,6 +61,10 @@ export const REPORT_DELIST_THRESHOLD = 5;
 //      (or app.json -> expo.extra.reportEndpoint). Until set, no email is sent.
 export const REPORT_EMAIL = 'sarkarrup136@gmail.com';
 
+// In-app feedback (bug / feature / thanks) is emailed here, sent FROM the user's
+// own mail app via expo-mail-composer.
+export const SUPPORT_EMAIL = 'support@daata.in';
+
 export const REPORT_ENDPOINT: string =
   process.env.EXPO_PUBLIC_REPORT_ENDPOINT ??
   (Constants.expoConfig?.extra?.reportEndpoint as string | undefined) ??
