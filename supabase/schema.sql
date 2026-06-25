@@ -340,6 +340,11 @@ drop policy if exists rev_sel on public.reviews;
 create policy rev_sel on public.reviews for select using (true);
 drop policy if exists rev_ins on public.reviews;
 create policy rev_ins on public.reviews for insert with check (from_user = auth.uid());
+-- needed because insertReview upserts ON CONFLICT(from_user,listing_id) DO UPDATE
+-- (re-rating / idempotent replay) — without an UPDATE policy that path is RLS-denied
+-- and poisons the outbox.
+drop policy if exists rev_upd on public.reviews;
+create policy rev_upd on public.reviews for update using (from_user = auth.uid()) with check (from_user = auth.uid());
 
 -- handoffs: giver or recipient read; giver inserts
 drop policy if exists h_sel on public.handoffs;

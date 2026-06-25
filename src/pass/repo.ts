@@ -165,7 +165,10 @@ export function rowToRequest(r: Row): Request {
   };
 }
 export async function insertRequest(req: Request): Promise<void> {
-  await push({ kind: 'upsert', table: 'requests', row: { id: req.id, listing_id: req.listingId, from_user: req.fromUserId, to_user: req.toUserId, note: req.note, status: req.status } });
+  // upsert on the UNIQUE(listing_id, from_user) business key — re-requesting a listing
+  // you previously cancelled/declined updates that row instead of violating the
+  // constraint (which would poison the outbox forever).
+  await push({ kind: 'upsert', table: 'requests', onConflict: 'listing_id,from_user', row: { id: req.id, listing_id: req.listingId, from_user: req.fromUserId, to_user: req.toUserId, note: req.note, status: req.status } });
 }
 export async function updateRequestStatus(id: string, status: string): Promise<void> {
   await push({ kind: 'update', table: 'requests', values: { status }, match: { id } });

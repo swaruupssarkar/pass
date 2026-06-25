@@ -55,30 +55,35 @@ async function load(): Promise<void> {
   }
 }
 
-/** Execute one op against Supabase. Returns true on success. */
-export async function exec(op: Op): Promise<boolean> {
+/** Execute one op. `ok` = succeeded. `rejected` = the server returned an error
+ *  (4xx/RLS/constraint — a permanent failure that counts toward poison eviction).
+ *  A thrown/caught failure (offline/network) is transient: ok=false, rejected=false,
+ *  so it's retried indefinitely without ever being evicted. */
+export async function execResult(op: Op): Promise<{ ok: boolean; rejected: boolean }> {
   try {
+    let error: unknown = null;
     if (op.kind === 'upsert') {
-      const { error } = await supabase.from(op.table).upsert(op.row, op.onConflict ? { onConflict: op.onConflict } : undefined);
-      return !error;
-    }
-    if (op.kind === 'update') {
+      ({ error } = await supabase.from(op.table).upsert(op.row, op.onConflict ? { onConflict: op.onConflict } : undefined));
+    } else if (op.kind === 'update') {
       let q = supabase.from(op.table).update(op.values);
       for (const [k, v] of Object.entries(op.match)) q = q.eq(k, v as never);
-      const { error } = await q;
-      return !error;
-    }
-    if (op.kind === 'delete') {
+      ({ error } = await q);
+    } else if (op.kind === 'delete') {
       let q = supabase.from(op.table).delete();
       for (const [k, v] of Object.entries(op.match)) q = q.eq(k, v as never);
-      const { error } = await q;
-      return !error;
+      ({ error } = await q);
+    } else {
+      ({ error } = await supabase.rpc(op.fn, op.args));
     }
-    const { error } = await supabase.rpc(op.fn, op.args);
-    return !error;
+    return { ok: !error, rejected: !!error };
   } catch {
-    return false;
+    return { ok: false, rejected: false };
   }
+}
+
+/** Convenience boolean wrapper. */
+export async function exec(op: Op): Promise<boolean> {
+  return (await execResult(op)).ok;
 }
 
 /** Try a write now; queue it for retry if it fails. (UI already updated optimistically.) */
@@ -110,12 +115,13 @@ export async function flushOutbox(): Promise<void> {
         keep.push(op);
         continue;
       }
-      const ok = await exec(op);
+      const { ok, rejected } = await execResult(op);
       if (!ok) {
-        // self-heal: drop an op that keeps failing (a "poison" write that can never
-        // succeed — e.g. malformed/rejected) after many attempts, so it can't jam
-        // the queue forever. Transient/offline ops succeed long before this.
-        const tries = (op.tries ?? 0) + 1;
+        // self-heal: drop a "poison" op (server keeps REJECTING it — RLS/constraint/
+        // malformed) after many attempts so it can't jam the queue forever. A
+        // transient/offline failure does NOT count, so a valid op is never dropped
+        // during a long offline stretch — it's retried until it lands.
+        const tries = (op.tries ?? 0) + (rejected ? 1 : 0);
         if (tries < MAX_TRIES) keep.push({ ...op, tries });
       }
     }

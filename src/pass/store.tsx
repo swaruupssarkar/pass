@@ -784,6 +784,19 @@ export function PassProvider({ children }: { children: ReactNode }) {
           q: '',
           catFilter: null,
           draft: '',
+          // clear this user's private data so the next account can't see it before
+          // their own pull lands (these are all re-populated by applyUser on sign-in)
+          saved: {},
+          requests: [],
+          threads: {},
+          threadListing: {},
+          threadStarter: {},
+          threadAccepted: {},
+          threadRead: {},
+          notifications: [],
+          handoffs: [],
+          reviews: [],
+          blocked: {},
         }));
         return { ok: true };
       },
@@ -804,6 +817,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
           ...prev,
           activeMode: 'city',
           activeCityId: cityId,
+          onboarded: true, // picking a city completes onboarding — don't depend on feed mount
           userCity: { ...prev.userCity, [prev.currentUserId]: cityId },
           profiles: prev.profiles[prev.currentUserId]
             ? { ...prev.profiles, [prev.currentUserId]: { ...prev.profiles[prev.currentUserId], cityId } }
@@ -1725,7 +1739,23 @@ export function PassProvider({ children }: { children: ReactNode }) {
         ensureProfile(r.fromUserId);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'threads' }, (payload) => {
-        if (payload.eventType === 'DELETE') return;
+        if (payload.eventType === 'DELETE') {
+          // a thread deleted on another device → remove it here too
+          const id = (payload.old as { id?: string }).id;
+          if (id) {
+            setS((prev) => ({
+              ...prev,
+              threads: Object.fromEntries(Object.entries(prev.threads).filter(([k]) => k !== id)),
+              threadListing: Object.fromEntries(Object.entries(prev.threadListing).filter(([k]) => k !== id)),
+              threadStarter: Object.fromEntries(Object.entries(prev.threadStarter).filter(([k]) => k !== id)),
+              threadAccepted: Object.fromEntries(Object.entries(prev.threadAccepted).filter(([k]) => k !== id)),
+              threadRead: Object.fromEntries(Object.entries(prev.threadRead).filter(([k]) => k !== id)),
+              activeThreadId: prev.activeThreadId === id ? null : prev.activeThreadId,
+              notifications: prev.notifications.filter((n) => n.threadId !== id),
+            }));
+          }
+          return;
+        }
         const t = payload.new as Record<string, any>;
         const tid: string = t.id;
         if (!threadUsers(tid).includes(me)) return;
