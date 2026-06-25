@@ -174,7 +174,7 @@ export default function Manage() {
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 14, fontWeight: '700', color: C.ink }}>{user.name}</Text>
                       <Text style={{ fontSize: 12.5, color: C.muted, marginTop: 4, lineHeight: 18 }}>{request.note}</Text>
-                      <Text style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{tr('manage.requestedLine', { ago: fmtAgo(request.createdAt), date: fmtDate(request.createdAt) })}</Text>
+                      <Text style={{ fontSize: 11, color: C.accent, fontWeight: '700', marginTop: 4 }}>{tr('manage.requestedLine', { ago: fmtAgo(request.createdAt), date: fmtDate(request.createdAt) })}</Text>
                     </View>
                     <Btn label={tr('manage.choose')} onPress={() => confirmTaken(s.takenPickerId!, request.fromUserId)} style={{ paddingVertical: 9, paddingHorizontal: 16 }} textStyle={{ fontSize: 12.5 }} />
                   </View>
@@ -197,14 +197,23 @@ export default function Manage() {
             <ScrollView style={{ maxHeight: sheetListMax, marginTop: 14 }} contentContainerStyle={{ gap: 10 }} showsVerticalScrollIndicator={false}>
               {sheetReqs.map(({ request, user }) => (
                 <View key={request.id} style={{ borderWidth: 1, borderColor: C.line, borderRadius: 15, borderCurve: 'continuous', padding: 12, gap: 11 }}>
-                  <Pressable onPress={() => { setReqListId(null); openPerson(request.fromUserId); }} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 11, opacity: pressed ? 0.7 : 1 })}>
-                    <Avatar name={user.name} uri={userDp(s, request.fromUserId)} size={40} color={C.ink} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 14, fontWeight: '800', color: C.ink }} numberOfLines={1}>{user.name}</Text>
-                      <Text style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }} numberOfLines={2}>{request.note}</Text>
-                      <Text style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>{tr('manage.requestedLine', { ago: fmtAgo(request.createdAt), date: fmtDate(request.createdAt) })}</Text>
-                    </View>
-                  </Pressable>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Pressable onPress={() => { setReqListId(null); openPerson(request.fromUserId); }} style={({ pressed }) => ({ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11, opacity: pressed ? 0.7 : 1 })}>
+                      <Avatar name={user.name} uri={userDp(s, request.fromUserId)} size={40} color={C.ink} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 14, fontWeight: '800', color: C.ink }} numberOfLines={1}>{user.name}</Text>
+                        <Text style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }} numberOfLines={2}>{request.note}</Text>
+                        <Text style={{ fontSize: 11, color: C.accent, fontWeight: '700', marginTop: 4 }}>{tr('manage.requestedLine', { ago: fmtAgo(request.createdAt), date: fmtDate(request.createdAt) })}</Text>
+                      </View>
+                    </Pressable>
+                    {/* declined/cancelled: compact status chip inline on the right — no extra row, no taller card */}
+                    {request.status !== 'pending' && request.status !== 'accepted' ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.dangerBg, borderRadius: radius.pill, paddingVertical: 5, paddingHorizontal: 10 }}>
+                        <Icon name="close-circle" size={13} color={C.dangerInk} />
+                        <Text style={{ fontSize: 11.5, fontWeight: '800', color: C.dangerInk }}>{tr('manage.declined')}</Text>
+                      </View>
+                    ) : null}
+                  </View>
                   {request.status === 'pending' ? (
                     <View style={{ flexDirection: 'row', gap: 10 }}>
                       <Btn label={tr('inbox.reject')} variant="outline" onPress={() => declineRequest(request.id)} style={{ flex: 1, paddingVertical: 10, borderColor: C.dangerBorder }} textStyle={{ fontSize: 13.5, color: C.dangerInk }} />
@@ -218,12 +227,7 @@ export default function Manage() {
                       </View>
                       <Btn label={tr('common.cancel')} variant="outline" onPress={() => openCancelReason(request.id, 'owner')} style={{ paddingVertical: 9, paddingHorizontal: 16, borderColor: C.dangerBorder }} textStyle={{ fontSize: 13, color: C.dangerInk }} />
                     </View>
-                  ) : (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Icon name="close-circle" size={15} color={C.muted} />
-                      <Text style={{ fontSize: 12.5, fontWeight: '700', color: C.muted }}>{tr('manage.declined')}</Text>
-                    </View>
-                  )}
+                  ) : null}
                 </View>
               ))}
             </ScrollView>

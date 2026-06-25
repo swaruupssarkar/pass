@@ -11,7 +11,7 @@ import { Avatar, Btn, EmptyState, FreeTag, Header, PhotoTile, ReviewCard, Screen
 export default function Giver() {
   const router = useRouter();
   const tr = useT();
-  const { s, openListing, openThreadFor, toggleSave, viewPerson, loadPublicProfile } = usePass();
+  const { s, openListing, openThreadWith, toggleSave, viewPerson, loadPublicProfile } = usePass();
   const { width } = useWindowDimensions();
   const cardW = width >= 600 ? '31.5%' : '48%'; // 3 columns on tablets, 2 on phones
 
@@ -58,11 +58,9 @@ export default function Giver() {
   };
 
   const message = () => {
-    const first = s.listings.find((l) => l.ownerId === id);
-    if (first) {
-      openThreadFor(first.id);
-      router.push('/thread');
-    }
+    // person-based: opens the existing chat, or a fresh empty one — no listing needed
+    openThreadWith(id);
+    router.push('/thread');
   };
 
   return (
