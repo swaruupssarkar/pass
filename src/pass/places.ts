@@ -78,7 +78,7 @@ async function nominatim(q: string, near?: { lat: number; lng: number }): Promis
     const box = near
       ? `&viewbox=${near.lng - 0.7},${near.lat + 0.7},${near.lng + 0.7},${near.lat - 0.7}&bounded=0`
       : '';
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=jsonv2&addressdetails=1&limit=8${box}`;
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=jsonv2&addressdetails=1&countrycodes=in&limit=8${box}`;
     const res = await fetch(url, {
       headers: { 'Accept-Language': 'en', 'User-Agent': 'pass-app/1.0 (free-stuff marketplace)' },
     });
@@ -92,10 +92,13 @@ async function nominatim(q: string, near?: { lat: number; lng: number }): Promis
 }
 
 /** Google Places autocomplete. Returns [] on any non-OK status (denied, no
- * billing, error) so callers can fall back to the free providers. */
-async function googlePlaces(q: string): Promise<Suggestion[]> {
+ * billing, error) so callers can fall back to the free providers. Restricted to
+ * India (`components=country:in`) and biased toward the user's area when known —
+ * this is what makes results feel as quick/relevant as Google's own search. */
+async function googlePlaces(q: string, near?: { lat: number; lng: number }): Promise<Suggestion[]> {
   try {
-    const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(q)}&key=${GOOGLE_PLACES_KEY}`;
+    const bias = near ? `&location=${near.lat},${near.lng}&radius=50000` : '';
+    const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(q)}&components=country:in&language=en${bias}&key=${GOOGLE_PLACES_KEY}`;
     const res = await fetch(url);
     const json = (await res.json()) as { status?: string; predictions?: { place_id: string; description: string }[] };
     if (json.status !== 'OK') return [];
@@ -113,7 +116,7 @@ export async function autocomplete(input: string, near?: { lat: number; lng: num
   // Prefer Google when a key is configured AND it actually returns results.
   // If Google fails (no billing / denied / error), fall through to free OSM.
   if (hasPlaces()) {
-    const g = await googlePlaces(q);
+    const g = await googlePlaces(q, near);
     if (g.length) return g;
   }
 
