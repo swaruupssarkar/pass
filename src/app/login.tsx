@@ -1,6 +1,6 @@
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { BackHandler, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { BackHandler, Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { capture } from '@/pass/analytics';
 import { GoogleG } from '@/pass/google-icon';
@@ -314,15 +314,24 @@ export default function Login() {
             </>
           ) : null}
 
-          <View style={{ flex: 1 }} />
-
-          {/* footer switch */}
-          <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 22 }}>
+          {/* footer switch — sits just under the form, not pinned to the very bottom */}
+          <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 24 }}>
             <Text style={{ fontSize: 14, color: C.muted }}>{mode === 'signin' ? 'Don’t have an account? ' : 'Already have an account? '}</Text>
             <Pressable onPress={mode === 'signin' ? toSignup : toSignin} hitSlop={8}>
               <Text style={{ fontSize: 14, fontWeight: '800', color: C.accent }}>{mode === 'signin' ? 'Sign up' : 'Sign in'}</Text>
             </Pressable>
           </View>
+
+          {/* spacer pushes only the legal notice to the bottom, clearly apart from the switch */}
+          <View style={{ flex: 1, minHeight: 28 }} />
+
+          {/* legal notice — inline tappable links, kept subtle so it doesn't clutter */}
+          <Text style={{ fontSize: 11.5, lineHeight: 17, color: C.muted, textAlign: 'center', paddingHorizontal: 12 }}>
+            By continuing, you agree to our{' '}
+            <Text style={{ color: C.accent, fontWeight: '700' }} onPress={() => Linking.openURL('https://daata.in/terms-conditions/')}>Terms &amp; Conditions</Text>
+            {' '}and{' '}
+            <Text style={{ color: C.accent, fontWeight: '700' }} onPress={() => Linking.openURL('https://daata.in/privacy-policy/')}>Privacy Policy</Text>.
+          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>
