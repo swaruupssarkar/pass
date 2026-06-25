@@ -24,6 +24,7 @@ export type IconName =
   // chrome / actions
   | 'back'
   | 'forward'
+  | 'reply'
   | 'down'
   | 'up'
   | 'arrow-right'
@@ -89,6 +90,7 @@ const MAP: Record<IconName, Glyph> = {
   remove: 'remove',
   back: 'chevron-back',
   forward: 'chevron-forward',
+  reply: 'arrow-undo-outline',
   down: 'chevron-down',
   up: 'chevron-up',
   'arrow-right': 'arrow-forward',

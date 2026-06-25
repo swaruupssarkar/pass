@@ -1,20 +1,71 @@
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { Fragment, useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
+import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, TextInput, useWindowDimensions, Vibration, View } from 'react-native';
+import ReanimatedSwipeable, { SwipeDirection, type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 
+import type { Message } from '@/pass/data';
 import { catIcon, Icon } from '@/pass/icon';
-import { activeThreadMessages, chatDay, dayStamp, fmtTime, iBlocked, isBlocked, listingById, pendingIncomingFrom, pendingReviewFrom, threadMeta, threadPendingForMe, usePass, useT, userDp } from '@/pass/store';
+import { activeThreadMessages, chatDay, dayStamp, fmtTime, iBlocked, isBlocked, listingById, pendingIncomingFrom, pendingReviewFrom, threadMeta, threadPendingForMe, usePass, useT, userDp, userName } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, Btn, FreeTag, PhotoTile, Screen, VerifiedBadge } from '@/pass/ui';
+
+// swipe a message to the right → set it as the reply target (WhatsApp-style).
+// Dragging right reveals the left action panel; the library reports that as
+// SwipeDirection.RIGHT (toValue > 0), so we trigger on RIGHT, not LEFT.
+function SwipeToReply({ onReply, enabled, children }: { onReply: () => void; enabled: boolean; children: ReactNode }) {
+  const ref = useRef<SwipeableMethods | null>(null);
+  if (!enabled) return <>{children}</>; // can't reply (blocked / unaccepted) → no swipe
+  return (
+    <ReanimatedSwipeable
+      ref={ref}
+      friction={2}
+      leftThreshold={34}
+      renderLeftActions={() => (
+        <View style={{ width: 56, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="reply" size={17} color={C.accent} />
+          </View>
+        </View>
+      )}
+      onSwipeableWillOpen={(dir) => {
+        if (dir === SwipeDirection.RIGHT) {
+          Vibration.vibrate(10);
+          onReply();
+          ref.current?.close();
+        }
+      }}>
+      {children}
+    </ReanimatedSwipeable>
+  );
+}
+
+// the quoted message shown above a reply's content
+function Quote({ author, snippet, variant, full }: { author: string; snippet: string; variant: 'onAccent' | 'onSurface' | 'standalone'; full?: boolean }) {
+  const onAccent = variant === 'onAccent';
+  const bg = variant === 'onAccent' ? 'rgba(255,255,255,0.16)' : variant === 'standalone' ? C.surface : C.bg;
+  const authColor = onAccent ? '#fff' : C.accent;
+  const snipColor = onAccent ? 'rgba(255,255,255,0.85)' : C.muted;
+  const barColor = onAccent ? 'rgba(255,255,255,0.7)' : C.accent;
+  return (
+    <View style={{ flexDirection: 'row', backgroundColor: bg, borderRadius: 8, overflow: 'hidden', marginBottom: variant === 'standalone' ? 4 : 6, width: full ? '100%' : undefined }}>
+      <View style={{ width: 3, backgroundColor: barColor }} />
+      <View style={{ paddingVertical: 4, paddingHorizontal: 8, flexShrink: 1 }}>
+        <Text style={{ fontSize: 11.5, fontWeight: '800', color: authColor }} numberOfLines={1}>{author}</Text>
+        <Text style={{ fontSize: 12, color: snipColor }} numberOfLines={1}>{snippet || ' '}</Text>
+      </View>
+    </View>
+  );
+}
 
 export default function Thread() {
   const router = useRouter();
   const tr = useT();
   const { width } = useWindowDimensions();
   const chatImg = Math.min(220, Math.round(width * 0.62)); // fits the 80%-max bubble on any width
-  const { s, sendMsg, sendImage, shareLoc, viewPerson, openListing, blockUser, unblockUser, showConfirm, acceptRequest, declineRequest, acceptThread, deleteThread, markThreadRead, startRateForListing } = usePass();
+  const { s, sendMsg, sendImage, deleteMessage, setReply, shareLoc, viewPerson, openListing, blockUser, unblockUser, showConfirm, acceptRequest, declineRequest, acceptThread, deleteThread, markThreadRead, startRateForListing } = usePass();
+  const replyDraft = s.replyDraft;
   const [draft, setDraft] = useState('');
   const send = () => {
     sendMsg(draft);
@@ -93,6 +144,16 @@ export default function Thread() {
     startRateForListing(reviewListing.id, n);
     router.push('/rate');
   };
+  const confirmDeleteMsg = (msgId: string) => {
+    Vibration.vibrate(12); // tactile "pop" the instant the menu appears
+    showConfirm({
+      title: tr('thread.deleteMsgTitle'),
+      message: tr('thread.deleteMsgBody'),
+      confirmLabel: tr('common.delete'),
+      destructive: true,
+      onConfirm: () => deleteMessage(msgId),
+    });
+  };
   const confirmDeleteConv = () => {
     showConfirm({
       title: tr('inbox.deleteChatTitle'),
@@ -166,6 +227,7 @@ export default function Thread() {
           const day = showDay ? chatDay(m.ts) : null;
           const dayLbl = day ? (day.today ? tr('common.today') : day.yesterday ? tr('common.yesterday') : day.date) : '';
           const read = mine && otherLastRead >= m.ts;
+          const replyAuthor = m.replyTo ? (m.replyTo.from === s.currentUserId ? tr('common.you') : userName(s, m.replyTo.from)) : '';
           return (
             <Fragment key={m.id}>
             {showDay ? (
@@ -175,14 +237,22 @@ export default function Thread() {
                 </View>
               </View>
             ) : null}
+            <SwipeToReply enabled={!blocked && !pendingChat} onReply={() => setReply(m.id)}>
             <View style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '80%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
               {m.image ? (
-                <Image source={{ uri: m.image }} style={{ width: chatImg, height: chatImg, borderRadius: 18, backgroundColor: C.bg }} contentFit="cover" transition={150} />
+                <View style={{ width: chatImg }}>
+                  {m.replyTo ? <Quote author={replyAuthor} snippet={m.replyTo.text} variant="standalone" full /> : null}
+                  <Pressable onLongPress={mine ? () => confirmDeleteMsg(m.id) : undefined} delayLongPress={180} style={({ pressed }) => ({ opacity: pressed ? 0.82 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] })}>
+                    <Image source={{ uri: m.image }} style={{ width: chatImg, height: chatImg, borderRadius: 18, backgroundColor: C.bg }} contentFit="cover" transition={150} />
+                  </Pressable>
+                </View>
               ) : (
                 <Pressable
-                  disabled={!url}
+                  disabled={!url && !mine}
                   onPress={() => url && Linking.openURL(url)}
-                  style={{
+                  onLongPress={mine ? () => confirmDeleteMsg(m.id) : undefined}
+                  delayLongPress={180}
+                  style={({ pressed }) => ({
                     backgroundColor: mine ? C.accent : C.surface,
                     paddingVertical: 10,
                     paddingHorizontal: 14,
@@ -190,7 +260,10 @@ export default function Thread() {
                     borderBottomRightRadius: mine ? 5 : 18,
                     borderBottomLeftRadius: mine ? 18 : 5,
                     boxShadow: mine ? undefined : '0 4px 12px -8px rgba(0,0,0,0.3)',
-                  }}>
+                    opacity: pressed ? 0.72 : 1,
+                    transform: [{ scale: pressed ? 0.98 : 1 }],
+                  })}>
+                  {m.replyTo ? <Quote author={replyAuthor} snippet={m.replyTo.text} variant={mine ? 'onAccent' : 'onSurface'} /> : null}
                   {url ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                       <Icon name="pin" size={15} color={fg} />
@@ -206,6 +279,7 @@ export default function Thread() {
                 {mine ? <Icon name={read ? 'tickRead' : 'tickSent'} size={13} color={read ? '#34B7F1' : C.muted} /> : null}
               </View>
             </View>
+            </SwipeToReply>
             </Fragment>
           );
         })}
@@ -279,21 +353,37 @@ export default function Thread() {
             </View>
           </View>
         ) : (
-          <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-            <Pressable onPress={pickImage} style={{ width: 46, height: 46, borderRadius: 23, borderWidth: 1, borderColor: C.line, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="image" size={20} color={C.accent} />
-            </Pressable>
-            <TextInput
-              value={draft}
-              onChangeText={setDraft}
-              onSubmitEditing={send}
-              placeholder={tr('thread.messagePlaceholder')}
-              placeholderTextColor={C.muted}
-              style={{ flex: 1, height: 46, borderRadius: 23, backgroundColor: C.bg, borderWidth: 1, borderColor: C.line, paddingHorizontal: 16, fontSize: 13.5, color: C.ink }}
-            />
-            <Pressable onPress={send} style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="send" size={18} color="#fff" />
-            </Pressable>
+          <View style={{ gap: 8 }}>
+            {/* reply preview — the message being replied to */}
+            {replyDraft ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.bg, borderRadius: 12, paddingVertical: 7, paddingHorizontal: 10, borderLeftWidth: 3, borderLeftColor: C.accent }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: C.accent }} numberOfLines={1}>
+                    {replyDraft.from === s.currentUserId ? tr('common.you') : userName(s, replyDraft.from)}
+                  </Text>
+                  <Text style={{ fontSize: 12.5, color: C.muted }} numberOfLines={1}>{replyDraft.text || ' '}</Text>
+                </View>
+                <Pressable onPress={() => setReply(null)} hitSlop={8} style={{ padding: 2 }}>
+                  <Icon name="close" size={18} color={C.muted} />
+                </Pressable>
+              </View>
+            ) : null}
+            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+              <Pressable onPress={pickImage} style={{ width: 46, height: 46, borderRadius: 23, borderWidth: 1, borderColor: C.line, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="image" size={20} color={C.accent} />
+              </Pressable>
+              <TextInput
+                value={draft}
+                onChangeText={setDraft}
+                onSubmitEditing={send}
+                placeholder={tr('thread.messagePlaceholder')}
+                placeholderTextColor={C.muted}
+                style={{ flex: 1, height: 46, borderRadius: 23, backgroundColor: C.bg, borderWidth: 1, borderColor: C.line, paddingHorizontal: 16, fontSize: 13.5, color: C.ink }}
+              />
+              <Pressable onPress={send} style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="send" size={18} color="#fff" />
+              </Pressable>
+            </View>
           </View>
         )}
       </View>

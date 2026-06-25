@@ -31,8 +31,8 @@ import { configureForegroundNotifications, registerForPush } from '@/pass/push';
 // finalize any pending auth browser session (OAuth redirect) on load
 WebBrowser.maybeCompleteAuthSession();
 import {
-  addBlock, addSave, clearNotificationsRemote, deleteAccount as deleteAccountRemote, deleteListingPhotos, deleteListingRemote, deleteNotificationRemote, deleteRequestRemote,
-  deleteThreadRemote, fetchListings, fetchProfiles, fetchProfileStats, fetchReviewsFor, insertHandoff, insertMessage, insertRequest, insertReview,
+  addBlock, addSave, clearNotificationsRemote, deleteAccount as deleteAccountRemote, deleteChatImage, deleteListingPhotos, deleteListingRemote, deleteMessageRemote, deleteNotificationRemote, deleteRequestRemote,
+  clearThreadForMe, fetchListings, fetchProfiles, fetchProfileStats, fetchReviewsFor, insertHandoff, insertMessage, insertRequest, insertReview,
   markNotificationsRead, markThreadRead, pullUserData, removeBlock, removeSave, reportListingRemote, rowToListing, rowToMessage,
   rowToNotification, rowToRequest, setListingTaken, updateProfileRemote, updateRequestStatus, updateThreadRead,
   uploadImage, uploadListingPhotos, upsertListing, upsertNotifyPrefs, upsertThread, uuid,
@@ -80,6 +80,7 @@ type State = {
   threadAccepted: Record<string, boolean>;
   /** last time each user viewed a thread — powers read receipts (single/double tick) */
   threadRead: Record<string, Record<UserId, number>>;
+  threadCleared: Record<string, number>; // my "delete chat for me" cutoff per thread (ms)
   notifications: Notification[];
   reviews: Review[];
   /** persistent hand-off log — survives the listing being deleted */
@@ -101,6 +102,8 @@ type State = {
   activeListingId: string | null;
   activeThreadId: string | null;
   activePersonId: UserId | null;
+  // the message currently being replied to in the open thread (swipe-to-reply). Transient.
+  replyDraft: { id: string; text: string; from: UserId } | null;
   galleryIdx: number;
   sheetExpanded: boolean;
   showRadius: boolean;
@@ -156,6 +159,7 @@ const INITIAL: State = {
   threadStarter: {},
   threadAccepted: {},
   threadRead: {},
+  threadCleared: {},
   notifications: [],
   reviews: [],
   handoffs: [],
@@ -173,6 +177,7 @@ const INITIAL: State = {
   activeListingId: null,
   activeThreadId: null,
   activePersonId: null,
+  replyDraft: null,
   galleryIdx: 0,
   sheetExpanded: false,
   showRadius: false,
@@ -601,12 +606,15 @@ type Store = {
   closeCancelReason: () => void;
   removeRequest: (requestId: string) => void;
   openThreadFor: (listingId: string) => string;
+  openThreadWith: (personId: UserId) => string;
   deleteThread: (id: string) => void;
   acceptThread: (id: string) => void;
   markThreadRead: (id: string) => void;
   openThread: (id: string) => void;
   sendMsg: (text: string) => void;
   sendImage: (uri: string) => void;
+  deleteMessage: (msgId: string) => void;
+  setReply: (msgId: string | null) => void;
   shareLoc: () => Promise<void>;
   blockUser: (id: UserId) => void;
   unblockUser: (id: UserId) => void;
@@ -645,6 +653,9 @@ const PassContext = createContext<Store | null>(null);
 // not re-create a row the user deleted mid-upload — the upsert checks this set and
 // bails, so delete wins.
 const deletedListings = new Set<string>();
+// message ids deleted locally — stop an in-flight image upload→insert from
+// resurrecting a message the user deleted before its upload finished.
+const deletedMessages = new Set<string>();
 
 export function PassProvider({ children }: { children: ReactNode }) {
   const [s, setS] = useState<State>(INITIAL);
@@ -773,6 +784,10 @@ export function PassProvider({ children }: { children: ReactNode }) {
           await supabase.auth.signOut();
         } catch {}
         resetAnalytics(); // un-link analytics so the next account isn't merged in
+        // module-level resurrection guards hold THIS user's deleted ids — drop them so
+        // they can't carry over (data-bleed hygiene; same invariant as the slices below)
+        deletedMessages.clear();
+        deletedListings.clear();
         setS((prev) => ({
           ...prev,
           syncing: false,
@@ -781,6 +796,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
           activeThreadId: null,
           activeListingId: null,
           activePersonId: null,
+          replyDraft: null,
           q: '',
           catFilter: null,
           draft: '',
@@ -793,6 +809,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
           threadStarter: {},
           threadAccepted: {},
           threadRead: {},
+          threadCleared: {},
           notifications: [],
           handoffs: [],
           reviews: [],
@@ -1178,6 +1195,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
             threadListing,
             threadStarter,
             activeThreadId: id,
+            replyDraft: null,
             notifications: prev.notifications.map((n) => (n.userId === prev.currentUserId && n.threadId === id ? { ...n, read: true } : n)),
           };
         });
@@ -1186,10 +1204,34 @@ export function PassProvider({ children }: { children: ReactNode }) {
         return id;
       },
 
+      // open (or create a fresh, empty) conversation with a person directly — used by
+      // "Message" on a profile. Unlike openThreadFor this needs NO listing, so it works
+      // even when that person has no live listings. No server write until a message is
+      // actually sent (sendMsg upserts the thread first), so we never leave empty rows.
+      openThreadWith: (personId) => {
+        if (!s.currentUserId || !personId || personId === s.currentUserId) return s.activeThreadId ?? '';
+        const id = threadId(s.currentUserId, personId);
+        setS((prev) => {
+          const { threads, threadListing } = ensurePairThread(prev, personId);
+          const threadStarter = prev.threadStarter[id] ? prev.threadStarter : { ...prev.threadStarter, [id]: prev.currentUserId };
+          return {
+            ...prev,
+            threads,
+            threadListing,
+            threadStarter,
+            activeThreadId: id,
+            replyDraft: null,
+            notifications: prev.notifications.map((n) => (n.userId === prev.currentUserId && n.threadId === id ? { ...n, read: true } : n)),
+          };
+        });
+        return id;
+      },
+
       openThread: (id) => {
         setS((prev) => ({
           ...prev,
           activeThreadId: id,
+          replyDraft: null, // a reply-in-progress doesn't carry across threads
           notifications: prev.notifications.map((n) =>
             n.userId === prev.currentUserId && n.threadId === id ? { ...n, read: true } : n
           ),
@@ -1199,17 +1241,24 @@ export function PassProvider({ children }: { children: ReactNode }) {
       },
 
       deleteThread: (id) => {
+        // cutoff = newest message I currently see (same time-base as messages, so it
+        // hides every seen message and nothing newer). Date.now() only for an empty
+        // chat — NOT max(now, ...): a client clock ahead of the server would otherwise
+        // hide a brand-new incoming message whose server time is below my wall clock.
+        const msgs = s.threads[id] ?? [];
+        const upTo = msgs.length ? msgs[msgs.length - 1].ts : Date.now();
         setS((prev) => ({
           ...prev,
+          // drop the messages (hides it from the inbox), record my cutoff, but KEEP the
+          // thread metadata so a genuinely-new message can revive the chat with context.
           threads: Object.fromEntries(Object.entries(prev.threads).filter(([k]) => k !== id)),
-          threadListing: Object.fromEntries(Object.entries(prev.threadListing).filter(([k]) => k !== id)),
-          threadStarter: Object.fromEntries(Object.entries(prev.threadStarter).filter(([k]) => k !== id)),
-          threadAccepted: Object.fromEntries(Object.entries(prev.threadAccepted).filter(([k]) => k !== id)),
-          threadRead: Object.fromEntries(Object.entries(prev.threadRead).filter(([k]) => k !== id)),
+          threadCleared: { ...prev.threadCleared, [id]: upTo },
           activeThreadId: prev.activeThreadId === id ? null : prev.activeThreadId,
           notifications: prev.notifications.filter((n) => n.threadId !== id),
         }));
-        track(deleteThreadRemote(id));
+        // delete the chat for ME only — stamp my cleared marker so it stays gone across
+        // re-login, while the other person's copy is untouched (no row/message delete)
+        track(clearThreadForMe(id, s.currentUserId, upTo));
       },
 
       acceptThread: (id) => {
@@ -1233,7 +1282,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
         const id = s.activeThreadId;
         const body = text.trim();
         if (!id || !body) return;
-        const msg: Message = { id: uuid(), from: s.currentUserId, text: body, ts: Date.now() };
+        const msg: Message = { id: uuid(), from: s.currentUserId, text: body, ts: Date.now(), replyTo: s.replyDraft ?? undefined };
         const starter = s.threadStarter[id] ?? s.currentUserId;
         const accepts = starter !== s.currentUserId; // replying accepts a cold DM
         capture('message_sent');
@@ -1244,6 +1293,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
           const threadAccepted = accepts ? { ...prev.threadAccepted, [id]: true } : prev.threadAccepted;
           return {
             ...prev,
+            replyDraft: null, // consumed
             threads: { ...prev.threads, [id]: [...(prev.threads[id] ?? []), msg] },
             threadStarter,
             threadAccepted,
@@ -1270,12 +1320,13 @@ export function PassProvider({ children }: { children: ReactNode }) {
             text = `My live location: https://maps.google.com/?q=${pos.coords.latitude},${pos.coords.longitude}`;
           }
         } catch {}
-        const msg: Message = { id: uuid(), from: s.currentUserId, text, ts: Date.now() };
+        const msg: Message = { id: uuid(), from: s.currentUserId, text, ts: Date.now(), replyTo: s.replyDraft ?? undefined };
         setS((prev) => {
           const other = otherInThread(prev, id);
           const meta = threadMeta(prev, id);
           return {
             ...prev,
+            replyDraft: null, // consumed
             threads: { ...prev.threads, [id]: [...(prev.threads[id] ?? []), msg] },
             notifications: [
               notify(prev, { userId: other, kind: 'message', title: `New message from ${userName(prev, prev.currentUserId)}`, body: 'Shared a live location', threadId: id, listingId: meta.listingId ?? undefined, route: '/thread' }),
@@ -1291,12 +1342,13 @@ export function PassProvider({ children }: { children: ReactNode }) {
         const id = s.activeThreadId;
         if (!id) return;
         const msgId = uuid();
-        const msg: Message = { id: msgId, from: s.currentUserId, text: '', image: uri, ts: Date.now() };
+        const msg: Message = { id: msgId, from: s.currentUserId, text: '', image: uri, ts: Date.now(), replyTo: s.replyDraft ?? undefined };
         setS((prev) => {
           const other = otherInThread(prev, id);
           const meta = threadMeta(prev, id);
           return {
             ...prev,
+            replyDraft: null, // consumed
             threads: { ...prev.threads, [id]: [...(prev.threads[id] ?? []), msg] },
             notifications: [
               notify(prev, { userId: other, kind: 'message', title: `New message from ${userName(prev, prev.currentUserId)}`, body: 'Sent a photo', threadId: id, listingId: meta.listingId ?? undefined, route: '/thread' }),
@@ -1307,11 +1359,51 @@ export function PassProvider({ children }: { children: ReactNode }) {
         track((async () => {
           const folder = id.replace(/[^a-zA-Z0-9]/g, '_');
           const url = await uploadImage(uri, 'chat-images', `${s.currentUserId}/${folder}/${uuid()}.jpg`);
+          // deleted mid-upload → don't resurrect the row; drop the file we just uploaded
+          if (deletedMessages.has(msgId)) {
+            if (url) await deleteChatImage(url);
+            return;
+          }
           const image = url ?? uri;
           if (url) setS((prev) => ({ ...prev, threads: { ...prev.threads, [id]: (prev.threads[id] ?? []).map((m) => (m.id === msgId ? { ...m, image } : m)) } }));
           await upsertThread(id, { starter: s.threadStarter[id] ?? s.currentUserId, accepted: true });
           await insertMessage(id, { ...msg, image });
         })());
+      },
+
+      // long-press a message → delete it for everyone (WhatsApp-style). Only the
+      // sender can delete their own message; the m_del RLS policy enforces it too.
+      deleteMessage: (msgId) => {
+        const id = s.activeThreadId;
+        if (!id) return;
+        const msg = (s.threads[id] ?? []).find((m) => m.id === msgId);
+        if (!msg || msg.from !== s.currentUserId) return;
+        deletedMessages.add(msgId); // block any in-flight upload→insert from re-creating it
+        setS((prev) => ({
+          ...prev,
+          threads: { ...prev.threads, [id]: (prev.threads[id] ?? []).filter((m) => m.id !== msgId) },
+          // if I was replying to this very message, drop the stale reply draft
+          replyDraft: prev.replyDraft?.id === msgId ? null : prev.replyDraft,
+        }));
+        track((async () => {
+          // remove the image from Storage too (best-effort; only my own uid folder is deletable)
+          if (msg.image && /\/chat-images\//.test(msg.image)) await deleteChatImage(msg.image);
+          await deleteMessageRemote(msgId);
+        })());
+      },
+
+      // swipe a message → queue it as the reply target. Snapshot a display snippet now
+      // so the quote survives even if the original is later deleted.
+      setReply: (msgId) => {
+        if (!msgId) {
+          setS((prev) => ({ ...prev, replyDraft: null }));
+          return;
+        }
+        const id = s.activeThreadId;
+        const m = id ? (s.threads[id] ?? []).find((x) => x.id === msgId) : null;
+        if (!m) return;
+        const text = m.text?.trim() ? m.text.trim() : m.image ? `📷 ${translate(s.lang, 'thread.photo')}` : '';
+        setS((prev) => ({ ...prev, replyDraft: { id: m.id, text, from: m.from } }));
       },
 
       blockUser: (id) => {
@@ -1650,6 +1742,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
             threadStarter: ud.bundle.threadStarter,
             threadAccepted: ud.bundle.threadAccepted,
             threadRead: ud.bundle.threadRead,
+            threadCleared: ud.bundle.threadCleared,
             reviews: ud.reviews,
             handoffs: ud.handoffs,
             saved: Object.fromEntries(ud.saves.map((sid) => [sid, true])),
@@ -1711,6 +1804,10 @@ export function PassProvider({ children }: { children: ReactNode }) {
         if (!threadUsers(tid).includes(me)) return; // only my threads (id-dedupe below handles my own echo + multi-device)
         const msg = rowToMessage(m);
         setS((prev) => {
+          // a chat I cleared stays gone for messages at/before my cutoff (e.g. a late /
+          // outbox-replayed OLD message); a genuinely-newer message (ts > cutoff) revives it
+          const cut = prev.threadCleared[tid];
+          if (cut && msg.ts <= cut) return prev;
           const arr = prev.threads[tid] ?? [];
           if (arr.some((x) => x.id === msg.id)) return prev;
           // keep messages ts-ordered: a replayed/clock-skewed insert can arrive after newer ones
@@ -1718,6 +1815,28 @@ export function PassProvider({ children }: { children: ReactNode }) {
           return { ...prev, threads: { ...prev.threads, [tid]: next } };
         });
         ensureProfile(m.from_user);
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, (payload) => {
+        // someone deleted a message → drop it here too (replica identity is full, so
+        // payload.old carries thread_id; fall back to scanning all threads if absent)
+        const old = payload.old as { id?: string; thread_id?: string };
+        const mid = old.id;
+        if (!mid) return;
+        deletedMessages.add(mid); // a delete from my OTHER device must also block any in-flight upload→insert here
+        setS((prev) => {
+          const tid = old.thread_id;
+          if (tid && prev.threads[tid]) {
+            return { ...prev, threads: { ...prev.threads, [tid]: prev.threads[tid].filter((x) => x.id !== mid) } };
+          }
+          let changed = false;
+          const next: Record<string, Message[]> = {};
+          for (const [k, arr] of Object.entries(prev.threads)) {
+            const f = arr.filter((x) => x.id !== mid);
+            if (f.length !== arr.length) changed = true;
+            next[k] = f;
+          }
+          return changed ? { ...prev, threads: next } : prev;
+        });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, (payload) => {
         if (payload.eventType === 'DELETE') {
@@ -1759,13 +1878,21 @@ export function PassProvider({ children }: { children: ReactNode }) {
         const t = payload.new as Record<string, any>;
         const tid: string = t.id;
         if (!threadUsers(tid).includes(me)) return;
-        // keep accepted state + read receipts live across devices
+        // keep accepted state + read receipts + my "delete chat" cutoff live across devices
         setS((prev) => {
+          // always sync MY cleared cutoff (e.g. a delete on my other device) so the
+          // messages-INSERT filter enforces it here too
+          const myClearedRaw = me === t.user_a ? t.cleared_a : t.cleared_b;
+          const threadCleared = myClearedRaw ? { ...prev.threadCleared, [tid]: Date.parse(myClearedRaw) } : prev.threadCleared;
+          // but don't resurrect accepted/read/listing metadata for a chat I've deleted
+          // locally — a genuinely-new message revives it via the messages INSERT channel
+          if (prev.threads[tid] === undefined) return threadCleared === prev.threadCleared ? prev : { ...prev, threadCleared };
           const rr: Record<string, number> = { ...(prev.threadRead[tid] ?? {}) };
           if (t.read_a) rr[t.user_a] = Date.parse(t.read_a);
           if (t.read_b) rr[t.user_b] = Date.parse(t.read_b);
           return {
             ...prev,
+            threadCleared,
             threadAccepted: { ...prev.threadAccepted, [tid]: !!t.accepted },
             threadListing: t.listing_id ? { ...prev.threadListing, [tid]: t.listing_id } : prev.threadListing,
             threadRead: { ...prev.threadRead, [tid]: rr },
@@ -1820,6 +1947,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
       threadStarter: s.threadStarter,
       threadAccepted: s.threadAccepted,
       threadRead: s.threadRead,
+      threadCleared: s.threadCleared,
       notifications: s.notifications,
       reviews: s.reviews,
       handoffs: s.handoffs,

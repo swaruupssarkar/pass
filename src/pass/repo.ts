@@ -193,7 +193,15 @@ const threadPair = (id: string): [string, string] => {
 };
 
 export function rowToMessage(m: Row): Message {
-  return { id: m.id, from: m.from_user, text: m.body ?? '', ts: m.created_at ? Date.parse(m.created_at) : Date.now(), image: m.image ?? undefined };
+  return {
+    id: m.id,
+    from: m.from_user,
+    text: m.body ?? '',
+    ts: m.created_at ? Date.parse(m.created_at) : Date.now(),
+    image: m.image ?? undefined,
+    // only a real reply: need both the id and the author (empty author → bad name lookup)
+    replyTo: m.reply_to && m.reply_from ? { id: m.reply_to, text: m.reply_text ?? '', from: m.reply_from } : undefined,
+  };
 }
 export async function upsertThread(id: string, fields: { listingId?: string | null; starter?: string; accepted?: boolean }): Promise<void> {
   const [a, b] = threadPair(id);
@@ -204,7 +212,32 @@ export async function upsertThread(id: string, fields: { listingId?: string | nu
   await push({ kind: 'upsert', table: 'threads', row });
 }
 export async function insertMessage(threadId: string, m: Message): Promise<void> {
-  await push({ kind: 'upsert', table: 'messages', row: { id: m.id, thread_id: threadId, from_user: m.from, body: m.text, image: m.image ?? null } });
+  await push({
+    kind: 'upsert',
+    table: 'messages',
+    row: {
+      id: m.id, thread_id: threadId, from_user: m.from, body: m.text, image: m.image ?? null,
+      reply_to: m.replyTo?.id ?? null, reply_text: m.replyTo?.text ?? null, reply_from: m.replyTo?.from ?? null,
+    },
+  });
+}
+/** Delete one message from the DB (sender-only, enforced by the m_del RLS policy).
+ * Routed through the outbox so an offline delete still lands on reconnect. */
+export async function deleteMessageRemote(id: string): Promise<void> {
+  await push({ kind: 'delete', table: 'messages', match: { id } });
+}
+/** Best-effort: remove a chat image from Storage. Owner-scoped by st_del (only files
+ * under my own uid folder are deletable), so it only succeeds for images I sent.
+ * Orphaned files are harmless — the message row that referenced it is already gone. */
+export async function deleteChatImage(url: string): Promise<void> {
+  const m = url.match(/\/chat-images\/(.+?)(?:\?|$)/);
+  if (!m) return;
+  const path = decodeURIComponent(m[1]);
+  try {
+    await supabase.storage.from('chat-images').remove([path]);
+  } catch {
+    /* orphaned files are harmless */
+  }
 }
 export async function updateThreadRead(id: string, me: string, ts: number): Promise<void> {
   const [a] = threadPair(id);
@@ -214,6 +247,14 @@ export async function updateThreadRead(id: string, me: string, ts: number): Prom
 export async function deleteThreadRemote(id: string): Promise<void> {
   await push({ kind: 'delete', table: 'threads', match: { id } });
 }
+/** "Delete chat for me": stamp MY cleared_* column = now (RLS lets either participant
+ * update the row). The other side's view is untouched; my next pull hides everything
+ * at/before this time. Routed through the outbox (uid-tagged → replays only under me). */
+export async function clearThreadForMe(id: string, me: string, ts: number): Promise<void> {
+  const [a] = threadPair(id);
+  const col = me === a ? 'cleared_a' : 'cleared_b';
+  await push({ kind: 'update', table: 'threads', values: { [col]: new Date(ts).toISOString() }, match: { id } });
+}
 
 export type ThreadBundle = {
   threads: Record<string, Message[]>;
@@ -221,12 +262,15 @@ export type ThreadBundle = {
   threadStarter: Record<string, UserId>;
   threadAccepted: Record<string, boolean>;
   threadRead: Record<string, Record<UserId, number>>;
+  threadCleared: Record<string, number>; // my "delete chat for me" cutoff per thread
 };
 async function fetchThreadBundle(me: string): Promise<ThreadBundle> {
-  const out: ThreadBundle = { threads: {}, threadListing: {}, threadStarter: {}, threadAccepted: {}, threadRead: {} };
+  const out: ThreadBundle = { threads: {}, threadListing: {}, threadStarter: {}, threadAccepted: {}, threadRead: {}, threadCleared: {} };
   const { data: ths, error } = await supabase.from('threads').select('*').or(`user_a.eq.${me},user_b.eq.${me}`);
   if (error) throw error;
   const ids = (ths ?? []).map((t: Row) => t.id);
+  // my "delete chat for me" cutoff per thread — messages at/before this are hidden
+  const cleared: Record<string, number> = {};
   for (const t of ths ?? []) {
     out.threads[t.id] = [];
     if (t.listing_id) out.threadListing[t.id] = t.listing_id;
@@ -236,11 +280,30 @@ async function fetchThreadBundle(me: string): Promise<ThreadBundle> {
     if (t.read_a) rr[t.user_a] = Date.parse(t.read_a);
     if (t.read_b) rr[t.user_b] = Date.parse(t.read_b);
     out.threadRead[t.id] = rr;
+    const myCleared = me === t.user_a ? t.cleared_a : t.cleared_b;
+    if (myCleared) {
+      cleared[t.id] = Date.parse(myCleared);
+      out.threadCleared[t.id] = cleared[t.id]; // keep the cutoff so realtime can enforce it
+    }
   }
   if (ids.length) {
     const { data: ms, error: mErr } = await supabase.from('messages').select('*').in('thread_id', ids).order('created_at', { ascending: true });
     if (mErr) throw mErr;
-    for (const m of ms ?? []) (out.threads[m.thread_id] ??= []).push(rowToMessage(m));
+    for (const m of ms ?? []) {
+      const msg = rowToMessage(m);
+      if (cleared[m.thread_id] && msg.ts <= cleared[m.thread_id]) continue; // I cleared this chat past here
+      (out.threads[m.thread_id] ??= []).push(msg);
+    }
+  }
+  // a chat I cleared with nothing newer stays gone (don't resurrect its metadata)
+  for (const id of Object.keys(cleared)) {
+    if ((out.threads[id]?.length ?? 0) === 0) {
+      delete out.threads[id];
+      delete out.threadListing[id];
+      delete out.threadStarter[id];
+      delete out.threadAccepted[id];
+      delete out.threadRead[id];
+    }
   }
   return out;
 }

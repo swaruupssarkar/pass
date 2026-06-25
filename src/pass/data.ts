@@ -58,7 +58,16 @@ export type Request = {
   status: RequestStatus;
 };
 
-export type Message = { id: string; from: UserId; text: string; ts: number; image?: string };
+export type Message = {
+  id: string;
+  from: UserId;
+  text: string;
+  ts: number;
+  image?: string;
+  /** Snapshot of the message this one replies to (swipe-to-reply). Snapshotted so
+   * the quote survives the original being deleted. `text` is the display snippet. */
+  replyTo?: { id: string; text: string; from: UserId };
+};
 
 export type Review = {
   id: string;

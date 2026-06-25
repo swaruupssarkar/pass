@@ -68,6 +68,11 @@ create table if not exists public.threads (
   accepted boolean default false,
   read_a timestamptz,
   read_b timestamptz,
+  -- per-user "delete chat for me" marker: each side hides messages at/before its own
+  -- cleared_* time. Deleting the whole conversation sets only YOUR column, so the
+  -- chat vanishes for you (across re-login) while the other person keeps it intact.
+  cleared_a timestamptz,
+  cleared_b timestamptz,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -78,6 +83,11 @@ create table if not exists public.messages (
   from_user uuid not null references public.profiles(id) on delete cascade,
   body text default '',
   image text,
+  -- swipe-to-reply (WhatsApp-style): a snapshot of the quoted message so the quote
+  -- survives the original being deleted (no FK / join needed to render it).
+  reply_to uuid,
+  reply_text text,
+  reply_from uuid,
   created_at timestamptz default now()
 );
 create index if not exists messages_thread_idx on public.messages (thread_id, created_at);
@@ -334,6 +344,14 @@ create policy m_sel on public.messages for select using (
 drop policy if exists m_ins on public.messages;
 create policy m_ins on public.messages for insert with check (
   from_user = auth.uid() and exists (select 1 from public.threads th where th.id = thread_id and (th.user_a = auth.uid() or th.user_b = auth.uid())));
+-- sender can delete their own message (WhatsApp-style "delete for everyone")
+drop policy if exists m_del on public.messages;
+create policy m_del on public.messages for delete using (from_user = auth.uid());
+-- DELETE realtime events must carry the full old row: the m_sel (SELECT) policy
+-- references thread_id and is what authorizes realtime delivery to the OTHER
+-- participant, and the client needs thread_id to know which thread to drop the
+-- message from. (Default replica identity ships only the PK, so neither works.)
+alter table public.messages replica identity full;
 
 -- reviews: public read, author-only write
 drop policy if exists rev_sel on public.reviews;
