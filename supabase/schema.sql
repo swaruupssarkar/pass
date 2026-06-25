@@ -194,6 +194,8 @@ create or replace function public.notify_on_request()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare lt text;
 begin
+  -- respect the owner's chat/requests toggle: off → no in-app notification either
+  if exists (select 1 from public.notify_prefs where user_id = new.to_user and chat = false) then return new; end if;
   select title into lt from public.listings where id = new.listing_id;
   insert into public.notifications (user_id, title, body, kind, listing_id, route)
   values (new.to_user, 'Someone wants your item', coalesce(lt,'your item'), 'request', new.listing_id, '/inbox');
@@ -208,6 +210,8 @@ returns trigger language plpgsql security definer set search_path = public as $$
 declare lt text;
 begin
   if new.status = old.status then return new; end if;
+  -- respect the requester's chat/requests toggle: off → no in-app notification either
+  if exists (select 1 from public.notify_prefs where user_id = new.from_user and chat = false) then return new; end if;
   select title into lt from public.listings where id = new.listing_id;
   if new.status = 'accepted' then
     insert into public.notifications (user_id, title, body, kind, listing_id, route)
@@ -233,6 +237,8 @@ begin
   select * into th from public.threads where id = new.thread_id;
   if th is null then return new; end if;
   other := case when th.user_a = new.from_user then th.user_b else th.user_a end;
+  -- respect the recipient's chat/requests toggle: off → no in-app notification either
+  if exists (select 1 from public.notify_prefs where user_id = other and chat = false) then return new; end if;
   select coalesce(nullif(name, ''), 'New message') into sender from public.profiles where id = new.from_user;
   insert into public.notifications (user_id, title, body, kind, thread_id, route, read, created_at)
   values (other, coalesce(sender, 'New message'),
@@ -260,6 +266,24 @@ end; $$;
 drop trigger if exists on_message_push on public.messages;
 create trigger on_message_push after insert on public.messages
   for each row execute function public.push_message_webhook();
+
+-- mobile push for item requests → notify-request edge function. INSERT pings the
+-- owner ("X wants your item"); an accept (UPDATE → status='accepted') pings the
+-- requester. Respects the recipient's chat/requests toggle (handled in the function).
+create or replace function public.push_request_webhook()
+returns trigger language plpgsql security definer set search_path = public, net as $$
+begin
+  perform net.http_post(
+    url := 'https://kugmucssfdlzsqotxvoy.supabase.co/functions/v1/notify-request',
+    body := jsonb_build_object('type', TG_OP, 'record', to_jsonb(new),
+                               'old_record', case when TG_OP = 'UPDATE' then to_jsonb(old) else null end),
+    headers := jsonb_build_object('Content-Type', 'application/json')
+  );
+  return new;
+end; $$;
+drop trigger if exists on_request_push on public.requests;
+create trigger on_request_push after insert or update on public.requests
+  for each row execute function public.push_request_webhook();
 
 create or replace function public.notify_on_handoff()
 returns trigger language plpgsql security definer set search_path = public as $$
