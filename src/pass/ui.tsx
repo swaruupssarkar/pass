@@ -85,6 +85,7 @@ export function PhotoTile({
   tint,
   caption,
   uri,
+  source,
   icon,
   iconSize = 40,
   gap = 16,
@@ -95,6 +96,8 @@ export function PhotoTile({
   caption?: string;
   /** real photo to show; falls back to the tinted placeholder when absent */
   uri?: string;
+  /** bundled local image (require(...)) — takes precedence over uri */
+  source?: number;
   /** branded placeholder icon shown (centered) when there is no photo */
   icon?: IconName;
   iconSize?: number;
@@ -104,7 +107,9 @@ export function PhotoTile({
 }) {
   return (
     <View style={[{ backgroundColor: tint, overflow: 'hidden' }, style]}>
-      {uri ? (
+      {source ? (
+        <Image source={source} style={StyleSheet.absoluteFill} contentFit="cover" transition={150} />
+      ) : uri ? (
         <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={150} />
       ) : icon ? (
         <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>

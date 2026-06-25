@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
+import { CITY_IMG } from '@/pass/data';
 import { Icon } from '@/pass/icon';
 import { CITIES, usePass, useT } from '@/pass/store';
 import { C } from '@/pass/theme';
@@ -80,14 +81,8 @@ export default function City() {
                   borderRadius: 18,
                   borderCurve: 'continuous',
                 }}>
-                <PhotoTile tint={C.bg} uri={c.img} gap={12} style={{ width: 58, height: 58, borderRadius: 14 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 16, fontWeight: '800', color: C.ink }}>{c.name}</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}>
-                    <Icon name="pin" size={12} color={C.muted} />
-                    <Text style={{ fontSize: 12.5, color: C.muted }} numberOfLines={1}>{c.landmark}</Text>
-                  </View>
-                </View>
+                <PhotoTile tint={C.bg} source={CITY_IMG[c.id]} gap={12} style={{ width: 58, height: 58, borderRadius: 14 }} />
+                <Text style={{ flex: 1, fontSize: 16, fontWeight: '800', color: C.ink }}>{c.name}</Text>
                 <View
                   style={{
                     width: 22,

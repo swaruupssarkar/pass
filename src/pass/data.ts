@@ -120,6 +120,18 @@ export const CITIES: City[] = [
 
 export const cityById = (id: string): City => CITIES.find((c) => c.id === id) ?? CITIES[0];
 
+// Local landmark photo per city (bundled). require() returns a static asset ref —
+// used as the image source in the city picker. Keyed by city id.
+export const CITY_IMG: Record<string, number> = {
+  del: require('../../assets/images/cities/del.jpg'),
+  mum: require('../../assets/images/cities/mum.jpg'),
+  ban: require('../../assets/images/cities/ban.jpg'),
+  hyd: require('../../assets/images/cities/hyd.jpg'),
+  kol: require('../../assets/images/cities/kol.jpg'),
+  che: require('../../assets/images/cities/che.jpg'),
+  pun: require('../../assets/images/cities/pun.jpg'),
+};
+
 export const CATS = [
   'Furniture',
   'Appliances',
