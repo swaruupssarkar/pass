@@ -1,12 +1,15 @@
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, useWindowDimensions, Vibration, View } from 'react-native';
-import Animated, { Easing, interpolate, useAnimatedStyle, useSharedValue, withDelay, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, interpolate, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSpring, withTiming } from 'react-native-reanimated';
 
 import { Icon } from '@/pass/icon';
 import { myListings, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Btn, Screen, shadow } from '@/pass/ui';
+
+const HERO_IMG = require('../../assets/images/celebrate-gift.png');
 
 const PALETTE = ['#FA6023', '#FFC56B', '#34A853', '#EA4C89', '#4C9AFF', '#FF7A45'];
 const PRAISE = [1, 2, 3, 4];
@@ -57,12 +60,19 @@ export default function Posted() {
   const count = myListings(s).length;
   const [praise] = useState(() => PRAISE[Math.floor(Math.random() * PRAISE.length)]);
 
+  const { width } = useWindowDimensions();
+  const heroW = Math.min(290, width * 0.74);
+
   const scale = useSharedValue(0);
+  const float = useSharedValue(0);
   useEffect(() => {
     scale.value = withDelay(120, withSpring(1, { damping: 9, stiffness: 120 }));
+    float.value = withDelay(600, withRepeat(withTiming(1, { duration: 2400, easing: Easing.inOut(Easing.ease) }), -1, true));
     Vibration.vibrate(40); // a little congratulatory buzz
-  }, [scale]);
-  const heroSt = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  }, [scale, float]);
+  const heroSt = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }, { translateY: interpolate(float.value, [0, 1], [-7, 7]) }],
+  }));
 
   const again = () => {
     startPost();
@@ -73,12 +83,12 @@ export default function Posted() {
     <Screen edges={['top', 'bottom']}>
       <Confetti />
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 30 }}>
-        <Animated.View style={[{ width: 116, height: 116, borderRadius: 58, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center', ...shadow(14, 30, 0.3) }, heroSt]}>
-          <Icon name="gift" size={54} color={C.accent} />
+        <Animated.View style={[{ alignItems: 'center', justifyContent: 'center' }, heroSt]}>
+          <Image source={HERO_IMG} style={{ width: heroW, height: heroW }} contentFit="contain" />
         </Animated.View>
 
         {count > 0 && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 22, backgroundColor: C.surface, borderRadius: radius.pill, paddingVertical: 7, paddingHorizontal: 14, ...shadow(6, 14, 0.2) }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, backgroundColor: C.surface, borderRadius: radius.pill, paddingVertical: 7, paddingHorizontal: 14, ...shadow(6, 14, 0.2) }}>
             <Icon name="heart" size={14} color={C.accent} />
             <Text style={{ fontSize: 13, fontWeight: '700', color: C.ink }}>
               {count} {tr('posted.shared')}
