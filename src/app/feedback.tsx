@@ -2,7 +2,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as MailComposer from 'expo-mail-composer';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { capture } from '@/pass/analytics';
 import { SUPPORT_EMAIL } from '@/pass/config';
@@ -69,7 +70,7 @@ export default function Feedback() {
   return (
     <Screen>
       <Header title={tr('feedback.title')} />
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ padding: 18, paddingTop: 4, paddingBottom: 28 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <Text style={{ fontSize: 13, color: C.muted, marginBottom: 18 }}>{tr('feedback.subtitle')}</Text>
 

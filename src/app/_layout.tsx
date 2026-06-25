@@ -5,6 +5,7 @@ import { PostHogProvider } from 'posthog-react-native';
 import { useEffect, type ReactNode } from 'react';
 import { TextInput } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { captureScreen, posthog } from '@/pass/analytics';
@@ -43,7 +44,8 @@ function Analytics({ children }: { children: ReactNode }) {
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
+      <KeyboardProvider>
+        <SafeAreaProvider>
         <Analytics>
           <PassProvider>
             <StatusBar style="dark" />
@@ -63,7 +65,8 @@ export default function RootLayout() {
             <NotifyNudge />
           </PassProvider>
         </Analytics>
-      </SafeAreaProvider>
+        </SafeAreaProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

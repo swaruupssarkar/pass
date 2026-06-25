@@ -1,6 +1,7 @@
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { BackHandler, Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { BackHandler, Image, Linking, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { capture } from '@/pass/analytics';
 import { GoogleG } from '@/pass/google-icon';
@@ -184,7 +185,7 @@ export default function Login() {
   return (
     <Screen edges={['top', 'bottom']}>
       <Stack.Screen options={{ gestureEnabled: false }} />
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <ScrollView
           contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: 14, paddingBottom: 28 }}
           keyboardShouldPersistTaps="handled"
@@ -322,18 +323,17 @@ export default function Login() {
             </Pressable>
           </View>
 
-          {/* spacer pushes only the legal notice to the bottom, clearly apart from the switch */}
-          <View style={{ flex: 1, minHeight: 28 }} />
-
-          {/* legal notice — inline tappable links, kept subtle so it doesn't clutter */}
-          <Text style={{ fontSize: 11.5, lineHeight: 17, color: C.muted, textAlign: 'center', paddingHorizontal: 12 }}>
-            By continuing, you agree to our{' '}
-            <Text style={{ color: C.accent, fontWeight: '700' }} onPress={() => Linking.openURL('https://daata.in/terms-conditions/')}>Terms &amp; Conditions</Text>
-            {' '}and{' '}
-            <Text style={{ color: C.accent, fontWeight: '700' }} onPress={() => Linking.openURL('https://daata.in/privacy-policy/')}>Privacy Policy</Text>.
-          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* legal notice — pinned to the screen bottom, OUTSIDE the KeyboardAvoidingView so the
+          keyboard never lifts it. It may be covered while typing — that's fine, it's not an input. */}
+      <Text style={{ fontSize: 11.5, lineHeight: 17, color: C.muted, textAlign: 'center', paddingHorizontal: 24, paddingBottom: 6 }}>
+        By continuing, you agree to our{' '}
+        <Text style={{ color: C.accent, fontWeight: '700' }} onPress={() => Linking.openURL('https://daata.in/terms-conditions/')}>Terms &amp; Conditions</Text>
+        {' '}and{' '}
+        <Text style={{ color: C.accent, fontWeight: '700' }} onPress={() => Linking.openURL('https://daata.in/privacy-policy/')}>Privacy Policy</Text>.
+      </Text>
     </Screen>
   );
 }
