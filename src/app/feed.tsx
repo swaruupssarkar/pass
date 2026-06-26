@@ -4,6 +4,7 @@ import { ActivityIndicator, Keyboard, Linking, Pressable, ScrollView, StyleSheet
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { capture } from '@/pass/analytics';
+import { CAT_IMG } from '@/pass/data';
 import { catIcon, Icon } from '@/pass/icon';
 import {
   activeLocationLabel,
@@ -144,9 +145,8 @@ export default function Feed() {
             const sel = s.catFilter === c;
             return (
               <Pressable key={c} onPress={() => patch({ catFilter: sel ? null : c, q: '' })} style={{ alignItems: 'center', gap: 8, width: 72 }}>
-                <View style={{ width: 72, height: 72, borderRadius: 20, borderCurve: 'continuous', backgroundColor: sel ? C.accentSoft : C.surface, borderWidth: 1.5, borderColor: sel ? C.accent : C.line, alignItems: 'center', justifyContent: 'center', ...shadow(8, 18, 0.4) }}>
-                  <Icon name={catIcon(c)} size={30} color={C.accent} />
-                </View>
+                <PhotoTile tint={C.surface} source={CAT_IMG[c]} icon={catIcon(c)} iconSize={30} style={{ width: 72, height: 72, borderRadius: 20, borderCurve: 'continuous', borderWidth: sel ? 2 : 1.5, borderColor: sel ? C.accent : C.line, ...shadow(8, 18, 0.4) }} />
+                {sel ? <View style={{ position: 'absolute', top: 6, right: 6, width: 18, height: 18, borderRadius: 9, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' }}><Icon name="check" size={11} color="#fff" /></View> : null}
                 <Text numberOfLines={2} style={{ fontSize: 11, fontWeight: sel ? '800' : '600', color: sel ? C.accent : C.ink, textAlign: 'center' }}>{tr('cat.' + c)}</Text>
               </Pressable>
             );

@@ -144,6 +144,20 @@ export const CATS = [
   'Other',
 ];
 
+// Bundled hero photo per category (require() → static asset ref), shown in the
+// category-browse tiles (feed row + categories screen). Keyed by category name.
+export const CAT_IMG: Record<string, number> = {
+  Furniture: require('../../assets/images/categories/furniture.jpg'),
+  Appliances: require('../../assets/images/categories/appliances.jpg'),
+  Electronics: require('../../assets/images/categories/electronics.jpg'),
+  'Baby & Kids': require('../../assets/images/categories/baby-kids.jpg'),
+  Books: require('../../assets/images/categories/books.jpg'),
+  Kitchen: require('../../assets/images/categories/kitchen.jpg'),
+  Clothes: require('../../assets/images/categories/clothes.jpg'),
+  'Home & Decor': require('../../assets/images/categories/home-decor.jpg'),
+  Other: require('../../assets/images/categories/other.jpg'),
+};
+
 // ---- onboarding + misc copy ----
 
 export const INTRO_CARDS = [

@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import Animated, { FadeInDown, LinearTransition, ZoomIn, ZoomOut } from 'react-native-reanimated';
 
 import { catIcon, Icon, type IconName } from '@/pass/icon';
 import { autocomplete, geocodeAddress, placeDetails, reverseGeocode, type Suggestion } from '@/pass/places';
@@ -102,15 +103,15 @@ export default function Post() {
   return (
     <Screen bg={C.bg} edges={['top', 'bottom']}>
       {/* header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 6, paddingBottom: 12, gap: 12 }}>
-        <Pressable onPress={() => router.back()} hitSlop={8} style={{ width: 40, height: 40, borderRadius: 13, borderCurve: 'continuous', borderWidth: 1, borderColor: C.line, backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center', ...shadow(8, 18, 0.3) }}>
+      <Animated.View entering={FadeInDown.duration(400)} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 6, paddingBottom: 12, gap: 12 }}>
+        <Pressable onPress={() => router.back()} hitSlop={8} style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 13, borderCurve: 'continuous', borderWidth: 1, borderColor: C.line, backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center', transform: [{ scale: pressed ? 0.94 : 1 }], ...shadow(8, 18, 0.3) })}>
           <Icon name="back" size={22} color={C.ink} />
         </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 22, fontWeight: '800', color: C.ink, letterSpacing: -0.4 }}>{editing ? tr('post.editTitle') : tr('post.postTitle')}</Text>
           <Text style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }} numberOfLines={1}>{tr('post.subtitle')}</Text>
         </View>
-      </View>
+      </Animated.View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 16, paddingBottom: 28 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -119,26 +120,26 @@ export default function Post() {
             {photos.length > 0 ? (
               <View style={{ flexDirection: 'row', gap: 11, flexWrap: 'wrap' }}>
                 {photos.map((uri) => (
-                  <View key={uri} style={{ width: 88, height: 88 }}>
+                  <Animated.View key={uri} entering={ZoomIn.springify().damping(14)} exiting={ZoomOut.duration(180)} layout={LinearTransition.springify().damping(16)} style={{ width: 88, height: 88 }}>
                     <Image source={{ uri }} style={{ width: 88, height: 88, borderRadius: radius.md }} contentFit="cover" />
-                    <Pressable onPress={() => removePostPhoto(uri)} hitSlop={8} style={{ position: 'absolute', top: -6, right: -6, width: 24, height: 24, borderRadius: 12, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' }}>
+                    <Pressable onPress={() => removePostPhoto(uri)} hitSlop={8} style={({ pressed }) => ({ position: 'absolute', top: -6, right: -6, width: 24, height: 24, borderRadius: 12, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center', transform: [{ scale: pressed ? 0.9 : 1 }] })}>
                       <Icon name="close" size={14} color="#fff" />
                     </Pressable>
-                  </View>
+                  </Animated.View>
                 ))}
               </View>
             ) : null}
             {canAdd ? (
-              <View style={{ flexDirection: 'row', gap: 12 }}>
-                <Pressable onPress={pickFromGallery} style={{ flex: 1, height: 104, borderRadius: radius.lg, borderCurve: 'continuous', borderWidth: 1.5, borderColor: C.accent, borderStyle: 'dashed', backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <Animated.View layout={LinearTransition.springify().damping(16)} style={{ flexDirection: 'row', gap: 12 }}>
+                <Pressable onPress={pickFromGallery} style={({ pressed }) => ({ flex: 1, height: 104, borderRadius: radius.lg, borderCurve: 'continuous', borderWidth: 1.5, borderColor: C.accent, borderStyle: 'dashed', backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center', gap: 8, transform: [{ scale: pressed ? 0.97 : 1 }] })}>
                   <Icon name="image" size={26} color={C.accent} />
                   <Text style={{ fontSize: 13, fontWeight: '800', color: C.accent }}>{tr('post.addFromGallery')}</Text>
                 </Pressable>
-                <Pressable onPress={takePhoto} style={{ flex: 1, height: 104, borderRadius: radius.lg, borderCurve: 'continuous', backgroundColor: C.bg, borderWidth: 1, borderColor: C.line, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <Pressable onPress={takePhoto} style={({ pressed }) => ({ flex: 1, height: 104, borderRadius: radius.lg, borderCurve: 'continuous', backgroundColor: C.bg, borderWidth: 1, borderColor: C.line, alignItems: 'center', justifyContent: 'center', gap: 8, transform: [{ scale: pressed ? 0.97 : 1 }] })}>
                   <Icon name="camera" size={24} color={C.ink} />
                   <Text style={{ fontSize: 13, fontWeight: '800', color: C.ink }}>{tr('post.takePhoto')}</Text>
                 </Pressable>
-              </View>
+              </Animated.View>
             ) : null}
           </Section>
 
@@ -158,7 +159,7 @@ export default function Post() {
               {CATS.map((c) => {
                 const on = s.postCat === c;
                 return (
-                  <Pressable key={c} onPress={() => patch({ postCat: c })} style={{ width: '31.5%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 6, borderRadius: radius.pill, backgroundColor: on ? C.accent : C.surface, borderWidth: 1, borderColor: on ? C.accent : C.line }}>
+                  <Pressable key={c} onPress={() => patch({ postCat: c })} style={({ pressed }) => ({ width: '31.5%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 6, borderRadius: radius.pill, backgroundColor: on ? C.accent : C.surface, borderWidth: 1, borderColor: on ? C.accent : C.line, transform: [{ scale: pressed ? 0.96 : 1 }] })}>
                     <Icon name={catIcon(c)} size={15} color={on ? '#fff' : C.accent} />
                     <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={{ fontSize: 12.5, fontWeight: '700', color: on ? '#fff' : C.ink }}>{tr('cat.' + c)}</Text>
                   </Pressable>
@@ -173,7 +174,7 @@ export default function Post() {
               {CONDS.map((c) => {
                 const on = s.postCond === c.key;
                 return (
-                  <Pressable key={c.key} onPress={() => patch({ postCond: c.key })} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: radius.pill, backgroundColor: on ? C.accentSoft : C.surface, borderWidth: 1.5, borderColor: on ? C.accent : C.line }}>
+                  <Pressable key={c.key} onPress={() => patch({ postCond: c.key })} style={({ pressed }) => ({ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: radius.pill, backgroundColor: on ? C.accentSoft : C.surface, borderWidth: 1.5, borderColor: on ? C.accent : C.line, transform: [{ scale: pressed ? 0.96 : 1 }] })}>
                     <Icon name={c.icon} size={15} color={on ? C.accent : C.muted} />
                     <Text style={{ fontSize: 13, fontWeight: '700', color: on ? C.accent : C.ink }}>{tr('cond.' + c.key)}</Text>
                   </Pressable>
@@ -197,14 +198,16 @@ export default function Post() {
             </View>
 
             {suggests.length > 0 ? (
-              <View style={{ backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: radius.md, marginTop: 6, overflow: 'hidden' }}>
-                {suggests.map((sug) => (
-                  <Pressable key={sug.id} onPress={() => pickSuggestion(sug)} style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 12, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: C.line }}>
-                    <Icon name="pin" size={14} color={C.muted} />
-                    <Text style={{ flex: 1, fontSize: 13.5, color: C.ink }} numberOfLines={1}>{sug.label}</Text>
-                  </Pressable>
+              <Animated.View entering={FadeInDown.duration(160)} style={{ backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: radius.md, marginTop: 6, overflow: 'hidden' }}>
+                {suggests.map((sug, i) => (
+                  <Animated.View key={sug.id} entering={FadeInDown.delay(i * 35).duration(200)}>
+                    <Pressable onPress={() => pickSuggestion(sug)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 12, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: C.line, backgroundColor: pressed ? C.accentSoft : 'transparent' })}>
+                      <Icon name="pin" size={14} color={C.muted} />
+                      <Text style={{ flex: 1, fontSize: 13.5, color: C.ink }} numberOfLines={1}>{sug.label}</Text>
+                    </Pressable>
+                  </Animated.View>
                 ))}
-              </View>
+              </Animated.View>
             ) : null}
 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 }}>
@@ -215,10 +218,10 @@ export default function Post() {
             <Btn icon="map" label={tr('post.pinOnMap')} variant="accentOutline" onPress={() => router.push('/pickmap')} block style={{ marginTop: 10, paddingVertical: 13 }} textStyle={{ fontSize: 14.5 }} />
 
             {s.postCoords ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, backgroundColor: '#E4F0E9', borderRadius: radius.md, padding: 11 }}>
+              <Animated.View entering={FadeInDown.springify().damping(15)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, backgroundColor: '#E4F0E9', borderRadius: radius.md, padding: 11 }}>
                 <Icon name="check-circle" size={16} color={C.free} />
                 <Text style={{ flex: 1, fontSize: 12.5, color: C.ink }} numberOfLines={2}>{s.postAddress || tr('post.pinnedOnMap')}</Text>
-              </View>
+              </Animated.View>
             ) : (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 9 }}>
                 <Icon name="shield" size={13} color={C.muted} />

@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 
+import { CAT_IMG } from '@/pass/data';
 import { catIcon, Icon } from '@/pass/icon';
 import { browseListings, CATS, distLabel, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
@@ -42,9 +43,7 @@ export default function Categories() {
             return (
               <Pressable key={c} onPress={() => patch({ catSel: i })} style={{ alignItems: 'center', gap: 6, paddingVertical: 12, paddingHorizontal: 4, backgroundColor: sel ? C.accentSoft : 'transparent' }}>
                 {sel ? <View style={{ position: 'absolute', left: 0, top: 12, bottom: 12, width: 3, borderRadius: 3, backgroundColor: C.accent }} /> : null}
-                <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: sel ? C.accent : C.surface, borderWidth: 1, borderColor: sel ? C.accent : C.line, alignItems: 'center', justifyContent: 'center' }}>
-                  <Icon name={catIcon(c)} size={20} color={sel ? '#fff' : C.accent} />
-                </View>
+                <PhotoTile tint={C.surface} source={CAT_IMG[c]} icon={catIcon(c)} iconSize={22} style={{ width: 44, height: 44, borderRadius: radius.md, borderCurve: 'continuous', borderWidth: sel ? 2 : 1, borderColor: sel ? C.accent : C.line }} />
                 <Text numberOfLines={2} style={{ fontSize: 10, lineHeight: 12, fontWeight: sel ? '800' : '600', color: sel ? C.accent : C.ink, textAlign: 'center' }}>{tr('cat.' + c)}</Text>
               </Pressable>
             );
@@ -59,9 +58,7 @@ export default function Categories() {
               <Text style={[t.h3, { fontSize: 19 }]}>{tr('cat.' + selCat)}</Text>
               <Text style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>{tr('categories.freeNearby', { n: products.length })}</Text>
             </View>
-            <View style={{ width: 92, height: 92, borderRadius: radius.lg, borderCurve: 'continuous', backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name={catIcon(selCat)} size={42} color={C.accent} />
-            </View>
+            <PhotoTile tint={C.surface} source={CAT_IMG[selCat]} icon={catIcon(selCat)} iconSize={42} style={{ width: 92, height: 92, borderRadius: radius.lg, borderCurve: 'continuous' }} />
           </Pressable>
 
           {/* products */}
