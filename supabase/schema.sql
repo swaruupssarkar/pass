@@ -475,8 +475,14 @@ create policy st_del on storage.objects for delete to authenticated using (
 -- ============================================================================
 create or replace function public.delete_account()
 returns void language plpgsql security definer set search_path = public, auth as $$
+declare uid uuid := auth.uid();
 begin
-  delete from auth.users where id = auth.uid();
+  -- never silently no-op: a null uid here would delete 0 rows yet return success,
+  -- leaving the account alive (re-login then skips onboarding). Surface it instead.
+  if uid is null then
+    raise exception 'delete_account: no authenticated user';
+  end if;
+  delete from auth.users where id = uid;  -- cascades profiles + all child rows
 end; $$;
 revoke all on function public.delete_account() from public, anon;
 grant execute on function public.delete_account() to authenticated;
