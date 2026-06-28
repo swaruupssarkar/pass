@@ -645,7 +645,7 @@ type Store = {
   unblockUser: (id: UserId) => void;
   // mark taken + rate
   openTakenPicker: (listingId: string) => void;
-  confirmTaken: (listingId: string, recipientId: UserId | null) => void;
+  confirmTaken: (listingId: string, recipientId: UserId) => void;
   openRate: (notif: Notification) => void;
   startRateForListing: (listingId: string, rating?: number) => void;
   submitRate: () => void;
@@ -1517,7 +1517,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
         const src = s.listings.find((x) => x.id === listingId);
         // snapshot the hand-off (persists even if the listing is later deleted)
         const handoff: Handoff | null = src
-          ? { id: uuid(), listingId, giverId: s.currentUserId, recipientId: recipientId ?? '', title: src.title, photo: src.photos?.[0], tint: src.tint, cat: src.cat, ts: Date.now() }
+          ? { id: uuid(), listingId, giverId: s.currentUserId, recipientId, title: src.title, photo: src.photos?.[0], tint: src.tint, cat: src.cat, ts: Date.now() }
           : null;
         // sync taken state + handoff row to Supabase
         track(setListingTaken(listingId, recipientId));
@@ -1530,27 +1530,24 @@ export function PassProvider({ children }: { children: ReactNode }) {
         setS((prev) => {
           const l = prev.listings.find((x) => x.id === listingId);
           if (!l || !handoff) return prev;
-          const listings = prev.listings.map((x) => (x.id === listingId ? { ...x, taken: true, takenBy: recipientId ?? undefined } : x));
+          const listings = prev.listings.map((x) => (x.id === listingId ? { ...x, taken: true, takenBy: recipientId } : x));
           return {
             ...prev,
             listings,
             requests: prev.requests.map((r) => (losers.includes(r.id) ? { ...r, status: 'declined' } : r)),
             handoffs: [handoff, ...(prev.handoffs ?? [])],
             takenPickerId: null,
-            // only notify a real recipient (external "given to someone outside Daata" has none)
-            notifications: recipientId
-              ? [
-                  notify(prev, {
-                    userId: recipientId,
-                    kind: 'taken',
-                    title: `${userName(prev, prev.currentUserId)} marked "${l.title}" as taken by you`,
-                    body: 'Please rate your experience.',
-                    listingId,
-                    route: '/rate',
-                  }),
-                  ...prev.notifications,
-                ]
-              : prev.notifications,
+            notifications: [
+              notify(prev, {
+                userId: recipientId,
+                kind: 'taken',
+                title: `${userName(prev, prev.currentUserId)} marked "${l.title}" as taken by you`,
+                body: 'Please rate your experience.',
+                listingId,
+                route: '/rate',
+              }),
+              ...prev.notifications,
+            ],
           };
         });
       },

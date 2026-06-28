@@ -126,7 +126,7 @@ export async function upsertListing(l: Listing): Promise<void> {
   await push({ kind: 'upsert', table: 'listings', row: listingToRow(l) });
 }
 
-export async function setListingTaken(id: string, takenBy: UserId | null): Promise<void> {
+export async function setListingTaken(id: string, takenBy: UserId): Promise<void> {
   await push({ kind: 'update', table: 'listings', values: { taken: true, taken_by: takenBy }, match: { id } });
 }
 
