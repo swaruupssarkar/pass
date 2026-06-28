@@ -768,9 +768,13 @@ export function NotifyNudge() {
   const tr = useT();
   const { s, showConfirm, recordNotifyNudge } = usePass();
   const me = s.currentUserId;
+  const onboarded = s.onboarded;
   const lastDate = s.notifyNudgeDate;
   useEffect(() => {
-    if (isExpoGo || !me) return;
+    // Only nudge onboarded users. A first-time user has a session right after OTP
+    // verify but is still in onboarding — they must NOT be nudged. On finishing
+    // onboarding, setCity stamps notifyNudgeDate=today so the first nudge is next day.
+    if (isExpoGo || !me || !onboarded) return;
     const today = () => new Date().toISOString().slice(0, 10);
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -804,7 +808,7 @@ export function NotifyNudge() {
       if (timer) clearTimeout(timer);
       sub.remove();
     };
-  }, [me, lastDate, tr, showConfirm, recordNotifyNudge]);
+  }, [me, onboarded, lastDate, tr, showConfirm, recordNotifyNudge]);
   return null;
 }
 

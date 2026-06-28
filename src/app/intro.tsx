@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, { Easing, interpolate, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withTiming } from 'react-native-reanimated';
 
 import { INTRO_CARDS } from '@/pass/data';
@@ -45,7 +45,7 @@ export default function Intro() {
           </Pressable>
         </View>
 
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 8 }} showsVerticalScrollIndicator={false}>
           {/* free badge */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.accentSoft, paddingHorizontal: 13, paddingVertical: 7, borderRadius: radius.pill, marginBottom: 26 }}>
             <Icon name="gift" size={14} color={C.accent} />
@@ -64,7 +64,7 @@ export default function Intro() {
           <Text style={[t.muted, { fontSize: 15, marginTop: 12, textAlign: 'center', maxWidth: 300, lineHeight: 23 }]}>
             {card.body}
           </Text>
-        </View>
+        </ScrollView>
 
         <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 22 }}>
           {INTRO_CARDS.map((_, idx) => (

@@ -10,11 +10,15 @@ import { Header, PhotoTile, Screen, t } from '@/pass/ui';
 export default function City() {
   const router = useRouter();
   const tr = useT();
-  const { s, setCity, useCurrentLocation } = usePass();
+  const { s, setCity, useCurrentLocation, showAlert } = usePass();
 
   const onUseLocation = async () => {
-    await useCurrentLocation();
-    router.replace('/feed');
+    const r = await useCurrentLocation();
+    // only GPS success completes onboarding (sets city + onboarded). On denied / no-fix,
+    // stay here so the user can pick a city — never push to /feed with onboarded still false
+    // (that would bounce them back into onboarding on the next launch).
+    if (r === 'granted') router.replace('/feed');
+    else showAlert(tr('city.gpsFailedTitle'), tr('city.gpsFailedBody'));
   };
 
   const onPickCity = (id: string) => {

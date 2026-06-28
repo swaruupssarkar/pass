@@ -9,7 +9,7 @@ import { WebView } from 'react-native-webview';
 
 import { fmtKm, haversineKm, type Coords, type Listing } from '@/pass/data';
 import { catIcon, Icon } from '@/pass/icon';
-import { activeListing, distLabel, fmtAgo, fmtDate, myRequestFor, profileOf, reviewsFor, userName, userPoint, userRating, usePass, useT, userDp } from '@/pass/store';
+import { activeListing, distLabel, fmtDate, fmtRel, myRequestFor, profileOf, reviewsFor, userName, userPoint, userRating, usePass, useT, userDp } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, Btn, EmptyState, Header, SafetyNote, Screen, VerifiedBadge } from '@/pass/ui';
 
@@ -146,14 +146,8 @@ export default function Detail() {
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 7 }}>
             <Icon name="time" size={15} color={C.muted} />
-            <Text style={{ fontSize: 14.5, fontWeight: '600', color: C.muted }}>{tr('detail.posted', { ago: fmtAgo(item.createdAt), date: fmtDate(item.createdAt) })}</Text>
+            <Text style={{ fontSize: 14.5, fontWeight: '600', color: C.muted }}>{tr('detail.posted', { rel: fmtRel(item.createdAt, tr), date: fmtDate(item.createdAt) })}</Text>
           </View>
-          {item.updatedAt ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 7 }}>
-              <Icon name="pencil" size={14} color={C.muted} />
-              <Text style={{ fontSize: 14.5, fontWeight: '600', color: C.muted }}>{tr('detail.lastUpdated', { date: fmtDate(item.updatedAt) })}</Text>
-            </View>
-          ) : null}
           <View style={{ flexDirection: 'row', gap: 9, marginTop: 14, flexWrap: 'wrap' }}>
             <Chip text={tr('cat.' + item.cat)} accent />
             <Chip text={tr('detail.conditionChip', { cond: tr('cond.' + item.cond) })} />
@@ -176,7 +170,7 @@ export default function Detail() {
 
           <Text style={{ fontSize: 14.5, color: C.ink, opacity: 0.82, lineHeight: 23, marginTop: 16 }}>{item.desc}</Text>
 
-          <PickupMap item={item} />
+          <PickupMap item={item} exact={mine || myReq?.status === 'accepted'} />
 
           {item.taken ? (
             <View style={{ marginTop: 18, backgroundColor: C.bg, borderRadius: radius.lg, paddingVertical: 16, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 }}>
@@ -222,8 +216,11 @@ export default function Detail() {
   );
 }
 
-// read-only OSM/Leaflet preview: product pin, plus your pin + a line + auto-fit when known
-const buildMapHtml = (plat: number, plng: number, me: Coords | null, accent: string) => `<!DOCTYPE html>
+// read-only OSM/Leaflet preview.
+// approx=true (public / not-yet-accepted): only a fuzzy CIRCLE on coarsely-rounded
+// coords — no exact pin, no me-line. approx=false (owner / accepted): exact pin + your
+// pin + a line + auto-fit. This is what makes "exact address only after accept" real.
+const buildMapHtml = (plat: number, plng: number, me: Coords | null, accent: string, approx: boolean) => `<!DOCTYPE html>
 <html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -238,20 +235,25 @@ const buildMapHtml = (plat: number, plng: number, me: Coords | null, accent: str
   var map = L.map('map', { zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false, touchZoom: false, boxZoom: false, keyboard: false, tap: false });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
   function dot(c) { return L.divIcon({ className: '', html: '<div class="pin ' + c + '"></div>', iconSize: [20, 20], iconAnchor: [10, 10] }); }
-  L.marker([${plat}, ${plng}], { icon: dot('it') }).addTo(map);
-  ${me
-    ? `L.marker([${me.lat}, ${me.lng}], { icon: dot('me') }).addTo(map);
-       L.polyline([[${me.lat}, ${me.lng}], [${plat}, ${plng}]], { color: '${accent}', weight: 3, dashArray: '6 6', opacity: 0.85 }).addTo(map);
-       map.fitBounds([[${me.lat}, ${me.lng}], [${plat}, ${plng}]], { padding: [40, 40] });`
-    : `map.setView([${plat}, ${plng}], 14);`}
+  ${approx
+    ? `var c = [${Math.round(plat * 100) / 100}, ${Math.round(plng * 100) / 100}];
+       L.circle(c, { radius: 750, color: '${accent}', weight: 2, fillColor: '${accent}', fillOpacity: 0.15 }).addTo(map);
+       map.setView(c, 13);`
+    : `L.marker([${plat}, ${plng}], { icon: dot('it') }).addTo(map);
+       ${me
+         ? `L.marker([${me.lat}, ${me.lng}], { icon: dot('me') }).addTo(map);
+            L.polyline([[${me.lat}, ${me.lng}], [${plat}, ${plng}]], { color: '${accent}', weight: 3, dashArray: '6 6', opacity: 0.85 }).addTo(map);
+            map.fitBounds([[${me.lat}, ${me.lng}], [${plat}, ${plng}]], { padding: [40, 40] });`
+         : `map.setView([${plat}, ${plng}], 14);`}`}
 </script></body></html>`;
 
-function PickupMap({ item }: { item: Listing }) {
+function PickupMap({ item, exact }: { item: Listing; exact: boolean }) {
   const tr = useT();
   const { s, useCurrentLocation } = usePass();
   const me = userPoint(s);
   const dist = me ? fmtKm(haversineKm(me, { lat: item.lat, lng: item.lng })) : null;
-  const html = buildMapHtml(item.lat, item.lng, me, C.accent);
+  // exact view gets the precise pin + your-location line; public view gets only a fuzzy circle
+  const html = buildMapHtml(item.lat, item.lng, exact ? me : null, C.accent, !exact);
 
   const openDirections = () => {
     const dest = `${item.lat},${item.lng}`;
@@ -264,23 +266,34 @@ function PickupMap({ item }: { item: Listing }) {
   return (
     <View style={{ marginTop: 18 }}>
       <Text style={{ fontSize: 13, fontWeight: '800', color: C.ink, marginBottom: 9 }}>{tr('detail.pickupLocation')}</Text>
-      {item.address ? (
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 11 }}>
-          <Icon name="pin" size={15} color={C.accent} />
-          <Text style={{ flex: 1, fontSize: 14, color: C.ink, lineHeight: 20 }}>{item.address}</Text>
-        </View>
-      ) : null}
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 11 }}>
+        <Icon name="pin" size={15} color={C.accent} />
+        {/* exact address only for the owner or an accepted requester; otherwise the area */}
+        <Text style={{ flex: 1, fontSize: 14, color: C.ink, lineHeight: 20 }}>{exact && item.address ? item.address : item.area || tr('detail.approxArea')}</Text>
+      </View>
       <View style={{ height: 170, borderRadius: radius.lg, borderCurve: 'continuous', overflow: 'hidden', borderWidth: 1, borderColor: C.line }}>
         <View style={StyleAbs} pointerEvents="none">
           <WebView originWhitelist={['*']} source={{ html }} style={{ flex: 1, backgroundColor: C.bg }} scrollEnabled={false} />
         </View>
-        <Pressable onPress={openDirections} style={[StyleAbs, { justifyContent: 'flex-end' }]}>
-          <View style={{ margin: 10, alignSelf: 'flex-start', backgroundColor: 'rgba(28,24,22,0.8)', borderRadius: radius.md, paddingVertical: 9, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Icon name="pin" size={14} color="#fff" />
-            <Text style={{ color: '#fff', fontSize: 12.5, fontWeight: '700' }}>{dist ? tr('detail.awayTap', { dist }) : tr('detail.tapOpenMaps')}</Text>
+        {exact ? (
+          <Pressable onPress={openDirections} style={[StyleAbs, { justifyContent: 'flex-end' }]}>
+            <View style={{ margin: 10, alignSelf: 'flex-start', backgroundColor: 'rgba(28,24,22,0.8)', borderRadius: radius.md, paddingVertical: 9, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Icon name="pin" size={14} color="#fff" />
+              <Text style={{ color: '#fff', fontSize: 12.5, fontWeight: '700' }}>{dist ? tr('detail.awayTap', { dist }) : tr('detail.tapOpenMaps')}</Text>
+            </View>
+          </Pressable>
+        ) : (
+          <View style={[StyleAbs, { justifyContent: 'flex-end' }]} pointerEvents="none">
+            <View style={{ margin: 10, alignSelf: 'flex-start', backgroundColor: 'rgba(28,24,22,0.8)', borderRadius: radius.md, paddingVertical: 9, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Icon name="shield" size={13} color="#fff" />
+              <Text style={{ color: '#fff', fontSize: 12.5, fontWeight: '700' }}>{dist ? tr('detail.awayApprox', { dist }) : tr('detail.approxArea')}</Text>
+            </View>
           </View>
-        </Pressable>
+        )}
       </View>
+      {!exact ? (
+        <Text style={{ fontSize: 12, color: C.muted, marginTop: 9, lineHeight: 17 }}>{tr('detail.exactAfterAccept')}</Text>
+      ) : null}
       {!me ? (
         <Btn icon="pin" label={tr('detail.useMyLocation')} variant="outline" onPress={() => void useCurrentLocation()} block style={{ marginTop: 10, paddingVertical: 12 }} textStyle={{ fontSize: 13.5 }} />
       ) : null}

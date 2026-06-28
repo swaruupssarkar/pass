@@ -150,8 +150,8 @@ export default function Login() {
       setBusy(false);
       if (!r.ok) return showAlert('Could not save password', friendly(r.error));
       if (mode === 'signup') capture('signed_up', { method: 'email' });
-      // brand-new account → run onboarding; forgot/reset (existing user) → feed
-      router.replace(mode === 'signup' ? '/notif' : '/feed');
+      // brand-new account → run onboarding (name/gender/dob first); forgot/reset → feed
+      router.replace(mode === 'signup' ? '/profile-setup' : '/feed');
     } else {
       if (!pw) return showAlert('Enter your password', 'Your password is required to sign in.');
       setBusy(true);
@@ -176,7 +176,7 @@ export default function Login() {
     if (!r.ok) return showAlert('Google sign-in failed', friendly(r.error));
     if (r.isNew) capture('signed_up', { method: 'google' });
     // first-time Google account → onboarding; returning → feed
-    router.replace(r.isNew ? '/notif' : '/feed');
+    router.replace(r.isNew ? '/profile-setup' : '/feed');
   };
 
   const showBack = step !== 'email' || mode === 'signup';
@@ -328,12 +328,19 @@ export default function Login() {
 
       {/* legal notice — pinned to the screen bottom, OUTSIDE the KeyboardAvoidingView so the
           keyboard never lifts it. It may be covered while typing — that's fine, it's not an input. */}
-      <Text style={{ fontSize: 11.5, lineHeight: 17, color: C.muted, textAlign: 'center', paddingHorizontal: 24, paddingBottom: 6 }}>
-        By continuing, you agree to our{' '}
-        <Text style={{ color: C.accent, fontWeight: '700' }} onPress={() => Linking.openURL('https://daata.in/terms-conditions/')}>Terms &amp; Conditions</Text>
-        {' '}and{' '}
-        <Text style={{ color: C.accent, fontWeight: '700' }} onPress={() => Linking.openURL('https://daata.in/privacy-policy/')}>Privacy Policy</Text>.
-      </Text>
+      {/* Standalone Pressables (not nested <Text onPress>) — Android miscalculates the
+          hit region of a second/ wrapped nested text span, so Privacy was untappable. */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24, paddingBottom: 20 }}>
+        <Text style={legalBase}>By continuing, you agree to our </Text>
+        <Pressable hitSlop={10} onPress={() => Linking.openURL('https://daata.in/terms-conditions/')}>
+          <Text style={legalLink}>Terms &amp; Conditions</Text>
+        </Pressable>
+        <Text style={legalBase}> and </Text>
+        <Pressable hitSlop={10} onPress={() => Linking.openURL('https://daata.in/privacy-policy/')}>
+          <Text style={legalLink}>Privacy Policy</Text>
+        </Pressable>
+        <Text style={legalBase}>.</Text>
+      </View>
     </Screen>
   );
 }
@@ -405,3 +412,6 @@ const inputBase = {
   fontSize: 16,
   color: C.ink,
 };
+
+const legalBase = { fontSize: 11.5, lineHeight: 18, color: C.muted } as const;
+const legalLink = { fontSize: 11.5, lineHeight: 18, color: C.accent, fontWeight: '700' as const };

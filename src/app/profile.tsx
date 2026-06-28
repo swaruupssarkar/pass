@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { Icon, type IconName } from '@/pass/icon';
-import { CITIES, handoffsTo, me, myHandoffs, myListings, reviewsFor, userName, userRating, usePass, useT } from '@/pass/store';
+import { cityById } from '@/pass/data';
+import { CITIES, handoffsTo, me, myHandoffs, myListings, reviewsFor, userDp, userName, userRating, usePass, useT } from '@/pass/store';
 import { C } from '@/pass/theme';
 import { Avatar, BottomNav, Btn, Screen, shadow, VerifiedBadge } from '@/pass/ui';
 
@@ -25,8 +26,9 @@ export default function Profile() {
   const mine = myListings(s);
   const givenCount = myHandoffs(s).length;
   const receivedCount = handoffsTo(s, s.currentUserId).length;
-  const cityName = CITIES.find((c) => c.id === user.cityId)?.name ?? CITIES[0].name;
-  const dp = s.dp[s.currentUserId];
+  // saved home city → fall back to the active city (GPS/city) so it never wrongly shows the default
+  const cityName = CITIES.find((c) => c.id === user.cityId)?.name ?? cityById(s.activeCityId).name;
+  const dp = userDp(s, s.currentUserId); // same source as chat: s.dp ?? profiles cache
   const name = userName(s, s.currentUserId);
   const rating = userRating(s, s.currentUserId);
   const reviewCount = reviewsFor(s, s.currentUserId).length;
@@ -95,7 +97,7 @@ export default function Profile() {
               <Text style={{ fontSize: 12, color: C.muted }}>{tr('profile.given')}</Text>
             </Pressable>
             <View style={{ width: 1, backgroundColor: C.line, marginVertical: 2 }} />
-            <Pressable onPress={() => router.push('/saved')} style={{ flex: 1, alignItems: 'center', gap: 3 }}>
+            <Pressable onPress={() => router.push({ pathname: '/saved', params: { tab: 'requested' } })} style={{ flex: 1, alignItems: 'center', gap: 3 }}>
               <Text style={{ fontSize: 25, fontWeight: '800', color: C.ink }}>{receivedCount}</Text>
               <Text style={{ fontSize: 12, color: C.muted }}>{tr('profile.received')}</Text>
             </Pressable>

@@ -5,7 +5,7 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { langInfo } from '@/pass/i18n';
 import { Icon } from '@/pass/icon';
-import { activeLocationLabel, usePass, useT } from '@/pass/store';
+import { activeLocationLabel, usePass, useT, userName } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Btn, Header, Screen, Toggle, shadow } from '@/pass/ui';
 
@@ -62,8 +62,21 @@ export default function Settings() {
       <Header title={tr('settings.title')} />
       <ScrollView contentContainerStyle={{ padding: 18, paddingTop: 0, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
         <Section title={tr('settings.account')}>
+          <Pressable onPress={() => router.push('/account')} style={[row, { borderBottomWidth: 1, borderBottomColor: C.line }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1 }}>
+              <Icon name="person" size={16} color={C.accent} />
+              <Text style={{ fontSize: 14.5, color: C.ink }}>{tr('settings.profile')}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Text style={{ fontSize: 14, color: C.muted, fontWeight: '600', maxWidth: 150 }} numberOfLines={1}>{userName(s, s.currentUserId)}</Text>
+              <Icon name="forward" size={16} color={C.muted} />
+            </View>
+          </Pressable>
           <View style={[row, { borderBottomWidth: 1, borderBottomColor: C.line }]}>
-            <Text style={{ fontSize: 14.5, color: C.ink }}>{tr('settings.email')}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+              <Icon name="mail" size={16} color={C.accent} />
+              <Text style={{ fontSize: 14.5, color: C.ink }}>{tr('settings.email')}</Text>
+            </View>
             <Text style={{ flex: 1, textAlign: 'right', fontSize: 14, color: C.muted, fontWeight: '600' }} numberOfLines={1}>{s.currentUserEmail || '—'}</Text>
           </View>
           <Pressable onPress={() => router.push('/change-password')} style={row}>

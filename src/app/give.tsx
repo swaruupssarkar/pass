@@ -65,7 +65,7 @@ export default function Give() {
           <CloseButton onPress={() => router.navigate('/feed')} />
         </Animated.View>
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }}>
+        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1, paddingBottom: 16 }}>
           <Animated.View entering={FadeIn.duration(550)} style={[{ alignSelf: 'center', marginTop: 4 }, floatStyle]}>
             <Image
               source={require('../../assets/images/give-box-illustration.png')}

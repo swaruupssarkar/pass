@@ -20,9 +20,9 @@ export default function Notif() {
   const tr = useT();
   const { width } = useWindowDimensions();
   const { requestNotifications } = usePass();
-  // first onboarding screen — anchors the onboarding funnel (drop-off analysis)
+  // onboarding step 2 (profile-setup is the funnel anchor / onboarding_started)
   useEffect(() => {
-    capture('onboarding_started');
+    capture('onboarding_notifications_viewed');
   }, []);
   const toCity = () => router.push('/city');
   const enable = async () => {

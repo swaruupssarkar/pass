@@ -4,7 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } fr
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { catIcon, Icon, type IconName } from '@/pass/icon';
-import { fmtAgo, fmtDate, myListings, requestsFor, userName, usePass, useT, userDp } from '@/pass/store';
+import { fmtDate, fmtRel, myListings, requestsFor, userName, usePass, useT, userDp } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, Btn, EmptyState, Header, PhotoTile, Screen, shadow, t } from '@/pass/ui';
 import type { Listing } from '@/pass/data';
@@ -174,7 +174,7 @@ export default function Manage() {
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 14, fontWeight: '700', color: C.ink }}>{user.name}</Text>
                       <Text style={{ fontSize: 12.5, color: C.muted, marginTop: 4, lineHeight: 18 }}>{request.note}</Text>
-                      <Text style={{ fontSize: 11, color: C.accent, fontWeight: '700', marginTop: 4 }}>{tr('manage.requestedLine', { ago: fmtAgo(request.createdAt), date: fmtDate(request.createdAt) })}</Text>
+                      <Text style={{ fontSize: 11, color: C.accent, fontWeight: '700', marginTop: 4 }}>{tr('manage.requestedLine', { rel: fmtRel(request.createdAt, tr), date: fmtDate(request.createdAt) })}</Text>
                     </View>
                     <Btn label={tr('manage.choose')} onPress={() => confirmTaken(s.takenPickerId!, request.fromUserId)} style={{ paddingVertical: 9, paddingHorizontal: 16 }} textStyle={{ fontSize: 12.5 }} />
                   </View>
@@ -182,7 +182,9 @@ export default function Manage() {
               </ScrollView>
             )}
 
-            <Btn label={tr('common.cancel')} variant="ghost" onPress={() => patch({ takenPickerId: null })} block style={{ marginTop: 18 }} />
+            {/* always available — lets the owner mark it given even if nobody requested in-app */}
+            <Btn icon="gift" label={tr('manage.givenExternal')} variant="outline" onPress={() => confirmTaken(s.takenPickerId!, null)} block style={{ marginTop: 14, paddingVertical: 12 }} textStyle={{ fontSize: 13.5 }} />
+            <Btn label={tr('common.cancel')} variant="ghost" onPress={() => patch({ takenPickerId: null })} block style={{ marginTop: 8 }} />
           </View>
         </View>
       ) : null}
@@ -203,14 +205,14 @@ export default function Manage() {
                       <View style={{ flex: 1 }}>
                         <Text style={{ fontSize: 14, fontWeight: '800', color: C.ink }} numberOfLines={1}>{user.name}</Text>
                         <Text style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }} numberOfLines={2}>{request.note}</Text>
-                        <Text style={{ fontSize: 11, color: C.accent, fontWeight: '700', marginTop: 4 }}>{tr('manage.requestedLine', { ago: fmtAgo(request.createdAt), date: fmtDate(request.createdAt) })}</Text>
+                        <Text style={{ fontSize: 11, color: C.accent, fontWeight: '700', marginTop: 4 }}>{tr('manage.requestedLine', { rel: fmtRel(request.createdAt, tr), date: fmtDate(request.createdAt) })}</Text>
                       </View>
                     </Pressable>
                     {/* declined/cancelled: compact status chip inline on the right — no extra row, no taller card */}
                     {request.status !== 'pending' && request.status !== 'accepted' ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.dangerBg, borderRadius: radius.pill, paddingVertical: 5, paddingHorizontal: 10 }}>
                         <Icon name="close-circle" size={13} color={C.dangerInk} />
-                        <Text style={{ fontSize: 11.5, fontWeight: '800', color: C.dangerInk }}>{tr('manage.declined')}</Text>
+                        <Text style={{ fontSize: 11.5, fontWeight: '800', color: C.dangerInk }}>{tr(request.status === 'cancelled' ? 'manage.withdrawn' : 'manage.declined')}</Text>
                       </View>
                     ) : null}
                   </View>

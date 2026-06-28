@@ -23,9 +23,9 @@ const isRemoteUrl = (u: string) => /^https?:\/\//.test(u);
 export async function fetchProfiles(ids: string[]): Promise<Profile[]> {
   const unique = [...new Set(ids)].filter(Boolean);
   if (!unique.length) return [];
-  const { data, error } = await supabase.from('profiles').select('id,name,city_id,dp,since').in('id', unique);
+  const { data, error } = await supabase.from('profiles').select('id,name,city_id,dp,since,gender,dob').in('id', unique);
   if (error || !data) return [];
-  return data.map((r) => ({ id: r.id, name: r.name || 'Someone', cityId: r.city_id, dp: r.dp, since: r.since }));
+  return data.map((r) => ({ id: r.id, name: r.name || 'Someone', cityId: r.city_id, dp: r.dp, since: r.since, gender: r.gender ?? null, dob: r.dob ?? null }));
 }
 
 // ---------- listings ----------
@@ -108,7 +108,9 @@ export async function uploadListingPhotos(ownerId: UserId, listingId: string, ph
       continue;
     }
     const url = await uploadImage(p, 'listing-photos', `${ownerId}/${listingId}/${uuid()}.jpg`);
-    out.push(url ?? p);
+    // skip failed uploads — never persist a local file:// path (it would be a permanently
+    // broken image on every other device). A dropped photo simply won't appear.
+    if (url) out.push(url);
   }
   return out;
 }
@@ -124,7 +126,7 @@ export async function upsertListing(l: Listing): Promise<void> {
   await push({ kind: 'upsert', table: 'listings', row: listingToRow(l) });
 }
 
-export async function setListingTaken(id: string, takenBy: UserId): Promise<void> {
+export async function setListingTaken(id: string, takenBy: UserId | null): Promise<void> {
   await push({ kind: 'update', table: 'listings', values: { taken: true, taken_by: takenBy }, match: { id } });
 }
 
@@ -136,8 +138,9 @@ export async function deleteListingRemote(l: Listing): Promise<void> {
 /** Remove a listing's photos from Storage via the Storage API — Supabase blocks
  * direct DB deletes of storage.objects, so this can't be a DB trigger. Best-effort
  * (owner-scoped by the st_del policy); orphaned files are harmless. */
-export async function deleteListingPhotos(l: Listing): Promise<void> {
+export async function deleteListingPhotos(l: Listing, keep?: Set<string>): Promise<void> {
   const paths = (l.photos ?? [])
+    .filter((u) => !keep?.has(u)) // keep photos still referenced by a handoff snapshot
     .map((u) => {
       const m = u.match(/\/listing-photos\/(.+?)(?:\?|$)/);
       return m ? decodeURIComponent(m[1]) : null;
@@ -162,16 +165,22 @@ export function rowToRequest(r: Row): Request {
     note: r.note ?? '',
     createdAt: r.created_at ? Date.parse(r.created_at) : Date.now(),
     status: r.status,
+    title: r.title ?? undefined,
+    photo: r.photo ?? undefined,
+    tint: r.tint ?? undefined,
+    cat: r.cat ?? undefined,
   };
 }
 export async function insertRequest(req: Request): Promise<void> {
   // upsert on the UNIQUE(listing_id, from_user) business key — re-requesting a listing
   // you previously cancelled/declined updates that row instead of violating the
   // constraint (which would poison the outbox forever).
-  await push({ kind: 'upsert', table: 'requests', onConflict: 'listing_id,from_user', row: { id: req.id, listing_id: req.listingId, from_user: req.fromUserId, to_user: req.toUserId, note: req.note, status: req.status } });
+  await push({ kind: 'upsert', table: 'requests', onConflict: 'listing_id,from_user', row: { id: req.id, listing_id: req.listingId, from_user: req.fromUserId, to_user: req.toUserId, note: req.note, status: req.status, title: req.title ?? null, photo: req.photo ?? null, tint: req.tint ?? null, cat: req.cat ?? null } });
 }
-export async function updateRequestStatus(id: string, status: string): Promise<void> {
-  await push({ kind: 'update', table: 'requests', values: { status }, match: { id } });
+export async function updateRequestStatus(id: string, status: string, onlyFromPending = false): Promise<void> {
+  // onlyFromPending: owner accept/decline only applies while still pending — so it can
+  // never overwrite a request the requester already cancelled (race-safe at the DB).
+  await push({ kind: 'update', table: 'requests', values: { status }, match: onlyFromPending ? { id, status: 'pending' } : { id } });
 }
 export async function deleteRequestRemote(id: string): Promise<void> {
   await push({ kind: 'delete', table: 'requests', match: { id } });
@@ -417,7 +426,7 @@ export async function clearNotificationsRemote(me: string): Promise<void> {
 
 // ---------- profile ----------
 
-export async function updateProfileRemote(me: string, fields: { name?: string; city_id?: string; dp?: string | null }): Promise<void> {
+export async function updateProfileRemote(me: string, fields: { name?: string; city_id?: string; dp?: string | null; gender?: string | null; dob?: string | null }): Promise<void> {
   await push({ kind: 'update', table: 'profiles', values: fields, match: { id: me } });
 }
 export async function reportListingRemote(listingId: string): Promise<void> {

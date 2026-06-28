@@ -47,7 +47,8 @@ export default function Impact() {
         ) : (
           <View style={{ gap: 11 }}>
             {handoffs.map((h) => {
-              const name = userName(s, h.recipientId);
+              // external hand-off (given to someone outside Daata) has no recipient id
+              const name = h.recipientId ? userName(s, h.recipientId) : tr('impact.someone');
               return (
                 <View key={h.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.surface, borderRadius: radius.lg, borderCurve: 'continuous', padding: 13, ...shadow(8, 20, 0.35) }}>
                   <PhotoTile tint={h.tint} uri={h.photo} icon={catIcon(h.cat)} iconSize={20} style={{ width: 50, height: 50, borderRadius: 13 }} />
@@ -81,7 +82,10 @@ export default function Impact() {
                 authorName={userName(s, r.from)}
                 authorUri={userDp(s, r.from)}
                 date={`${fmtDate(r.ts)} · ${fmtAgo(r.ts)}`}
-                product={listingById(s, r.listingId ?? null)?.title}
+                product={
+                  listingById(s, r.listingId ?? null)?.title ??
+                  (r.listingId ? handoffs.find((h) => h.listingId === r.listingId)?.title : undefined)
+                }
                 onAuthorPress={() => openPerson(r.from)}
               />
             ))}

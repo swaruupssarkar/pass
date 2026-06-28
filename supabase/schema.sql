@@ -19,9 +19,14 @@ create table if not exists public.profiles (
   city_id text,
   dp text,
   since text,
+  gender text,        -- 'male' | 'female' | 'other'
+  dob date,           -- date of birth (18+ enforced client-side)
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+-- Migration for existing databases (idempotent):
+alter table public.profiles add column if not exists gender text;
+alter table public.profiles add column if not exists dob date;
 
 create table if not exists public.listings (
   id uuid primary key default gen_random_uuid(),
@@ -49,15 +54,28 @@ create index if not exists listings_owner_idx on public.listings (owner_id);
 
 create table if not exists public.requests (
   id uuid primary key default gen_random_uuid(),
-  listing_id uuid not null references public.listings(id) on delete cascade,
+  -- NO FK to listings: the request (and its snapshot below) must survive the owner
+  -- deleting the listing, so the requester's "Requested" tab keeps showing the item.
+  listing_id uuid not null,
   from_user uuid not null references public.profiles(id) on delete cascade,
   to_user   uuid not null references public.profiles(id) on delete cascade,
   note text,
   status text not null default 'pending',   -- pending | accepted | declined
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
+  -- snapshot of the listing at request time (survives listing deletion)
+  title text,
+  photo text,
+  tint text,
+  cat text,
   unique (listing_id, from_user)
 );
+-- Migration for existing databases (idempotent): drop the cascading FK + add snapshot cols.
+alter table public.requests drop constraint if exists requests_listing_id_fkey;
+alter table public.requests add column if not exists title text;
+alter table public.requests add column if not exists photo text;
+alter table public.requests add column if not exists tint text;
+alter table public.requests add column if not exists cat text;
 
 create table if not exists public.threads (
   id text primary key,                        -- 'p:<a>-<b>' sorted pair

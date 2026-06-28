@@ -10,13 +10,40 @@ export type UserId = string;
 
 // A user record as cached in the store (current user + everyone referenced by
 // listings/threads/etc). Hydrated from Supabase `profiles`.
+export type Gender = 'male' | 'female' | 'other';
+export const GENDERS: Gender[] = ['male', 'female', 'other'];
+
 export type Profile = {
   id: string;
   name: string;
   cityId?: string | null;
   since?: string;
   dp?: string | null;
+  gender?: Gender | null;
+  dob?: string | null; // ISO 'YYYY-MM-DD'
 };
+
+/** Whole years between a 'YYYY-MM-DD' birth date and now; null if unset/invalid. */
+export function ageFromDob(dob?: string | null, now: Date = new Date()): number | null {
+  if (!dob) return null;
+  const d = new Date(dob + 'T00:00:00');
+  if (isNaN(d.getTime())) return null;
+  let age = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+  return age;
+}
+
+/** Coarse age bucket for analytics segmentation. */
+export function ageBand(age: number | null): string | null {
+  if (age == null) return null;
+  if (age < 18) return 'under-18';
+  if (age < 25) return '18-24';
+  if (age < 35) return '25-34';
+  if (age < 45) return '35-44';
+  if (age < 55) return '45-54';
+  return '55+';
+}
 
 export type City = { id: string; name: string; initial: string; lat: number; lng: number; landmark: string; img: string };
 
@@ -56,6 +83,12 @@ export type Request = {
   note: string;
   createdAt: number;
   status: RequestStatus;
+  // snapshot of the listing at request time — so the requester's "Requested" tab
+  // still shows the item (image + title) after the owner deletes the listing.
+  title?: string;
+  photo?: string;
+  tint?: string;
+  cat?: string;
 };
 
 export type Message = {

@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import Animated, { FadeInDown, LinearTransition, ZoomIn, ZoomOut } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { catIcon, Icon, type IconName } from '@/pass/icon';
 import { autocomplete, geocodeAddress, placeDetails, reverseGeocode, type Suggestion } from '@/pass/places';
@@ -120,7 +120,7 @@ export default function Post() {
             {photos.length > 0 ? (
               <View style={{ flexDirection: 'row', gap: 11, flexWrap: 'wrap' }}>
                 {photos.map((uri) => (
-                  <Animated.View key={uri} entering={ZoomIn.springify().damping(14)} exiting={ZoomOut.duration(180)} layout={LinearTransition.springify().damping(16)} style={{ width: 88, height: 88 }}>
+                  <Animated.View key={uri} entering={FadeIn.duration(200)} exiting={FadeOut.duration(160)} layout={LinearTransition.duration(180)} style={{ width: 88, height: 88 }}>
                     <Image source={{ uri }} style={{ width: 88, height: 88, borderRadius: radius.md }} contentFit="cover" />
                     <Pressable onPress={() => removePostPhoto(uri)} hitSlop={8} style={({ pressed }) => ({ position: 'absolute', top: -6, right: -6, width: 24, height: 24, borderRadius: 12, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center', transform: [{ scale: pressed ? 0.9 : 1 }] })}>
                       <Icon name="close" size={14} color="#fff" />
@@ -130,7 +130,7 @@ export default function Post() {
               </View>
             ) : null}
             {canAdd ? (
-              <Animated.View layout={LinearTransition.springify().damping(16)} style={{ flexDirection: 'row', gap: 12 }}>
+              <Animated.View layout={LinearTransition.duration(180)} style={{ flexDirection: 'row', gap: 12 }}>
                 <Pressable onPress={pickFromGallery} style={({ pressed }) => ({ flex: 1, height: 104, borderRadius: radius.lg, borderCurve: 'continuous', borderWidth: 1.5, borderColor: C.accent, borderStyle: 'dashed', backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center', gap: 8, transform: [{ scale: pressed ? 0.97 : 1 }] })}>
                   <Icon name="image" size={26} color={C.accent} />
                   <Text style={{ fontSize: 13, fontWeight: '800', color: C.accent }}>{tr('post.addFromGallery')}</Text>
@@ -223,8 +223,8 @@ export default function Post() {
                 <Text style={{ flex: 1, fontSize: 12.5, color: C.ink }} numberOfLines={2}>{s.postAddress || tr('post.pinnedOnMap')}</Text>
               </Animated.View>
             ) : (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 9 }}>
-                <Icon name="shield" size={13} color={C.muted} />
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 9 }}>
+                <Icon name="shield" size={13} color={C.muted} style={{ marginTop: 2 }} />
                 <Text style={{ flex: 1, fontSize: 11.5, color: C.muted, lineHeight: 17 }}>{tr('post.privacyNote')}</Text>
               </View>
             )}

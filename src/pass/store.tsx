@@ -6,11 +6,14 @@ import * as WebBrowser from 'expo-web-browser';
 import { createContext, use, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import {
+  ageBand,
+  ageFromDob,
   CATS,
   CITIES,
   cityById,
   type Coords,
   fmtKm,
+  type Gender,
   type Handoff,
   haversineKm,
   type Listing,
@@ -24,7 +27,7 @@ import {
 } from '@/pass/data';
 import { isExpoGo, REPORT_DELIST_THRESHOLD, REPORT_EMAIL, REPORT_ENDPOINT } from '@/pass/config';
 import { supabase } from '@/pass/supabase';
-import { capture, identifyUser, resetAnalytics } from '@/pass/analytics';
+import { capture, identifyUser, resetAnalytics, setPerson } from '@/pass/analytics';
 import { drainOutbox, flushOutbox, initOutbox, track } from '@/pass/outbox';
 import { configureForegroundNotifications, registerForPush } from '@/pass/push';
 
@@ -74,6 +77,9 @@ type State = {
   lang: LangCode;
   listings: Listing[];
   requests: Request[];
+  /** request ids the current user removed from their list — stay hidden even if a
+   *  pull/realtime re-delivers the row (race-proof "Remove" on the Requested tab). */
+  dismissedRequests: Record<string, boolean>;
   threads: Record<string, Message[]>;
   threadListing: Record<string, string>;
   /** who opened the conversation first (the other party must accept a cold DM) */
@@ -159,6 +165,7 @@ const INITIAL: State = {
   lang: DEFAULT_LANG,
   listings: [],
   requests: [],
+  dismissedRequests: {},
   threads: {},
   threadListing: {},
   threadStarter: {},
@@ -330,7 +337,8 @@ export function requestsFor(s: State, listingId: string): { request: Request; us
 
 export const myRequests = (s: State): { request: Request; listing: Listing | null }[] =>
   s.requests
-    .filter((r) => r.fromUserId === s.currentUserId)
+    .filter((r) => r.fromUserId === s.currentUserId && !s.dismissedRequests?.[r.id])
+    .sort((a, b) => b.createdAt - a.createdAt) // stable newest-first (matches incomingRequests)
     .map((r) => ({ request: r, listing: listingById(s, r.listingId) }));
 
 /** Requests other people made for the current user's listings. */
@@ -508,6 +516,17 @@ export function fmtAgo(ts: number, now: number = Date.now()): string {
   if (h < 24) return `${h}h`;
   return `${Math.floor(h / 24)}d`;
 }
+/** Full relative phrase: "now" under a minute, else the localized "{n}m ago" form.
+ * Avoids the "now ago" bug from templates that hardcoded a trailing "ago". */
+export function fmtRel(
+  ts: number,
+  tr: (key: string, params?: Record<string, string | number>) => string,
+  now: number = Date.now()
+): string {
+  const m = Math.floor(Math.max(0, now - ts) / 60_000);
+  if (m < 1) return tr('time.now');
+  return tr('time.ago', { ago: fmtAgo(ts, now) });
+}
 export function fmtTime(ts: number): string {
   const d = new Date(ts);
   const h = d.getHours();
@@ -626,7 +645,7 @@ type Store = {
   unblockUser: (id: UserId) => void;
   // mark taken + rate
   openTakenPicker: (listingId: string) => void;
-  confirmTaken: (listingId: string, recipientId: UserId) => void;
+  confirmTaken: (listingId: string, recipientId: UserId | null) => void;
   openRate: (notif: Notification) => void;
   startRateForListing: (listingId: string, rating?: number) => void;
   submitRate: () => void;
@@ -642,6 +661,7 @@ type Store = {
   recordNotifyNudge: () => void;
   // profile editing
   setName: (name: string) => void;
+  saveProfileInfo: (info: { name: string; gender: Gender | null; dob: string | null }) => void;
   setDp: (uri: string | null) => void;
   setNotifyNear: (on: boolean) => void;
   setNotifyChat: (on: boolean) => void;
@@ -843,6 +863,9 @@ export function PassProvider({ children }: { children: ReactNode }) {
           activeMode: 'city',
           activeCityId: cityId,
           onboarded: true, // picking a city completes onboarding — don't depend on feed mount
+          // Suppress the "enable notifications" nudge on the same day onboarding finishes;
+          // if they didn't grant it during onboarding, the first nudge fires the NEXT day.
+          notifyNudgeDate: finishingOnboarding ? new Date().toISOString().slice(0, 10) : prev.notifyNudgeDate,
           userCity: { ...prev.userCity, [prev.currentUserId]: cityId },
           profiles: prev.profiles[prev.currentUserId]
             ? { ...prev.profiles, [prev.currentUserId]: { ...prev.profiles[prev.currentUserId], cityId } }
@@ -850,6 +873,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
         }));
         if (s.currentUserId) track(updateProfileRemote(s.currentUserId, { city_id: cityId }));
         capture('city_selected', { cityId });
+        setPerson({ city: CITIES.find((c) => c.id === cityId)?.name ?? cityId }); // segment users by city
         if (finishingOnboarding) {
           capture('onboarding_completed', undefined, { set: { onboarded: true }, setOnce: { onboarded_at: new Date().toISOString() } });
         }
@@ -864,7 +888,25 @@ export function PassProvider({ children }: { children: ReactNode }) {
         try {
           const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
           const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          setS((prev) => ({ ...prev, locStatus: 'granted', userLoc: coords, activeMode: 'gps', userLocLabel: 'Current location' }));
+          // GPS also sets the saved home city (nearest) so the Profile shows the right
+          // city, onboarding completes, and it persists across logout/login + DB.
+          const near = nearestCity(coords);
+          const me2 = s.currentUserId;
+          setS((prev) => ({
+            ...prev,
+            locStatus: 'granted',
+            userLoc: coords,
+            activeMode: 'gps',
+            userLocLabel: 'Current location',
+            activeCityId: near.id,
+            onboarded: true,
+            userCity: { ...prev.userCity, [prev.currentUserId]: near.id },
+            profiles: prev.profiles[prev.currentUserId]
+              ? { ...prev.profiles, [prev.currentUserId]: { ...prev.profiles[prev.currentUserId], cityId: near.id } }
+              : prev.profiles,
+          }));
+          if (me2) track(updateProfileRemote(me2, { city_id: near.id }));
+          setPerson({ city: near.name });
           const label = await reverseGeocode(coords.lat, coords.lng);
           setS((prev) => ({ ...prev, userLocLabel: label }));
           return 'granted';
@@ -1042,8 +1084,19 @@ export function PassProvider({ children }: { children: ReactNode }) {
             await upsertListing({ ...l, photos: remote });
             const photos = await uploadListingPhotos(l.ownerId, l.id, l.photos ?? []);
             if (deletedListings.has(l.id)) return; // deleted during the slow upload — don't resurrect it
-            setS((p) => ({ ...p, listings: p.listings.map((x) => (x.id === l.id ? { ...x, photos } : x)) }));
-            await upsertListing({ ...l, photos });
+            // use the CURRENT listing for the upsert, not the stale submit-time snapshot —
+            // taken/takenBy may have changed during the slow upload and must not be reverted.
+            let current: Listing | undefined;
+            setS((p) => {
+              current = p.listings.find((x) => x.id === l.id);
+              return { ...p, listings: p.listings.map((x) => (x.id === l.id ? { ...x, photos } : x)) };
+            });
+            await upsertListing({ ...(current ?? l), photos });
+            // some photos failed to upload (dropped, not persisted as broken file:// paths) — tell the user
+            const dropped = (l.photos?.length ?? 0) - photos.length;
+            if (dropped > 0) {
+              setS((p) => ({ ...p, dialog: { title: translate(p.lang, 'post.photoFailTitle'), message: translate(p.lang, 'post.photoFailBody'), actions: [{ label: 'OK', kind: 'primary' }] } }));
+            }
           })());
         }
         return outId;
@@ -1065,7 +1118,12 @@ export function PassProvider({ children }: { children: ReactNode }) {
         // must NOT block logout, so it's not tracked.
         if (listing) {
           track(deleteListingRemote(listing));
-          void deleteListingPhotos(listing);
+          // Keep any photo still referenced by a handoff snapshot so "My impact"
+          // hand-offs keep showing the image after the listing is deleted.
+          const keepPhotos = new Set(
+            (s.handoffs ?? []).filter((h) => h.listingId === id && h.photo).map((h) => h.photo as string)
+          );
+          void deleteListingPhotos(listing, keepPhotos);
         }
       },
 
@@ -1079,7 +1137,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
         if (s.requests.some((r) => r.listingId === listingId && r.fromUserId === s.currentUserId)) return;
         const now = Date.now();
         const text = note.trim() || `Hi! Is the ${l.title} still available?`;
-        const req: Request = { id: uuid(), listingId, fromUserId: s.currentUserId, toUserId: l.ownerId, note: text, createdAt: now, status: 'pending' };
+        const req: Request = { id: uuid(), listingId, fromUserId: s.currentUserId, toUserId: l.ownerId, note: text, createdAt: now, status: 'pending', title: l.title, photo: l.photos?.[0], tint: l.tint, cat: l.cat };
         const tid = threadId(s.currentUserId, l.ownerId);
         const hasThread = !!s.threads[tid];
         const msg: Message | null = hasThread ? { id: uuid(), from: s.currentUserId, text, ts: now } : null;
@@ -1117,6 +1175,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
       acceptRequest: (requestId) => {
         const req = s.requests.find((r) => r.id === requestId);
         if (!req) return;
+        if (req.status !== 'pending') return; // already cancelled/accepted/declined — can't act
         const id = threadId(req.toUserId, req.fromUserId);
         const l = s.listings.find((x) => x.id === req.listingId);
         const seed: Message = { id: uuid(), from: req.fromUserId, text: req.note, ts: req.createdAt };
@@ -1137,7 +1196,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
-        track(updateRequestStatus(requestId, 'accepted'));
+        track(updateRequestStatus(requestId, 'accepted', true)); // pending-only: never overrides a cancel
         capture('request_accepted', { listingId: req.listingId });
         track((async () => {
           await upsertThread(id, { listingId: req.listingId, starter: s.threadStarter[id] ?? req.fromUserId, accepted: true });
@@ -1148,7 +1207,8 @@ export function PassProvider({ children }: { children: ReactNode }) {
       },
 
       declineRequest: (requestId) => {
-        if (!s.requests.some((r) => r.id === requestId)) return;
+        const cur = s.requests.find((r) => r.id === requestId);
+        if (!cur || cur.status !== 'pending') return; // can't decline a withdrawn/resolved request
         setS((prev) => {
           const req = prev.requests.find((r) => r.id === requestId);
           if (!req) return prev;
@@ -1161,7 +1221,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
-        track(updateRequestStatus(requestId, 'declined'));
+        track(updateRequestStatus(requestId, 'declined', true)); // pending-only: never overrides a cancel
       },
 
       // remove a request (pending or accepted). Removing an accepted one un-reserves
@@ -1171,7 +1231,9 @@ export function PassProvider({ children }: { children: ReactNode }) {
         if (!s.requests.some((r) => r.id === requestId)) return;
         // soft-cancel: mark 'cancelled' so the DB trigger notifies the other party
         // cross-device; remove it from our own list. The listing relists (not accepted).
-        setS((prev) => ({ ...prev, requests: prev.requests.filter((r) => r.id !== requestId), cancelTarget: null }));
+        // also dismiss it locally so a cold pull (which reloads the still-present 'cancelled'
+        // row) can't resurface it in the Requested tab.
+        setS((prev) => ({ ...prev, requests: prev.requests.filter((r) => r.id !== requestId), dismissedRequests: { ...prev.dismissedRequests, [requestId]: true }, cancelTarget: null }));
         track(updateRequestStatus(requestId, 'cancelled'));
       },
 
@@ -1181,7 +1243,11 @@ export function PassProvider({ children }: { children: ReactNode }) {
       // silently drop a request from my list (no notification) — used once a deal is
       // settled (item given) or already declined, just to clear it off the screen
       removeRequest: (requestId) => {
-        setS((prev) => ({ ...prev, requests: prev.requests.filter((r) => r.id !== requestId) }));
+        setS((prev) => ({
+          ...prev,
+          requests: prev.requests.filter((r) => r.id !== requestId),
+          dismissedRequests: { ...prev.dismissedRequests, [requestId]: true }, // stays gone across pull/realtime
+        }));
         track(deleteRequestRemote(requestId));
       },
 
@@ -1281,8 +1347,12 @@ export function PassProvider({ children }: { children: ReactNode }) {
         setS((prev) => ({
           ...prev,
           threadRead: { ...prev.threadRead, [id]: { ...(prev.threadRead[id] ?? {}), [prev.currentUserId]: ts } },
+          // also clear this thread's message notifications — the DB trigger re-flags them
+          // unread on every new message, so viewing the thread must keep clearing them.
+          notifications: prev.notifications.map((n) => (n.userId === prev.currentUserId && n.threadId === id ? { ...n, read: true } : n)),
         }));
         track(updateThreadRead(id, s.currentUserId, ts));
+        if (s.currentUserId) track(markThreadRead(s.currentUserId, id)); // repo: persist notif read for this thread
       },
 
       // text is passed in from the composer's local state so typing never touches
@@ -1321,14 +1391,21 @@ export function PassProvider({ children }: { children: ReactNode }) {
       shareLoc: async () => {
         const id = s.activeThreadId;
         if (!id) return;
-        let text = 'Shared my live location for the meetup';
+        let coords: { latitude: number; longitude: number } | null = null;
         try {
           const { status } = await Location.requestForegroundPermissionsAsync();
           if (status === 'granted') {
             const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-            text = `My live location: https://maps.google.com/?q=${pos.coords.latitude},${pos.coords.longitude}`;
+            coords = pos.coords;
           }
         } catch {}
+        // never send a "shared my location" message without a real fix — that would mislead
+        // the other person. Tell the user to enable location instead.
+        if (!coords) {
+          setS((prev) => ({ ...prev, dialog: { title: translate(prev.lang, 'thread.locFailTitle'), message: translate(prev.lang, 'thread.locFailBody'), actions: [{ label: 'OK', kind: 'primary' }] } }));
+          return;
+        }
+        const text = `My live location: https://maps.google.com/?q=${coords.latitude},${coords.longitude}`;
         const msg: Message = { id: uuid(), from: s.currentUserId, text, ts: Date.now(), replyTo: s.replyDraft ?? undefined };
         setS((prev) => {
           const other = otherInThread(prev, id);
@@ -1432,32 +1509,40 @@ export function PassProvider({ children }: { children: ReactNode }) {
         const src = s.listings.find((x) => x.id === listingId);
         // snapshot the hand-off (persists even if the listing is later deleted)
         const handoff: Handoff | null = src
-          ? { id: uuid(), listingId, giverId: s.currentUserId, recipientId, title: src.title, photo: src.photos?.[0], tint: src.tint, cat: src.cat, ts: Date.now() }
+          ? { id: uuid(), listingId, giverId: s.currentUserId, recipientId: recipientId ?? '', title: src.title, photo: src.photos?.[0], tint: src.tint, cat: src.cat, ts: Date.now() }
           : null;
         // sync taken state + handoff row to Supabase
         track(setListingTaken(listingId, recipientId));
         capture('item_given', { listingId });
         if (handoff) track(insertHandoff(handoff));
+        // every OTHER requester loses the deal — decline their request so they no longer
+        // see the exact pickup address (detail gates exact on their request being 'accepted').
+        const losers = s.requests.filter((r) => r.listingId === listingId && r.fromUserId !== recipientId && (r.status === 'pending' || r.status === 'accepted')).map((r) => r.id);
+        losers.forEach((id) => track(updateRequestStatus(id, 'declined')));
         setS((prev) => {
           const l = prev.listings.find((x) => x.id === listingId);
           if (!l || !handoff) return prev;
-          const listings = prev.listings.map((x) => (x.id === listingId ? { ...x, taken: true, takenBy: recipientId } : x));
+          const listings = prev.listings.map((x) => (x.id === listingId ? { ...x, taken: true, takenBy: recipientId ?? undefined } : x));
           return {
             ...prev,
             listings,
+            requests: prev.requests.map((r) => (losers.includes(r.id) ? { ...r, status: 'declined' } : r)),
             handoffs: [handoff, ...(prev.handoffs ?? [])],
             takenPickerId: null,
-            notifications: [
-              notify(prev, {
-                userId: recipientId,
-                kind: 'taken',
-                title: `${userName(prev, prev.currentUserId)} marked "${l.title}" as taken by you`,
-                body: 'Please rate your experience.',
-                listingId,
-                route: '/rate',
-              }),
-              ...prev.notifications,
-            ],
+            // only notify a real recipient (external "given to someone outside Daata" has none)
+            notifications: recipientId
+              ? [
+                  notify(prev, {
+                    userId: recipientId,
+                    kind: 'taken',
+                    title: `${userName(prev, prev.currentUserId)} marked "${l.title}" as taken by you`,
+                    body: 'Please rate your experience.',
+                    listingId,
+                    route: '/rate',
+                  }),
+                  ...prev.notifications,
+                ]
+              : prev.notifications,
           };
         });
       },
@@ -1468,7 +1553,8 @@ export function PassProvider({ children }: { children: ReactNode }) {
           return {
             ...prev,
             rateListingId: n.listingId ?? null,
-            rateGiverId: l?.ownerId ?? null,
+            // fall back to the handoff snapshot's giver so rating still works after the listing is deleted
+            rateGiverId: l?.ownerId ?? (prev.handoffs ?? []).find((h) => h.listingId === n.listingId)?.giverId ?? null,
             rating: 0,
             rateTags: [],
             reviewDraft: '',
@@ -1479,7 +1565,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
       startRateForListing: (listingId, rating = 0) =>
         setS((prev) => {
           const l = prev.listings.find((x) => x.id === listingId);
-          return { ...prev, rateListingId: listingId, rateGiverId: l?.ownerId ?? null, rating, rateTags: [], reviewDraft: '' };
+          return { ...prev, rateListingId: listingId, rateGiverId: l?.ownerId ?? (prev.handoffs ?? []).find((h) => h.listingId === listingId)?.giverId ?? null, rating, rateTags: [], reviewDraft: '' };
         }),
 
       submitRate: () => {
@@ -1537,7 +1623,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
           }
           if (n.kind === 'taken') {
             const l = prev.listings.find((x) => x.id === n.listingId);
-            return { ...prev, notifications: upd, rateListingId: n.listingId ?? null, rateGiverId: l?.ownerId ?? null, rating: 0, rateTags: [], reviewDraft: '' };
+            return { ...prev, notifications: upd, rateListingId: n.listingId ?? null, rateGiverId: l?.ownerId ?? (prev.handoffs ?? []).find((h) => h.listingId === n.listingId)?.giverId ?? null, rating: 0, rateTags: [], reviewDraft: '' };
           }
           if (n.threadId) return { ...prev, notifications: upd, activeThreadId: n.threadId };
           if (n.listingId) return { ...prev, notifications: upd, activeListingId: n.listingId };
@@ -1575,6 +1661,30 @@ export function PassProvider({ children }: { children: ReactNode }) {
           profiles: { ...prev.profiles, [prev.currentUserId]: { ...(prev.profiles[prev.currentUserId] ?? { id: prev.currentUserId, dp: null }), name: finalName } },
         }));
         if (s.currentUserId) track(updateProfileRemote(s.currentUserId, { name: finalName }));
+      },
+
+      // name + gender + dob in one shot — used by onboarding (profile-setup) and the
+      // Account edit screen. Persists to Supabase and tags the analytics person so
+      // gender/age/age-band cohorts populate.
+      saveProfileInfo: ({ name, gender, dob }) => {
+        const me = s.currentUserId;
+        const finalName = name.trim() || userName(s, me);
+        setS((prev) => ({
+          ...prev,
+          names: { ...prev.names, [me]: finalName },
+          profiles: { ...prev.profiles, [me]: { ...(prev.profiles[me] ?? { id: me, dp: null }), name: finalName, gender, dob } },
+        }));
+        if (me) {
+          track(updateProfileRemote(me, { name: finalName, gender, dob }));
+          const age = ageFromDob(dob);
+          setPerson({
+            gender: gender ?? undefined,
+            age: age ?? undefined,
+            age_band: ageBand(age) ?? undefined,
+            birth_year: dob ? Number(dob.slice(0, 4)) : undefined,
+          });
+          capture('profile_completed', { hasGender: !!gender, hasDob: !!dob });
+        }
       },
       setDp: (uri) => {
         const me = s.currentUserId;
@@ -1710,7 +1820,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
         await supabase.from('profiles').upsert({ id: userId }, { onConflict: 'id', ignoreDuplicates: true });
         const { data } = await supabase
           .from('profiles')
-          .select('id,name,city_id,dp,since')
+          .select('id,name,city_id,dp,since,gender,dob')
           .eq('id', userId)
           .single();
         if (data) {
@@ -1727,9 +1837,27 @@ export function PassProvider({ children }: { children: ReactNode }) {
                 cityId: data.city_id,
                 dp: data.dp,
                 since: data.since,
+                gender: data.gender ?? null,
+                dob: data.dob ?? null,
               },
             },
           }));
+          // tag the analytics person with demographics so cohorts/age/gender segments work
+          if (pull) {
+            const age = ageFromDob(data.dob);
+            setPerson({
+              gender: data.gender ?? undefined,
+              age: age ?? undefined,
+              age_band: ageBand(age) ?? undefined,
+              birth_year: data.dob ? Number(String(data.dob).slice(0, 4)) : undefined,
+              city: data.city_id ? CITIES.find((c) => c.id === data.city_id)?.name ?? data.city_id : undefined,
+            });
+          }
+          // on real sign-in, browse their saved home city by default so the feed shows
+          // the right city's products (survives logout/login + fresh-device installs)
+          if (pull && data.city_id) {
+            setS((prev) => ({ ...prev, activeCityId: data.city_id as string, activeMode: 'city' }));
+          }
         }
         // only do the heavy full pull on real sign-in — NOT on every token refresh
         // (which would periodically clobber in-flight optimistic/offline writes)
@@ -1764,6 +1892,9 @@ export function PassProvider({ children }: { children: ReactNode }) {
           Object.keys(ud.bundle.threads).forEach((tid) => threadUsers(tid).forEach((u) => refIds.add(u)));
           ud.reviews.forEach((r) => { refIds.add(r.from); refIds.add(r.to); });
           ud.handoffs.forEach((h) => { refIds.add(h.giverId); refIds.add(h.recipientId); });
+          // blocked users may have no chat/listing — pull their profiles so the Blocked
+          // list shows real names/avatars instead of "Someone".
+          ud.blocks.forEach((k) => { const [a, b] = k.split('>'); refIds.add(a); refIds.add(b); });
         }
         const profs = await fetchProfiles([...refIds]);
         if (profs.length) setS((prev) => ({ ...prev, profiles: { ...prev.profiles, ...Object.fromEntries(profs.map((p) => [p.id, p])) } }));
@@ -1819,7 +1950,13 @@ export function PassProvider({ children }: { children: ReactNode }) {
           const cut = prev.threadCleared[tid];
           if (cut && msg.ts <= cut) return prev;
           const arr = prev.threads[tid] ?? [];
-          if (arr.some((x) => x.id === msg.id)) return prev;
+          // own optimistic echo already present: reconcile its local ts to the SERVER ts so
+          // read-receipt comparisons (otherLastRead >= ts) use one clock — avoids skew
+          // hiding or wrongly showing the read tick.
+          if (arr.some((x) => x.id === msg.id)) {
+            const merged = arr.map((x) => (x.id === msg.id ? { ...x, ts: msg.ts } : x)).sort((a, b) => a.ts - b.ts);
+            return { ...prev, threads: { ...prev.threads, [tid]: merged } };
+          }
           // keep messages ts-ordered: a replayed/clock-skewed insert can arrive after newer ones
           const next = [...arr, msg].sort((a, b) => a.ts - b.ts);
           return { ...prev, threads: { ...prev.threads, [tid]: next } };
@@ -1862,6 +1999,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
           return;
         }
         setS((prev) => {
+          if (prev.dismissedRequests?.[r.id]) return prev; // user removed it — never resurrect
           const exists = prev.requests.some((x) => x.id === r.id);
           return { ...prev, requests: exists ? prev.requests.map((x) => (x.id === r.id ? r : x)) : [r, ...prev.requests] };
         });
@@ -1913,10 +2051,12 @@ export function PassProvider({ children }: { children: ReactNode }) {
         if (payload.eventType === 'DELETE') return;
         const p = payload.new as Record<string, any>;
         if (!p.id) return;
-        // refresh cached name/dp/city when any cached user updates their profile
+        // refresh cached name/dp/city/gender/dob when any cached user updates their
+        // profile. MUST carry gender/dob — else our own update echoes back and wipes
+        // them locally (form would show deselected on re-entry).
         setS((prev) =>
           prev.profiles[p.id]
-            ? { ...prev, profiles: { ...prev.profiles, [p.id]: { id: p.id, name: p.name || 'Someone', cityId: p.city_id, dp: p.dp, since: p.since } } }
+            ? { ...prev, profiles: { ...prev.profiles, [p.id]: { ...prev.profiles[p.id], id: p.id, name: p.name || 'Someone', cityId: p.city_id, dp: p.dp, since: p.since, gender: p.gender ?? prev.profiles[p.id]?.gender ?? null, dob: p.dob ?? prev.profiles[p.id]?.dob ?? null } } }
             : prev
         );
       })
@@ -1953,6 +2093,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
       lang: s.lang,
       listings: s.listings,
       requests: s.requests,
+      dismissedRequests: s.dismissedRequests,
       threads: s.threads,
       threadListing: s.threadListing,
       threadStarter: s.threadStarter,
@@ -2009,6 +2150,13 @@ export function PassProvider({ children }: { children: ReactNode }) {
     s.activeCityId,
     s.userCity,
     s.onboarded,
+    // these are all in the persist snapshot but were missing here — a change to ONLY one
+    // of them (e.g. dismiss nudge / hide safety banner / dismiss a request) must still save.
+    s.currentUserEmail,
+    s.dismissedRequests,
+    s.threadCleared,
+    s.notifyNudgeDate,
+    s.safetyHidden,
   ]);
 
   return <PassContext value={store}>{children}</PassContext>;

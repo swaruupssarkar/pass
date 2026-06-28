@@ -3,14 +3,14 @@ import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { catIcon, Icon } from '@/pass/icon';
-import { distLabel, fmtAgo, fmtDate, myRequests, savedListings, usePass, useT } from '@/pass/store';
+import { distLabel, fmtDate, fmtRel, myRequests, savedListings, threadId, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { BottomNav, Btn, EmptyState, FreeTag, PhotoTile, Screen, shadow, t } from '@/pass/ui';
 
 export default function Saved() {
   const router = useRouter();
   const tr = useT();
-  const { s, openListing, toggleSave, openThreadFor, cancelRequest, openCancelReason, removeRequest, showConfirm } = usePass();
+  const { s, openListing, toggleSave, openThreadFor, openThreadWith, viewPerson, cancelRequest, openCancelReason, removeRequest, showConfirm } = usePass();
   const { tab: tabParam } = useLocalSearchParams<{ tab?: string }>();
   const [tab, setTab] = useState<'saved' | 'requested'>(tabParam === 'requested' ? 'requested' : 'saved');
   const saved = savedListings(s);
@@ -93,12 +93,21 @@ export default function Saved() {
             const gotByMe = taken && listing?.takenBy === s.currentUserId;
             return (
             <View key={request.id} style={{ backgroundColor: C.surface, borderRadius: radius.xl, borderCurve: 'continuous', padding: 11, ...shadow(8, 20, 0.4) }}>
-              <Pressable disabled={!listing} onPress={() => listing && open(listing.id)} style={{ flexDirection: 'row', gap: 13, alignItems: 'center' }}>
-                <PhotoTile tint={listing?.tint ?? C.bg} uri={listing?.photos?.[0]} icon={listing ? catIcon(listing.cat) : undefined} iconSize={30} style={{ width: 64, height: 64, borderRadius: radius.md }} />
+              <Pressable
+                onPress={() => {
+                  // listing still live → product page (shows given/taken status there).
+                  if (listing) { open(listing.id); return; }
+                  // listing deleted by owner → open the existing chat, else the owner's profile.
+                  const tid = threadId(s.currentUserId, request.toUserId);
+                  if ((s.threads[tid]?.length ?? 0) > 0) { openThreadWith(request.toUserId); router.push('/thread'); }
+                  else { viewPerson(request.toUserId); router.push('/giver'); }
+                }}
+                style={{ flexDirection: 'row', gap: 13, alignItems: 'center' }}>
+                <PhotoTile tint={listing?.tint ?? request.tint ?? C.bg} uri={listing?.photos?.[0] ?? request.photo} icon={catIcon(listing?.cat ?? request.cat ?? 'other')} iconSize={30} style={{ width: 64, height: 64, borderRadius: radius.md }} />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: C.ink }} numberOfLines={1}>{listing ? listing.title : tr('saved.listingRemoved')}</Text>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: C.ink }} numberOfLines={1}>{listing?.title ?? request.title ?? tr('saved.listingRemoved')}</Text>
                   <Text style={[t.small, { marginTop: 4 }]} numberOfLines={1}>{request.note}</Text>
-                  <Text style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{tr('saved.requestedLine', { ago: fmtAgo(request.createdAt), date: fmtDate(request.createdAt) })}</Text>
+                  <Text style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{tr('saved.requestedLine', { rel: fmtRel(request.createdAt, tr), date: fmtDate(request.createdAt) })}</Text>
                 </View>
                 {taken ? null : <StatusBadge status={request.status} tr={tr} />}
               </Pressable>
