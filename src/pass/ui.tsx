@@ -455,17 +455,12 @@ export function EmptyState({
   /** Use the branded heart→Daata-logo loop instead of the plain icon disc. */
   brand?: boolean;
 }) {
-  const float = useSharedValue(0);
+  // icon sits still (no up-bounce); only a soft glow pulses behind it.
   const pulse = useSharedValue(0);
-
   useEffect(() => {
-    float.value = withRepeat(withTiming(1, { duration: 2200, easing: Easing.inOut(Easing.quad) }), -1, true);
     pulse.value = withRepeat(withTiming(1, { duration: 2400, easing: Easing.out(Easing.quad) }), -1, false);
-  }, [float, pulse]);
-
-  const iconStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -7 * float.value }] }));
+  }, [pulse]);
   const ringStyle = useAnimatedStyle(() => ({ transform: [{ scale: 1 + pulse.value * 0.6 }], opacity: 0.26 * (1 - pulse.value) }));
-
   const disc = compact ? 70 : 84;
   return (
     <View style={{ flex: 1, minHeight: compact ? 260 : 340, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36, paddingVertical: compact ? 40 : 50 }}>
@@ -474,9 +469,9 @@ export function EmptyState({
       ) : (
         <View style={{ width: disc + 36, height: disc + 36, alignItems: 'center', justifyContent: 'center' }}>
           <Animated.View style={[{ position: 'absolute', width: disc, height: disc, borderRadius: disc / 2, backgroundColor: C.accent }, ringStyle]} />
-          <Animated.View style={[{ width: disc, height: disc, borderRadius: disc / 2, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }, iconStyle]}>
+          <View style={{ width: disc, height: disc, borderRadius: disc / 2, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name={icon} size={compact ? 30 : 34} color={C.accent} />
-          </Animated.View>
+          </View>
         </View>
       )}
       <Animated.Text entering={FadeInDown.delay(80).springify()} style={{ marginTop: 16, textAlign: 'center', fontSize: 15, fontWeight: '600', color: C.muted }}>{title}</Animated.Text>

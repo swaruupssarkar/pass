@@ -182,9 +182,8 @@ export default function Manage() {
               </ScrollView>
             )}
 
-            {/* always available — lets the owner mark it given even if nobody requested in-app */}
-            <Btn icon="gift" label={tr('manage.givenExternal')} variant="outline" onPress={() => confirmTaken(s.takenPickerId!, null)} block style={{ marginTop: 14, paddingVertical: 12 }} textStyle={{ fontSize: 13.5 }} />
-            <Btn label={tr('common.cancel')} variant="ghost" onPress={() => patch({ takenPickerId: null })} block style={{ marginTop: 8 }} />
+            {/* in-app only: an item is marked given to a requester. No requesters → delete it instead. */}
+            <Btn label={tr('common.cancel')} variant="ghost" onPress={() => patch({ takenPickerId: null })} block style={{ marginTop: 14 }} />
           </View>
         </View>
       ) : null}
