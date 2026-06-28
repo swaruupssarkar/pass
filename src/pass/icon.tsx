@@ -50,6 +50,7 @@ export type IconName =
   | 'cart'
   | 'flag'
   | 'time'
+  | 'calendar'
   | 'play'
   // status / affect
   | 'check'
@@ -116,6 +117,7 @@ const MAP: Record<IconName, Glyph> = {
   cart: 'cart-outline',
   flag: 'flag',
   time: 'time-outline',
+  calendar: 'calendar-outline',
   play: 'play',
   check: 'checkmark',
   'check-circle': 'checkmark-circle',

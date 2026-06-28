@@ -779,9 +779,17 @@ export function PassProvider({ children }: { children: ReactNode }) {
           if (!code) return { ok: false, error: 'No authorization code returned.' };
           const { data: sess, error: exErr } = await supabase.auth.exchangeCodeForSession(code);
           if (exErr) return { ok: false, error: exErr.message };
-          // brand-new account if it was created on (≈) this sign-in
+          // "Needs onboarding" is decided by the SAME signal as applyUser: a profile with
+          // a city_id = onboarding done. NOT a created_at/last_sign_in_at timestamp window
+          // (unreliable, and wrong after delete-then-resignup). This makes "Continue with
+          // Google" route to onboarding for any not-yet-onboarded account, from EITHER the
+          // sign-in or sign-up tab. On any read error, default to onboarding (never skip it).
           const u = sess?.user;
-          const isNew = !!u && !!u.created_at && Math.abs(Date.parse(u.last_sign_in_at ?? u.created_at) - Date.parse(u.created_at)) < 10000;
+          let isNew = true;
+          if (u) {
+            const { data: prof } = await supabase.from('profiles').select('city_id').eq('id', u.id).maybeSingle();
+            isNew = !prof?.city_id;
+          }
           // success → onAuthStateChange sets currentUserId + pulls data
           return { ok: true, isNew };
         } catch (e) {

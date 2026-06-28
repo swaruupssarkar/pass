@@ -76,7 +76,7 @@ export function ProfileFields({ name, gender, dob, onName, onGender, onDob }: Pr
         <Pressable
           onPress={() => setOpen(true)}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.surface, borderRadius: radius.lg, borderCurve: 'continuous', borderWidth: 1.5, borderColor: C.line, paddingVertical: 14, paddingHorizontal: 14 }}>
-          <Icon name="time" size={18} color={C.muted} />
+          <Icon name="calendar" size={18} color={C.muted} />
           <Text style={{ fontSize: 15, color: dob ? C.ink : C.muted, fontWeight: dob ? '600' : '400' }}>
             {dob ? prettyDob(dob) : tr('profile.dobPlaceholder')}
           </Text>
