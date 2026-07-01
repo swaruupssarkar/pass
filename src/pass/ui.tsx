@@ -1,11 +1,12 @@
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
-import { memo, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
   Linking,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
@@ -62,6 +63,23 @@ export function Screen({
   return <View style={[{ flex: 1, backgroundColor: bg }, pad, style]}>{children}</View>;
 }
 
+// Pull-to-refresh control, standardised across list screens. Drop the returned
+// element into a ScrollView/FlatList `refreshControl` prop; swipe-down re-pulls
+// listings + this user's data via the store's `refresh` action.
+export function useRefresh() {
+  const { refresh } = usePass();
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refresh]);
+  return <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} colors={[C.accent]} />;
+}
+
 // ---------- text ----------
 
 export const t = StyleSheet.create({
@@ -89,6 +107,7 @@ export function PhotoTile({
   icon,
   iconSize = 40,
   gap = 16,
+  fit = 'cover',
   style,
   children,
 }: {
@@ -102,15 +121,24 @@ export function PhotoTile({
   icon?: IconName;
   iconSize?: number;
   gap?: number;
+  /** 'cover' (default) crops to fill; 'contain' shows the whole photo over a blurred
+   *  fill of itself — any aspect ratio looks good, nothing is cropped. */
+  fit?: 'cover' | 'contain';
   style?: StyleProp<ViewStyle>;
   children?: React.ReactNode;
 }) {
+  const photo = source ?? (uri ? { uri } : undefined);
   return (
     <View style={[{ backgroundColor: tint, overflow: 'hidden' }, style]}>
-      {source ? (
-        <Image source={source} style={StyleSheet.absoluteFill} contentFit="cover" transition={150} />
-      ) : uri ? (
-        <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={150} />
+      {photo ? (
+        fit === 'contain' ? (
+          <>
+            <Image source={photo} style={StyleSheet.absoluteFill} contentFit="cover" blurRadius={22} transition={150} />
+            <Image source={photo} style={StyleSheet.absoluteFill} contentFit="contain" transition={150} />
+          </>
+        ) : (
+          <Image source={photo} style={StyleSheet.absoluteFill} contentFit="cover" transition={150} />
+        )
       ) : icon ? (
         <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
           <Icon name={icon} size={iconSize} color={C.accent} />

@@ -4,12 +4,13 @@ import { ScrollView, Text, View } from 'react-native';
 import { catIcon, Icon, type IconName } from '@/pass/icon';
 import { fmtAgo, fmtDate, listingById, myHandoffs, reviewsFor, userName, usePass, useT, userDp } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Avatar, Header, PhotoTile, ReviewCard, Screen, shadow, t } from '@/pass/ui';
+import { Avatar, Header, PhotoTile, ReviewCard, Screen, shadow, t, useRefresh } from '@/pass/ui';
 
 export default function Impact() {
   const router = useRouter();
   const tr = useT();
   const { s, viewPerson } = usePass();
+  const refreshControl = useRefresh();
   const openPerson = (id: typeof s.currentUserId) => {
     viewPerson(id);
     router.push('/giver');
@@ -22,7 +23,7 @@ export default function Impact() {
   return (
     <Screen>
       <Header title={tr('impact.title')} />
-      <ScrollView contentContainerStyle={{ padding: 18, paddingTop: 0, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ padding: 18, paddingTop: 0, paddingBottom: 24 }} showsVerticalScrollIndicator={false} refreshControl={refreshControl}>
         <View style={{ backgroundColor: C.accent, borderRadius: 24, borderCurve: 'continuous', padding: 22, overflow: 'hidden' }}>
           <View style={{ position: 'absolute', top: -40, right: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.1)' }} />
           <View style={{ position: 'absolute', bottom: -50, right: 30, width: 90, height: 90, borderRadius: 45, backgroundColor: 'rgba(255,255,255,0.08)' }} />

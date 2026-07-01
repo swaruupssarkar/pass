@@ -146,10 +146,13 @@ export default function Thread() {
     .sort((a, b) => b.createdAt - a.createdAt)[0];
   const headerListing =
     latestReq && (latestReq.status === 'pending' || latestReq.status === 'accepted') ? listingById(s, latestReq.listingId) : null;
-  // "Share location" appears ONLY once the request is accepted by the owner, and
-  // disappears once the item is marked taken/given. Both parties get it until they
-  // each share (locShared is per-me).
-  const canShareLoc = latestReq?.status === 'accepted' && !headerListing?.taken && !blocked;
+  // "Share location" appears ONLY while there's a LIVE accepted request for an existing,
+  // not-yet-taken listing. headerListing is null unless the latest request is pending/
+  // accepted AND its listing still exists — so a cancelled/declined request (status flips
+  // off 'accepted') OR a deleted/taken listing all correctly hide the button. (The old
+  // `!headerListing?.taken` was `!undefined` = true when the listing was gone, leaving the
+  // button up.) Both parties get it until each shares (locShared is per-me).
+  const canShareLoc = !!headerListing && !headerListing.taken && latestReq?.status === 'accepted' && !blocked;
   // an item this person handed me that I haven't reviewed yet -> show an in-chat rate prompt
   const reviewListing = blocked ? null : pendingReviewFrom(s, meta.otherId);
   const rate = (n: number) => {

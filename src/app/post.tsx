@@ -30,14 +30,17 @@ export default function Post() {
   const [busy, setBusy] = useState(false);
   const lastQuery = useRef('');
 
+  // Force a 1:1 square crop so every product photo fills the feed + detail frames with no
+  // crop-of-subject and no blurred bars. Expo's crop UI (allowsEditing) only supports SINGLE
+  // selection, so photos are added one at a time (up to 4 via repeated taps).
   const pickFromGallery = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: 4 - photos.length, quality: 0.7 });
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.7 });
     if (!res.canceled) res.assets.forEach((a) => addPostPhoto(a.uri));
   };
   const takePhoto = async () => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) return showAlert(tr('post.cameraNeededTitle'), tr('post.cameraNeededMsg'));
-    const res = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+    const res = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.7 });
     if (!res.canceled) res.assets.forEach((a) => addPostPhoto(a.uri));
   };
 

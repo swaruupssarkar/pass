@@ -3,7 +3,7 @@ import * as Linking from 'expo-linking';
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { createContext, use, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, use, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 
 import {
   ageBand,
@@ -28,7 +28,7 @@ import {
 import { isExpoGo, REPORT_DELIST_THRESHOLD, REPORT_EMAIL, REPORT_ENDPOINT } from '@/pass/config';
 import { supabase } from '@/pass/supabase';
 import { capture, identifyUser, resetAnalytics, setPerson } from '@/pass/analytics';
-import { drainOutbox, flushOutbox, initOutbox, track } from '@/pass/outbox';
+import { drainOutbox, flushOutbox, initOutbox, pendingRowIds, track } from '@/pass/outbox';
 import { configureForegroundNotifications, registerForPush } from '@/pass/push';
 
 // finalize any pending auth browser session (OAuth redirect) on load
@@ -37,7 +37,7 @@ import {
   addBlock, addSave, clearNotificationsRemote, deleteAccount as deleteAccountRemote, deleteChatImage, deleteListingPhotos, deleteListingRemote, deleteMessageRemote, deleteNotificationRemote, deleteRequestRemote,
   clearThreadForMe, fetchListings, fetchProfiles, fetchProfileStats, fetchReviewsFor, insertHandoff, insertMessage, insertRequest, insertReview,
   markNotificationsRead, markThreadRead, pullUserData, removeBlock, removeSave, reportListingRemote, rowToListing, rowToMessage,
-  rowToNotification, rowToRequest, setListingTaken, updateProfileRemote, updateRequestStatus, updateThreadRead,
+  rowToNotification, rowToRequest, rowToReview, setListingTaken, updateProfileRemote, updateRequestStatus, updateThreadRead,
   uploadImage, uploadListingPhotos, upsertListing, upsertNotifyPrefs, upsertThread, uuid,
 } from '@/pass/repo';
 import { DEFAULT_LANG, type LangCode, translate } from '@/pass/i18n';
@@ -655,6 +655,8 @@ type Store = {
   deleteNotif: (id: string) => void;
   clearNotifs: () => void;
   openNotif: (n: Notification) => string | null;
+  // pull-to-refresh: re-pull listings + this user's data on demand (swipe-down)
+  refresh: () => Promise<void>;
   // report / onboarding
   submitReport: () => void;
   markOnboarded: () => void;
@@ -679,6 +681,54 @@ const PassContext = createContext<Store | null>(null);
 // not re-create a row the user deleted mid-upload — the upsert checks this set and
 // bails, so delete wins.
 const deletedListings = new Set<string>();
+
+// Two-phase listing sync: persist the ROW first (photos stripped to remote-only, so a
+// quick logout can't strand it behind a slow upload), then upload photos + a second
+// upsert with the real Storage URLs. Guarded by deletedListings. Reused by submitPost
+// AND by the pull-merge that re-syncs a listing preserved locally (posted, then the app
+// was killed before the outbox op durably persisted).
+function syncListing(l: Listing, setS: Dispatch<SetStateAction<State>>): Promise<void> {
+  return (async () => {
+    if (deletedListings.has(l.id)) return; // deleted before we even started
+    const remote = (l.photos ?? []).filter((p) => /^https?:\/\//.test(p));
+    await upsertListing({ ...l, photos: remote });
+    const photos = await uploadListingPhotos(l.ownerId, l.id, l.photos ?? []);
+    if (deletedListings.has(l.id)) return; // deleted during the slow upload — don't resurrect it
+    // use the CURRENT listing for the upsert, not the stale snapshot — taken/takenBy may
+    // have changed during the slow upload and must not be reverted.
+    let current: Listing | undefined;
+    setS((p) => {
+      current = p.listings.find((x) => x.id === l.id);
+      return { ...p, listings: p.listings.map((x) => (x.id === l.id ? { ...x, photos } : x)) };
+    });
+    await upsertListing({ ...(current ?? l), photos });
+    const dropped = (l.photos?.length ?? 0) - photos.length;
+    if (dropped > 0) {
+      setS((p) => ({ ...p, dialog: { title: translate(p.lang, 'post.photoFailTitle'), message: translate(p.lang, 'post.photoFailBody'), actions: [{ label: 'OK', kind: 'primary' }] } }));
+    }
+  })();
+}
+
+// Merge a fresh server pull with the current user's own listings whose CREATE is still
+// queued in the outbox (a post on flaky/offline network, or right before the app closed).
+// Without this the pull's blind replace drops those not-yet-synced rows from view even
+// though their write is still pending. Gating on a pending outbox upsert — not a time
+// window — means a DELETED listing (no pending create op) is never resurrected. The
+// pending op syncs itself via flushOutbox, so no re-enqueue here.
+function mergeAndSyncListings(serverLs: Listing[], userId: string, setS: Dispatch<SetStateAction<State>>): void {
+  if (userId === '') {
+    setS((prev) => ({ ...prev, listings: serverLs }));
+    return;
+  }
+  const pending = pendingRowIds('listings');
+  setS((prev) => {
+    const serverIds = new Set(serverLs.map((l) => l.id));
+    const mine = prev.listings.filter(
+      (l) => l.ownerId === userId && pending.has(l.id) && !serverIds.has(l.id) && !deletedListings.has(l.id)
+    );
+    return { ...prev, listings: [...mine, ...serverLs] };
+  });
+}
 // message ids deleted locally — stop an in-flight image upload→insert from
 // resurrecting a message the user deleted before its upload finished.
 const deletedMessages = new Set<string>();
@@ -1086,26 +1136,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
         if (pending) {
           const l = pending;
           capture('listing_posted', { category: l.cat, condition: l.cond, photos: (l.photos ?? []).length }, { set: { has_listed: true }, setOnce: { first_listed_at: new Date().toISOString() } });
-          track((async () => {
-            if (deletedListings.has(l.id)) return; // deleted before we even started
-            const remote = (l.photos ?? []).filter((p) => /^https?:\/\//.test(p));
-            await upsertListing({ ...l, photos: remote });
-            const photos = await uploadListingPhotos(l.ownerId, l.id, l.photos ?? []);
-            if (deletedListings.has(l.id)) return; // deleted during the slow upload — don't resurrect it
-            // use the CURRENT listing for the upsert, not the stale submit-time snapshot —
-            // taken/takenBy may have changed during the slow upload and must not be reverted.
-            let current: Listing | undefined;
-            setS((p) => {
-              current = p.listings.find((x) => x.id === l.id);
-              return { ...p, listings: p.listings.map((x) => (x.id === l.id ? { ...x, photos } : x)) };
-            });
-            await upsertListing({ ...(current ?? l), photos });
-            // some photos failed to upload (dropped, not persisted as broken file:// paths) — tell the user
-            const dropped = (l.photos?.length ?? 0) - photos.length;
-            if (dropped > 0) {
-              setS((p) => ({ ...p, dialog: { title: translate(p.lang, 'post.photoFailTitle'), message: translate(p.lang, 'post.photoFailBody'), actions: [{ label: 'OK', kind: 'primary' }] } }));
-            }
-          })());
+          track(syncListing(l, setS));
         }
         return outId;
       },
@@ -1142,6 +1173,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
         const l = s.listings.find((x) => x.id === listingId);
         if (!l) return;
         if (l.ownerId === s.currentUserId) return; // can't request your own listing
+        if (isBlocked(s, l.ownerId)) return; // blocked either way → no request/claim
         if (s.requests.some((r) => r.listingId === listingId && r.fromUserId === s.currentUserId)) return;
         const now = Date.now();
         const text = note.trim() || `Hi! Is the ${l.title} still available?`;
@@ -1183,7 +1215,9 @@ export function PassProvider({ children }: { children: ReactNode }) {
       acceptRequest: (requestId) => {
         const req = s.requests.find((r) => r.id === requestId);
         if (!req) return;
-        if (req.status !== 'pending') return; // already cancelled/accepted/declined — can't act
+        // owner can accept a pending request OR reconsider one they previously declined —
+        // but never a cancelled/accepted/taken one.
+        if (req.status !== 'pending' && req.status !== 'declined') return;
         const id = threadId(req.toUserId, req.fromUserId);
         const l = s.listings.find((x) => x.id === req.listingId);
         const seed: Message = { id: uuid(), from: req.fromUserId, text: req.note, ts: req.createdAt };
@@ -1204,7 +1238,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
-        track(updateRequestStatus(requestId, 'accepted', true)); // pending-only: never overrides a cancel
+        track(updateRequestStatus(requestId, 'accepted', ['pending', 'declined'])); // reconsider a decline, but never override a cancel
         capture('request_accepted', { listingId: req.listingId });
         track((async () => {
           await upsertThread(id, { listingId: req.listingId, starter: s.threadStarter[id] ?? req.fromUserId, accepted: true });
@@ -1229,7 +1263,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
-        track(updateRequestStatus(requestId, 'declined', true)); // pending-only: never overrides a cancel
+        track(updateRequestStatus(requestId, 'declined', ['pending'])); // pending-only: never overrides a cancel
       },
 
       // remove a request (pending or accepted). Removing an accepted one un-reserves
@@ -1368,7 +1402,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
       sendMsg: (text) => {
         const id = s.activeThreadId;
         const body = text.trim();
-        if (!id || !body) return;
+        if (!id || !body || isBlocked(s, otherInThread(s, id))) return; // blocked either way → no send
         const msg: Message = { id: uuid(), from: s.currentUserId, text: body, ts: Date.now(), replyTo: s.replyDraft ?? undefined };
         const starter = s.threadStarter[id] ?? s.currentUserId;
         const accepts = starter !== s.currentUserId; // replying accepts a cold DM
@@ -1398,7 +1432,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
 
       shareLoc: async () => {
         const id = s.activeThreadId;
-        if (!id) return;
+        if (!id || isBlocked(s, otherInThread(s, id))) return; // blocked either way → no send
         let coords: { latitude: number; longitude: number } | null = null;
         try {
           const { status } = await Location.requestForegroundPermissionsAsync();
@@ -1434,7 +1468,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
 
       sendImage: (uri) => {
         const id = s.activeThreadId;
-        if (!id) return;
+        if (!id || isBlocked(s, otherInThread(s, id))) return; // blocked either way → no send
         const msgId = uuid();
         const msg: Message = { id: msgId, from: s.currentUserId, text: '', image: uri, ts: Date.now(), replyTo: s.replyDraft ?? undefined };
         setS((prev) => {
@@ -1658,6 +1692,57 @@ export function PassProvider({ children }: { children: ReactNode }) {
       markOnboarded: () => setS((prev) => (prev.onboarded ? prev : { ...prev, onboarded: true })),
       recordNotifyNudge: () => setS((prev) => ({ ...prev, notifyNudgeDate: new Date().toISOString().slice(0, 10) })),
 
+      // Swipe-down refresh — same full pull as sign-in (applyUser), on demand. Fetch
+      // helpers return null / throw on error so a transient failure keeps the cache
+      // (never wipes chats/requests to []). Safe to call while logged out (listings only).
+      refresh: async () => {
+        try {
+          await flushOutbox(); // include queued optimistic writes before the wholesale pull
+          const ls = await fetchListings();
+          if (ls) mergeAndSyncListings(ls, s.currentUserId, setS); // preserve my just-posted, not-yet-synced listings
+          const userId = s.currentUserId;
+          if (!userId) return;
+          const refIds = new Set<string>();
+          (ls ?? []).forEach((l) => refIds.add(l.ownerId));
+          const ud = await pullUserData(userId);
+          if (ud) {
+            // Guard against a logout/account-switch during the await window: only write
+            // this user's private data if they're STILL the signed-in user. Otherwise a
+            // late-resolving refresh would bleed the prior account's chats/requests into
+            // the logged-out or next-account session.
+            setS((prev) =>
+              prev.currentUserId !== userId
+                ? prev
+                : {
+                    ...prev,
+                    requests: ud.requests,
+                    threads: ud.bundle.threads,
+                    threadListing: ud.bundle.threadListing,
+                    threadStarter: ud.bundle.threadStarter,
+                    threadAccepted: ud.bundle.threadAccepted,
+                    threadRead: ud.bundle.threadRead,
+                    threadCleared: ud.bundle.threadCleared,
+                    reviews: ud.reviews,
+                    handoffs: ud.handoffs,
+                    saved: Object.fromEntries(ud.saves.map((sid) => [sid, true])),
+                    blocked: Object.fromEntries(ud.blocks.map((k) => [k, true])),
+                    notify: { ...prev.notify, [userId]: ud.notify ?? DEFAULT_NOTIFY },
+                    notifications: ud.notifications,
+                  }
+            );
+            ud.requests.forEach((r) => { refIds.add(r.fromUserId); refIds.add(r.toUserId); });
+            Object.keys(ud.bundle.threads).forEach((tid) => threadUsers(tid).forEach((u) => refIds.add(u)));
+            ud.reviews.forEach((r) => { refIds.add(r.from); refIds.add(r.to); });
+            ud.handoffs.forEach((h) => { refIds.add(h.giverId); refIds.add(h.recipientId); });
+            ud.blocks.forEach((k) => { const [a, b] = k.split('>'); refIds.add(a); refIds.add(b); });
+          }
+          const profs = await fetchProfiles([...refIds]);
+          if (profs.length) setS((prev) => (prev.currentUserId !== userId ? prev : { ...prev, profiles: { ...prev.profiles, ...Object.fromEntries(profs.map((p) => [p.id, p])) } }));
+        } catch {
+          /* offline / transient — cache stays intact */
+        }
+      },
+
       setName: (name) => {
         const finalName = name.trim() || userName(s, s.currentUserId);
         setS((prev) => ({
@@ -1872,7 +1957,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
         await flushOutbox();
         // pull listings (source of truth) + the rest of the user's data
         const ls = await fetchListings();
-        if (ls) setS((prev) => ({ ...prev, listings: ls }));
+        if (ls) mergeAndSyncListings(ls, userId, setS); // preserve my just-posted, not-yet-synced listings
         const ud = await pullUserData(userId);
         const refIds = new Set<string>();
         (ls ?? []).forEach((l) => refIds.add(l.ownerId));
@@ -1950,6 +2035,9 @@ export function PassProvider({ children }: { children: ReactNode }) {
         if (!threadUsers(tid).includes(me)) return; // only my threads (id-dedupe below handles my own echo + multi-device)
         const msg = rowToMessage(m);
         setS((prev) => {
+          // blocked (either direction) → never surface their message (defence-in-depth;
+          // the notify/push triggers already skip it server-side)
+          if (isBlocked(prev, msg.from)) return prev;
           // a chat I cleared stays gone for messages at/before my cutoff (e.g. a late /
           // outbox-replayed OLD message); a genuinely-newer message (ts > cutoff) revives it
           const cut = prev.threadCleared[tid];
@@ -2064,6 +2152,26 @@ export function PassProvider({ children }: { children: ReactNode }) {
             ? { ...prev, profiles: { ...prev.profiles, [p.id]: { ...prev.profiles[p.id], id: p.id, name: p.name || 'Someone', cityId: p.city_id, dp: p.dp, since: p.since, gender: p.gender ?? prev.profiles[p.id]?.gender ?? null, dob: p.dob ?? prev.profiles[p.id]?.dob ?? null } } }
             : prev
         );
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reviews', filter: `to_user=eq.${me}` }, (payload) => {
+        // a review I RECEIVE must appear on my profile live (no re-pull needed) — merge it
+        // into s.reviews so reviewsFor(me)/userRating update everywhere.
+        if (payload.eventType === 'DELETE') return;
+        const rev = rowToReview(payload.new as Record<string, unknown>);
+        setS((prev) => {
+          const exists = prev.reviews.some((r) => r.id === rev.id);
+          return { ...prev, reviews: exists ? prev.reviews.map((r) => (r.id === rev.id ? rev : r)) : [rev, ...prev.reviews] };
+        });
+        ensureProfile(rev.from);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'blocks' }, (payload) => {
+        // learn a block/unblock live (either party — b_sel RLS lets the BLOCKED user read
+        // the row too) so the composer hides and the send/notify guards engage at once,
+        // without waiting for a re-pull.
+        const row = (payload.eventType === 'DELETE' ? payload.old : payload.new) as { blocker?: string; blocked?: string };
+        if (!row?.blocker || !row?.blocked) return;
+        const on = payload.eventType !== 'DELETE';
+        setS((prev) => ({ ...prev, blocked: { ...prev.blocked, [`${row.blocker}>${row.blocked}`]: on } }));
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${me}` }, (payload) => {
         // listen to UPDATE too: message notifications are coalesced server-side (one

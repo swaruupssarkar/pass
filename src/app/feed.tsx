@@ -16,7 +16,7 @@ import {
   useT,
 } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { BottomNav, Btn, EmptyState, FreeTag, PhotoTile, Pill, Screen, shadow, t } from '@/pass/ui';
+import { BottomNav, Btn, EmptyState, FreeTag, PhotoTile, Pill, Screen, shadow, t, useRefresh } from '@/pass/ui';
 
 const RADIUS_PRESETS = [3, 5, 10, 20, 100];
 
@@ -34,6 +34,7 @@ export default function Feed() {
   );
   const loc = activeLocationLabel(s);
   const unread = unreadCount(s);
+  const refreshControl = useRefresh();
 
   // keep the search box on local state so each keystroke is instant; only push the
   // query into global state (which re-runs browseListings + re-renders) after a pause
@@ -132,7 +133,7 @@ export default function Feed() {
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} refreshControl={refreshControl}>
         {/* categories — image tiles */}
         <View style={{ paddingHorizontal: 18, paddingTop: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Text style={t.title}>{tr('feed.categories')}</Text>
@@ -179,7 +180,7 @@ export default function Feed() {
               const d = distLabel(s, it);
               return (
                 <Pressable key={it.id} onPress={() => open(it.id)} style={{ width: cardW, backgroundColor: C.surface, borderRadius: radius.xl, borderCurve: 'continuous', padding: 9, marginBottom: 14, ...shadow(10, 26, 0.4) }}>
-                  <PhotoTile tint={it.tint} uri={it.photos?.[0]} icon={catIcon(it.cat)} iconSize={50} gap={20} style={{ aspectRatio: 1, borderRadius: radius.md }}>
+                  <PhotoTile tint={it.tint} uri={it.photos?.[0]} icon={catIcon(it.cat)} iconSize={50} gap={20} fit="contain" style={{ aspectRatio: 1, borderRadius: radius.md }}>
                     {d ? (
                       <View style={{ position: 'absolute', top: 9, left: 9, backgroundColor: 'rgba(28,24,22,0.62)', borderRadius: radius.pill, paddingVertical: 4, paddingHorizontal: 10 }}>
                         <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{d}</Text>

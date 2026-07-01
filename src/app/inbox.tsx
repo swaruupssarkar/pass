@@ -6,12 +6,13 @@ import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeabl
 import { Icon } from '@/pass/icon';
 import { fmtAgo, inboxRows, incomingRequests, threadId, threadPendingForMe, usePass, useT, userDp } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Avatar, BottomNav, Btn, EmptyState, PhotoTile, Screen, shadow, t } from '@/pass/ui';
+import { Avatar, BottomNav, Btn, EmptyState, PhotoTile, Screen, shadow, t, useRefresh } from '@/pass/ui';
 
 export default function Inbox() {
   const router = useRouter();
   const tr = useT();
   const { s, openThread, viewPerson, acceptRequest, declineRequest, acceptThread, blockUser, openThreadFor, openListing, deleteThread, showConfirm } = usePass();
+  const refreshControl = useRefresh();
   const [tab, setTab] = useState<'chats' | 'requests'>('chats');
   const rows = inboxRows(s);
   // Requests tab = pending requests awaiting MY decision. A request stays here even
@@ -80,7 +81,7 @@ export default function Inbox() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 24, gap: 11, flexGrow: 1 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 24, gap: 11, flexGrow: 1 }} showsVerticalScrollIndicator={false} refreshControl={refreshControl}>
         {tab === 'chats' ? (
           rows.length === 0 ? (
             <Empty icon="chat" title={tr('inbox.noChatsTitle')} body={tr('inbox.noChatsBody')} />
@@ -164,6 +165,9 @@ export default function Inbox() {
                   <Btn label={tr('inbox.reject')} variant="outline" onPress={() => declineRequest(request.id)} style={{ flex: 1, paddingVertical: 11, borderColor: C.dangerBorder }} textStyle={{ fontSize: 14, color: C.dangerInk }} />
                   <Btn icon="check" label={tr('common.accept')} onPress={() => acceptRequest(request.id)} style={{ flex: 1, paddingVertical: 11 }} textStyle={{ fontSize: 14 }} />
                 </View>
+              ) : request.status === 'declined' ? (
+                // reconsider: the owner can re-accept a request they previously declined
+                <Btn icon="check" label={tr('common.accept')} onPress={() => acceptRequest(request.id)} block style={{ paddingVertical: 11 }} textStyle={{ fontSize: 14 }} />
               ) : request.status === 'accepted' && listing ? (
                 <Btn icon="chat" label={tr('inbox.chatWith', { name: user.name })} onPress={() => chatWith(listing.id)} block style={{ paddingVertical: 11 }} textStyle={{ fontSize: 14 }} />
               ) : null}

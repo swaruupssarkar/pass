@@ -212,6 +212,10 @@ create or replace function public.notify_on_request()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare lt text;
 begin
+  -- a block (either direction) between requester and owner silences the request too
+  if exists (select 1 from public.blocks b
+             where (b.blocker = new.to_user and b.blocked = new.from_user)
+                or (b.blocker = new.from_user and b.blocked = new.to_user)) then return new; end if;
   -- respect the owner's chat/requests toggle: off → no in-app notification either
   if exists (select 1 from public.notify_prefs where user_id = new.to_user and chat = false) then return new; end if;
   select title into lt from public.listings where id = new.listing_id;
@@ -228,6 +232,10 @@ returns trigger language plpgsql security definer set search_path = public as $$
 declare lt text;
 begin
   if new.status = old.status then return new; end if;
+  -- a block (either direction) between requester and owner silences status updates too
+  if exists (select 1 from public.blocks b
+             where (b.blocker = new.to_user and b.blocked = new.from_user)
+                or (b.blocker = new.from_user and b.blocked = new.to_user)) then return new; end if;
   -- respect the requester's chat/requests toggle: off → no in-app notification either
   if exists (select 1 from public.notify_prefs where user_id = new.from_user and chat = false) then return new; end if;
   select title into lt from public.listings where id = new.listing_id;
@@ -255,6 +263,10 @@ begin
   select * into th from public.threads where id = new.thread_id;
   if th is null then return new; end if;
   other := case when th.user_a = new.from_user then th.user_b else th.user_a end;
+  -- a block (either direction) silences the chat: no notification to the recipient
+  if exists (select 1 from public.blocks b
+             where (b.blocker = other and b.blocked = new.from_user)
+                or (b.blocker = new.from_user and b.blocked = other)) then return new; end if;
   -- respect the recipient's chat/requests toggle: off → no in-app notification either
   if exists (select 1 from public.notify_prefs where user_id = other and chat = false) then return new; end if;
   select coalesce(nullif(name, ''), 'New message') into sender from public.profiles where id = new.from_user;
@@ -273,7 +285,15 @@ create trigger on_message_created after insert on public.messages
 -- collapses per conversation via collapseId = thread id, respects the chat toggle).
 create or replace function public.push_message_webhook()
 returns trigger language plpgsql security definer set search_path = public, net as $$
+declare other uuid;
 begin
+  select case when user_a = new.from_user then user_b else user_a end into other
+    from public.threads where id = new.thread_id;
+  -- a block (either direction) silences the chat: no push to the recipient
+  if other is not null and exists (
+    select 1 from public.blocks b
+    where (b.blocker = other and b.blocked = new.from_user)
+       or (b.blocker = new.from_user and b.blocked = other)) then return new; end if;
   perform net.http_post(
     url := 'https://kugmucssfdlzsqotxvoy.supabase.co/functions/v1/notify-message',
     body := jsonb_build_object('type', 'INSERT', 'table', 'messages', 'record', to_jsonb(new)),
@@ -291,6 +311,10 @@ create trigger on_message_push after insert on public.messages
 create or replace function public.push_request_webhook()
 returns trigger language plpgsql security definer set search_path = public, net as $$
 begin
+  -- a block (either direction) between requester and owner silences the push too
+  if exists (select 1 from public.blocks b
+             where (b.blocker = new.to_user and b.blocked = new.from_user)
+                or (b.blocker = new.from_user and b.blocked = new.to_user)) then return new; end if;
   perform net.http_post(
     url := 'https://kugmucssfdlzsqotxvoy.supabase.co/functions/v1/notify-request',
     body := jsonb_build_object('type', TG_OP, 'record', to_jsonb(new),
@@ -394,6 +418,9 @@ create policy m_del on public.messages for delete using (from_user = auth.uid())
 -- participant, and the client needs thread_id to know which thread to drop the
 -- message from. (Default replica identity ships only the PK, so neither works.)
 alter table public.messages replica identity full;
+-- blocks: DELETE (unblock) must carry both columns so the blocked party's client can
+-- react (its SELECT policy references `blocked`, and the realtime filter needs both).
+alter table public.blocks replica identity full;
 
 -- reviews: public read, author-only write
 drop policy if exists rev_sel on public.reviews;
@@ -423,8 +450,15 @@ create policy n_del on public.notifications for delete using (user_id = auth.uid
 -- saves / blocks / notify_prefs: self only
 drop policy if exists s_all on public.saves;
 create policy s_all on public.saves for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+-- blocks: the BLOCKED party must be able to READ the row (so their client knows it's
+-- blocked and hides the composer); only the BLOCKER may create/remove it.
 drop policy if exists b_all on public.blocks;
-create policy b_all on public.blocks for all using (blocker = auth.uid()) with check (blocker = auth.uid());
+drop policy if exists b_sel on public.blocks;
+drop policy if exists b_ins on public.blocks;
+drop policy if exists b_del on public.blocks;
+create policy b_sel on public.blocks for select using (blocker = auth.uid() or blocked = auth.uid());
+create policy b_ins on public.blocks for insert with check (blocker = auth.uid());
+create policy b_del on public.blocks for delete using (blocker = auth.uid());
 drop policy if exists np_all on public.notify_prefs;
 create policy np_all on public.notify_prefs for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
@@ -442,6 +476,7 @@ alter publication supabase_realtime add table public.messages;
 alter publication supabase_realtime add table public.notifications;
 alter publication supabase_realtime add table public.reviews;
 alter publication supabase_realtime add table public.handoffs;
+alter publication supabase_realtime add table public.blocks;
 
 -- ============================================================================
 -- STORAGE: public-read buckets + owner-only write (first path segment = uid)

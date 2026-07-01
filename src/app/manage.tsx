@@ -6,13 +6,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { catIcon, Icon, type IconName } from '@/pass/icon';
 import { fmtDate, fmtRel, myListings, requestsFor, userName, usePass, useT, userDp } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { Avatar, Btn, EmptyState, Header, PhotoTile, Screen, shadow, t } from '@/pass/ui';
+import { Avatar, Btn, EmptyState, Header, PhotoTile, Screen, shadow, t, useRefresh } from '@/pass/ui';
 import type { Listing } from '@/pass/data';
 
 export default function Manage() {
   const router = useRouter();
   const tr = useT();
   const { s, patch, startPost, startEdit, openTakenPicker, confirmTaken, deleteListing, acceptRequest, declineRequest, openCancelReason, showConfirm, openListing, viewPerson } = usePass();
+  const refreshControl = useRefresh();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const sheetListMax = Math.round(height * 0.5); // keep bottom-sheet usable on short devices
@@ -60,7 +61,7 @@ export default function Manage() {
       {list.length === 0 ? (
         <EmptyState icon="gift" title={tr('manage.emptyTitle')} body={tr('manage.emptyBody')} ctaIcon="add" ctaLabel={tr('manage.postItem')} onCta={newListing} />
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 18, paddingTop: 0, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={{ padding: 18, paddingTop: 0, paddingBottom: 24 }} showsVerticalScrollIndicator={false} refreshControl={refreshControl}>
           {/* Live / Given filter */}
           <View style={{ flexDirection: 'row', backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: radius.md, padding: 4, gap: 4, marginBottom: 16 }}>
             {(['live', 'given'] as const).map((k) => {
@@ -220,6 +221,9 @@ export default function Manage() {
                       <Btn label={tr('inbox.reject')} variant="outline" onPress={() => declineRequest(request.id)} style={{ flex: 1, paddingVertical: 10, borderColor: C.dangerBorder }} textStyle={{ fontSize: 13.5, color: C.dangerInk }} />
                       <Btn icon="check" label={tr('common.accept')} onPress={() => acceptRequest(request.id)} style={{ flex: 1, paddingVertical: 10 }} textStyle={{ fontSize: 13.5 }} />
                     </View>
+                  ) : request.status === 'declined' ? (
+                    // reconsider: the owner can re-accept a request they previously declined
+                    <Btn icon="check" label={tr('common.accept')} onPress={() => acceptRequest(request.id)} block style={{ paddingVertical: 10 }} textStyle={{ fontSize: 13.5 }} />
                   ) : request.status === 'accepted' ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>

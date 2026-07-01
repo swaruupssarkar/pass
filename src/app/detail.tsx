@@ -99,7 +99,14 @@ export default function Detail() {
             showsHorizontalScrollIndicator={false}
             onMomentumScrollEnd={(e) => setIdx(Math.round(e.nativeEvent.contentOffset.x / width))}>
             {photos.map((p) => (
-              <Image key={p} source={{ uri: p }} style={{ width, height: bandH }} contentFit="cover" transition={150} />
+              // Any aspect ratio looks good: a blurred, cropped copy fills the frame; the
+              // real photo sits on top with `contain` so nothing (e.g. a subject at the
+              // bottom) is ever cut off.
+              <View key={p} style={{ width, height: bandH }}>
+                <Image source={{ uri: p }} style={StyleAbs} contentFit="cover" blurRadius={28} transition={150} />
+                <View style={[StyleAbs, { backgroundColor: 'rgba(0,0,0,0.18)' }]} />
+                <Image source={{ uri: p }} style={StyleAbs} contentFit="contain" transition={150} />
+              </View>
             ))}
           </ScrollView>
         ) : (

@@ -5,12 +5,13 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { catIcon, Icon } from '@/pass/icon';
 import { distLabel, fmtDate, fmtRel, myRequests, savedListings, threadId, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { BottomNav, Btn, EmptyState, FreeTag, PhotoTile, Screen, shadow, t } from '@/pass/ui';
+import { BottomNav, Btn, EmptyState, FreeTag, PhotoTile, Screen, shadow, t, useRefresh } from '@/pass/ui';
 
 export default function Saved() {
   const router = useRouter();
   const tr = useT();
   const { s, openListing, toggleSave, openThreadFor, openThreadWith, viewPerson, cancelRequest, openCancelReason, removeRequest, showConfirm } = usePass();
+  const refreshControl = useRefresh();
   const { tab: tabParam } = useLocalSearchParams<{ tab?: string }>();
   const [tab, setTab] = useState<'saved' | 'requested'>(tabParam === 'requested' ? 'requested' : 'saved');
   const saved = savedListings(s);
@@ -54,7 +55,7 @@ export default function Saved() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 24, gap: 13, flexGrow: 1 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 24, gap: 13, flexGrow: 1 }} showsVerticalScrollIndicator={false} refreshControl={refreshControl}>
         {tab === 'saved' ? (
           saved.length === 0 ? (
             <Empty

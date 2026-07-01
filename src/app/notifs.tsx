@@ -6,7 +6,7 @@ import type { Notification } from '@/pass/data';
 import { Icon } from '@/pass/icon';
 import { fmtAgo, notificationsFor, usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
-import { EmptyState, Header, Screen, shadow } from '@/pass/ui';
+import { EmptyState, Header, Screen, shadow, useRefresh } from '@/pass/ui';
 
 const ICON_FOR = (kind: Notification['kind']) => (kind === 'taken' ? 'gift' : kind === 'item' ? 'pin' : 'chat');
 
@@ -14,6 +14,7 @@ export default function Notifs() {
   const router = useRouter();
   const tr = useT();
   const { s, openNotif, markNotifsRead, deleteNotif, clearNotifs, showConfirm } = usePass();
+  const refreshControl = useRefresh();
   const list = notificationsFor(s);
   const hasUnread = list.some((n) => !n.read);
 
@@ -52,7 +53,7 @@ export default function Notifs() {
       {list.length === 0 ? (
         <EmptyState icon="bell" title={tr('notifs.empty')} />
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 18, paddingTop: 4, paddingBottom: 24, gap: 10 }}>
+        <ScrollView contentContainerStyle={{ padding: 18, paddingTop: 4, paddingBottom: 24, gap: 10 }} refreshControl={refreshControl}>
           {list.map((n) => (
             <ReanimatedSwipeable
               key={n.id}

@@ -11,7 +11,7 @@ import { supabase } from '@/pass/supabase';
 
 export type Op =
   | { kind: 'upsert'; table: string; row: Record<string, unknown>; onConflict?: string }
-  | { kind: 'update'; table: string; values: Record<string, unknown>; match: Record<string, unknown> }
+  | { kind: 'update'; table: string; values: Record<string, unknown>; match: Record<string, unknown>; matchIn?: Record<string, unknown[]> }
   | { kind: 'delete'; table: string; match: Record<string, unknown> }
   | { kind: 'rpc'; fn: string; args: Record<string, unknown> };
 
@@ -67,6 +67,7 @@ export async function execResult(op: Op): Promise<{ ok: boolean; rejected: boole
     } else if (op.kind === 'update') {
       let q = supabase.from(op.table).update(op.values);
       for (const [k, v] of Object.entries(op.match)) q = q.eq(k, v as never);
+      if (op.matchIn) for (const [k, arr] of Object.entries(op.matchIn)) q = q.in(k, arr as never[]);
       ({ error } = await q);
     } else if (op.kind === 'delete') {
       let q = supabase.from(op.table).delete();
@@ -84,6 +85,16 @@ export async function execResult(op: Op): Promise<{ ok: boolean; rejected: boole
 /** Convenience boolean wrapper. */
 export async function exec(op: Op): Promise<boolean> {
   return (await execResult(op)).ok;
+}
+
+/** Ids of rows with a still-queued upsert for `table` (client-uuid PKs). Lets the store
+ *  keep an optimistic row visible across a wholesale pull until its write actually syncs. */
+export function pendingRowIds(table: string): Set<string> {
+  const ids = new Set<string>();
+  for (const op of queue) {
+    if (op.kind === 'upsert' && op.table === table && typeof op.row.id === 'string') ids.add(op.row.id);
+  }
+  return ids;
 }
 
 /** Try a write now; queue it for retry if it fails. (UI already updated optimistically.) */

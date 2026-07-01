@@ -177,10 +177,10 @@ export async function insertRequest(req: Request): Promise<void> {
   // constraint (which would poison the outbox forever).
   await push({ kind: 'upsert', table: 'requests', onConflict: 'listing_id,from_user', row: { id: req.id, listing_id: req.listingId, from_user: req.fromUserId, to_user: req.toUserId, note: req.note, status: req.status, title: req.title ?? null, photo: req.photo ?? null, tint: req.tint ?? null, cat: req.cat ?? null } });
 }
-export async function updateRequestStatus(id: string, status: string, onlyFromPending = false): Promise<void> {
-  // onlyFromPending: owner accept/decline only applies while still pending — so it can
-  // never overwrite a request the requester already cancelled (race-safe at the DB).
-  await push({ kind: 'update', table: 'requests', values: { status }, match: onlyFromPending ? { id, status: 'pending' } : { id } });
+export async function updateRequestStatus(id: string, status: string, from?: string[]): Promise<void> {
+  // `from`: only apply when the current status is one of these (race-safe — accept/decline
+  // must never overwrite a request the requester already cancelled). Omitted → match id only.
+  await push({ kind: 'update', table: 'requests', values: { status }, match: { id }, matchIn: from ? { status: from } : undefined });
 }
 export async function deleteRequestRemote(id: string): Promise<void> {
   await push({ kind: 'delete', table: 'requests', match: { id } });
