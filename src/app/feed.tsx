@@ -180,7 +180,7 @@ export default function Feed() {
               const d = distLabel(s, it);
               return (
                 <Pressable key={it.id} onPress={() => open(it.id)} style={{ width: cardW, backgroundColor: C.surface, borderRadius: radius.xl, borderCurve: 'continuous', padding: 9, marginBottom: 14, ...shadow(10, 26, 0.4) }}>
-                  <PhotoTile tint={it.tint} uri={it.photos?.[0]} icon={catIcon(it.cat)} iconSize={50} gap={20} fit="contain" style={{ aspectRatio: 1, borderRadius: radius.md }}>
+                  <PhotoTile tint={it.tint} uri={it.photos?.[0]} icon={catIcon(it.cat)} iconSize={50} gap={20} style={{ aspectRatio: 1, borderRadius: radius.md }}>
                     {d ? (
                       <View style={{ position: 'absolute', top: 9, left: 9, backgroundColor: 'rgba(28,24,22,0.62)', borderRadius: radius.pill, paddingVertical: 4, paddingHorizontal: 10 }}>
                         <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{d}</Text>
