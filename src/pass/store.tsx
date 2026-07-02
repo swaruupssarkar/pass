@@ -4,6 +4,7 @@ import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { createContext, use, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { AppState } from 'react-native';
 
 import {
   ageBand,
@@ -25,7 +26,7 @@ import {
   REPORT_REASONS,
   type UserId,
 } from '@/pass/data';
-import { isExpoGo, REPORT_DELIST_THRESHOLD, REPORT_EMAIL, REPORT_ENDPOINT } from '@/pass/config';
+import { hasSupabase, isExpoGo, REPORT_DELIST_THRESHOLD, REPORT_EMAIL, REPORT_ENDPOINT } from '@/pass/config';
 import { supabase } from '@/pass/supabase';
 import { capture, identifyUser, resetAnalytics, setPerson } from '@/pass/analytics';
 import { drainOutbox, flushOutbox, initOutbox, pendingRowIds, track } from '@/pass/outbox';
@@ -53,6 +54,17 @@ export type Dialog = { title: string; message?: string; actions: DialogAction[] 
 
 export type NotifyPrefs = { near: boolean; chat: boolean; addr: { lat: number; lng: number; label: string } | null };
 const DEFAULT_NOTIFY: NotifyPrefs = { near: true, chat: true, addr: null };
+
+// A notification tap that launched a COLD start arrives before navigation/auth is
+// ready. The tap handler stashes the target route here; the splash redirect
+// consumes it right after landing on the feed (so back returns to the feed,
+// WhatsApp-style) instead of dropping the user on the feed with no context.
+let pendingNotifNav: string | null = null;
+export const takePendingNotifNav = (): string | null => {
+  const v = pendingNotifNav;
+  pendingNotifNav = null;
+  return v;
+};
 
 /** The report payload that gets emailed (see deliverReport). Nothing is stored. */
 export type ReportPayload = {
@@ -1903,6 +1915,16 @@ export function PassProvider({ children }: { children: ReactNode }) {
     };
   }, [s]);
 
+  // latest state/actions for long-lived listeners (notification taps, AppState) —
+  // those closures outlive any single render, so they read through refs.
+  // (Assigned in an effect, not during render — React Compiler safe.)
+  const sRef = useRef(s);
+  const storeRef = useRef(store);
+  useEffect(() => {
+    sRef.current = s;
+    storeRef.current = store;
+  });
+
   // hydrate the AsyncStorage cache (instant cold-start paint; Supabase pull reconciles after)
   useEffect(() => {
     let alive = true;
@@ -1925,13 +1947,22 @@ export function PassProvider({ children }: { children: ReactNode }) {
     initOutbox();
     void flushOutbox();
     void configureForegroundNotifications();
-    // tapping a push notification → open the relevant listing
+    // tapping a push notification → open the conversation / listing directly.
+    // Handles BOTH warm taps (app in background → response listener) and the tap
+    // that LAUNCHED a killed app (cold start → getLastNotificationResponseAsync),
+    // so a message notification always lands in the chat, never on a bare feed.
     let sub: { remove: () => void } | undefined;
     (async () => {
       if (isExpoGo) return; // expo-notifications throws on import in Expo Go
       try {
         const Notifications = await import('expo-notifications');
-        sub = Notifications.addNotificationResponseReceivedListener((resp) => {
+        const NOTIF_TAP_KEY = 'pass.lastNotifTap'; // survives restarts → a cold start never replays an old tap
+        const handled = new Set<string>(); // in-session dedupe (listener + cold-start can both see the same tap)
+        const handleTap = (resp: { notification: { request: { identifier: string; content: { data?: unknown } } } }) => {
+          const id = resp.notification.request.identifier;
+          if (handled.has(id)) return;
+          handled.add(id);
+          void AsyncStorage.setItem(NOTIF_TAP_KEY, id).catch(() => {});
           const data = resp.notification.request.content.data as { listingId?: string; threadId?: string; route?: string };
           if (data?.threadId) {
             // open the conversation + clear its unread (mark read locally AND in the DB
@@ -1946,15 +1977,48 @@ export function PassProvider({ children }: { children: ReactNode }) {
           } else if (data?.listingId) {
             setS((prev) => ({ ...prev, activeListingId: data.listingId as string }));
           }
+          const route = data?.route ?? '/feed';
+          const ready = sRef.current.hydrated && sRef.current.authReady && !!sRef.current.currentUserId;
+          if (!ready) {
+            // cold start: navigation/auth not up yet — the splash redirect consumes this
+            pendingNotifNav = route;
+            return;
+          }
           try {
-            router.navigate((data?.route ?? '/feed') as Parameters<typeof router.navigate>[0]);
-          } catch {}
-        });
+            router.navigate(route as Parameters<typeof router.navigate>[0]);
+          } catch {
+            pendingNotifNav = route; // navigator not mounted yet — consumed by the splash redirect
+          }
+        };
+        sub = Notifications.addNotificationResponseReceivedListener(handleTap);
+        // cold start: the tap that launched the app fired before the listener existed
+        const last = await Notifications.getLastNotificationResponseAsync();
+        if (last) {
+          const seen = await AsyncStorage.getItem(NOTIF_TAP_KEY).catch(() => null);
+          if (seen !== last.notification.request.identifier) handleTap(last);
+        }
       } catch {
         /* native module unavailable — ignore */
       }
     })();
     return () => sub?.remove();
+  }, []);
+
+  // returning to foreground: the realtime socket dies while the app is backgrounded
+  // and events from that window are NEVER replayed by the channel — reconcile with
+  // one pull (same path as pull-to-refresh) so chats are current the moment the app
+  // opens, WhatsApp-style. Throttled so quick app-switches (camera, share sheet)
+  // don't re-pull; sub-15s gaps rarely drop the socket.
+  const lastFgPull = useRef(0);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st !== 'active' || !hasSupabase() || !sRef.current.currentUserId) return;
+      const now = Date.now();
+      if (now - lastFgPull.current < 15_000) return;
+      lastFgPull.current = now;
+      void storeRef.current.refresh();
+    });
+    return () => sub.remove();
   }, []);
 
   // auth: mirror the Supabase session into the store + bootstrap the profile row

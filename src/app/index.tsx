@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 import { Image, Pressable, Text, View } from 'react-native';
 import Animated, { Easing, interpolateColor, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 
-import { usePass, useT } from '@/pass/store';
+import { takePendingNotifNav, usePass, useT } from '@/pass/store';
 import { C } from '@/pass/theme';
 
 export default function Splash() {
@@ -21,7 +21,19 @@ export default function Splash() {
   // skip the create-password step. Only redirect while the splash is foreground.
   useEffect(() => {
     if (!focused || !s.hydrated || !s.authReady) return;
-    if (s.currentUserId) router.replace(s.onboarded ? '/feed' : '/profile-setup');
+    if (s.currentUserId) {
+      router.replace(s.onboarded ? '/feed' : '/profile-setup');
+      // a notification tap launched this cold start → continue straight into its
+      // screen (thread/detail), stacked on the feed so back returns to the feed
+      const pending = takePendingNotifNav();
+      if (pending && s.onboarded) {
+        setTimeout(() => {
+          try {
+            router.push(pending as Parameters<typeof router.push>[0]);
+          } catch {}
+        }, 0);
+      }
+    }
   }, [focused, s.hydrated, s.authReady, s.currentUserId, s.onboarded, router]);
 
   // Show the "tap to start" intro ONLY once we know the user is signed out. While the
