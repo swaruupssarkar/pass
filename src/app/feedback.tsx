@@ -1,7 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as MailComposer from 'expo-mail-composer';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
@@ -28,6 +28,7 @@ export default function Feedback() {
   const [msg, setMsg] = useState('');
   const [file, setFile] = useState<Picked | null>(null);
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false); // synchronous double-tap lock — busy state lands a frame late
 
   const pick = async () => {
     const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
@@ -38,8 +39,9 @@ export default function Feedback() {
   };
 
   const send = async () => {
-    if (busy) return;
+    if (inFlight.current || busy) return;
     if (!msg.trim()) return showAlert(tr('feedback.emptyTitle'), tr('feedback.emptyBody'));
+    inFlight.current = true;
     setBusy(true);
     try {
       if (!(await MailComposer.isAvailableAsync())) {
@@ -57,13 +59,16 @@ export default function Feedback() {
       });
       setBusy(false);
       capture('feedback_submitted', { category: cat, hasAttachment: !!file, status: r.status });
-      if (r.status !== 'cancelled') {
+      // only a real send counts — 'saved' (iOS draft) is treated like cancel
+      if (r.status === 'sent') {
         showAlert(tr('feedback.thanksTitle'), tr('feedback.thanksBody'));
         router.back();
       }
     } catch {
       setBusy(false);
       showAlert(tr('feedback.failTitle'), tr('feedback.failBody'));
+    } finally {
+      inFlight.current = false;
     }
   };
 

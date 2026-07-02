@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { CITY_IMG } from '@/pass/data';
 import { Icon } from '@/pass/icon';
@@ -11,19 +12,30 @@ export default function City() {
   const router = useRouter();
   const tr = useT();
   const { s, setCity, useCurrentLocation, showAlert } = usePass();
+  const [locBusy, setLocBusy] = useState(false);
+
+  // From onboarding → replace to /feed; from Settings (already onboarded) → just go back.
+  const leave = () => {
+    if (s.onboarded) router.back();
+    else router.replace('/feed');
+  };
 
   const onUseLocation = async () => {
+    if (locBusy) return; // re-entry guard while the GPS fix is in flight
+    setLocBusy(true);
     const r = await useCurrentLocation();
+    setLocBusy(false);
     // only GPS success completes onboarding (sets city + onboarded). On denied / no-fix,
     // stay here so the user can pick a city — never push to /feed with onboarded still false
     // (that would bounce them back into onboarding on the next launch).
-    if (r === 'granted') router.replace('/feed');
+    if (r === 'granted') leave();
+    else if (r === 'denied') showAlert(tr('feed.locationOffTitle'), tr('feed.locationOffMsg'));
     else showAlert(tr('city.gpsFailedTitle'), tr('city.gpsFailedBody'));
   };
 
   const onPickCity = (id: string) => {
     setCity(id);
-    router.replace('/feed');
+    leave();
   };
 
   return (
@@ -62,7 +74,7 @@ export default function City() {
             <Text style={{ fontSize: 16, fontWeight: '700', color: C.ink }}>{tr('city.useLocation')}</Text>
             <Text style={[t.small, { marginTop: 2 }]}>{tr('city.useLocationHint')}</Text>
           </View>
-          <Icon name="forward" size={18} color={C.muted} />
+          {locBusy ? <ActivityIndicator size="small" color={C.accent} /> : <Icon name="forward" size={18} color={C.muted} />}
         </Pressable>
 
         <Text style={[t.label, { marginBottom: 11 }]}>{tr('city.citiesLabel')}</Text>

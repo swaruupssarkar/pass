@@ -236,15 +236,23 @@ begin
   if exists (select 1 from public.blocks b
              where (b.blocker = new.to_user and b.blocked = new.from_user)
                 or (b.blocker = new.from_user and b.blocked = new.to_user)) then return new; end if;
-  -- respect the requester's chat/requests toggle: off → no in-app notification either
-  if exists (select 1 from public.notify_prefs where user_id = new.from_user and chat = false) then return new; end if;
-  select title into lt from public.listings where id = new.listing_id;
+  -- listing title, falling back to the request's snapshot once the listing is deleted
+  lt := coalesce((select title from public.listings where id = new.listing_id), new.title);
   if new.status = 'accepted' then
+    -- respect the recipient's chat/requests toggle: off → no in-app notification either
+    if exists (select 1 from public.notify_prefs where user_id = new.from_user and chat = false) then return new; end if;
     insert into public.notifications (user_id, title, body, kind, listing_id, route)
     values (new.from_user, 'Request accepted', coalesce(lt,'the item'), 'request', new.listing_id, '/inbox');
   elsif new.status = 'declined' then
+    if exists (select 1 from public.notify_prefs where user_id = new.from_user and chat = false) then return new; end if;
     insert into public.notifications (user_id, title, body, kind, listing_id, route)
     values (new.from_user, 'Request declined', coalesce(lt,'the item'), 'request', new.listing_id, '/inbox');
+  elsif new.status = 'cancelled' then
+    -- the REQUESTER cancelled → notify the OWNER (cross-device; the canceller's app
+    -- only updates its own state)
+    if exists (select 1 from public.notify_prefs where user_id = new.to_user and chat = false) then return new; end if;
+    insert into public.notifications (user_id, title, body, kind, listing_id, route)
+    values (new.to_user, 'Request cancelled', coalesce(lt,'the item'), 'request', new.listing_id, '/manage');
   end if;
   return new;
 end; $$;
@@ -339,15 +347,36 @@ create trigger on_handoff_created after insert on public.handoffs
   for each row execute function public.notify_on_handoff();
 
 -- ============================================================================
--- RPC: increment report count (cross-owner write → security definer)
+-- RPC: report a listing (cross-owner write → security definer)
+-- One report per user per listing (listing_reports dedupes); the tally lives in
+-- report_counts (public-readable, drives the client hide) and the server delists
+-- at the threshold so OTHER devices stop seeing it too.
 -- ============================================================================
+create table if not exists public.listing_reports (
+  listing_id uuid not null references public.listings(id) on delete cascade,
+  reporter uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz default now(),
+  primary key (listing_id, reporter)
+);
+alter table public.listing_reports enable row level security;
+-- no client policies: rows are written only via the security-definer RPC below
+
 create or replace function public.report_listing(p_listing uuid)
 returns int language plpgsql security definer set search_path = public as $$
-declare c int;
+declare c int; uid uuid := auth.uid();
 begin
+  if uid is null then raise exception 'report_listing: no authenticated user'; end if;
+  insert into public.listing_reports (listing_id, reporter) values (p_listing, uid)
+  on conflict do nothing;
+  if not found then
+    -- duplicate report by the same user: return the tally unchanged
+    select count into c from public.report_counts where listing_id = p_listing;
+    return coalesce(c, 0);
+  end if;
   insert into public.report_counts (listing_id, count) values (p_listing, 1)
   on conflict (listing_id) do update set count = public.report_counts.count + 1
   returning count into c;
+  if c >= 5 then update public.listings set delisted = true where id = p_listing; end if;
   return c;
 end; $$;
 
@@ -385,13 +414,25 @@ create policy l_upd on public.listings for update using (owner_id = auth.uid());
 drop policy if exists l_del on public.listings;
 create policy l_del on public.listings for delete using (owner_id = auth.uid());
 
--- requests: either party reads; requester inserts; either updates/deletes
+-- requests: either party reads; requester inserts; either updates/deletes.
+-- INSERT/UPDATE additionally refuse a blocked pair — the app already refuses
+-- client-side, but RLS makes it hold for stale/modified clients too.
 drop policy if exists r_sel on public.requests;
 create policy r_sel on public.requests for select using (from_user = auth.uid() or to_user = auth.uid());
 drop policy if exists r_ins on public.requests;
-create policy r_ins on public.requests for insert with check (from_user = auth.uid());
+create policy r_ins on public.requests for insert with check (
+  from_user = auth.uid()
+  and not exists (
+    select 1 from public.blocks b
+    where (b.blocker = to_user and b.blocked = from_user)
+       or (b.blocker = from_user and b.blocked = to_user)));
 drop policy if exists r_upd on public.requests;
-create policy r_upd on public.requests for update using (from_user = auth.uid() or to_user = auth.uid());
+create policy r_upd on public.requests for update
+  using (from_user = auth.uid() or to_user = auth.uid())
+  with check (not exists (
+    select 1 from public.blocks b
+    where (b.blocker = to_user and b.blocked = from_user)
+       or (b.blocker = from_user and b.blocked = to_user)));
 drop policy if exists r_del on public.requests;
 create policy r_del on public.requests for delete using (from_user = auth.uid() or to_user = auth.uid());
 
@@ -407,9 +448,17 @@ create policy t_upd on public.threads for update using (user_a = auth.uid() or u
 drop policy if exists m_sel on public.messages;
 create policy m_sel on public.messages for select using (
   exists (select 1 from public.threads th where th.id = thread_id and (th.user_a = auth.uid() or th.user_b = auth.uid())));
+-- sender-only insert; a blocked pair (either direction) cannot write at all —
+-- client guards already refuse, RLS makes it hold for stale/modified clients
 drop policy if exists m_ins on public.messages;
 create policy m_ins on public.messages for insert with check (
-  from_user = auth.uid() and exists (select 1 from public.threads th where th.id = thread_id and (th.user_a = auth.uid() or th.user_b = auth.uid())));
+  from_user = auth.uid()
+  and exists (select 1 from public.threads th where th.id = thread_id and (th.user_a = auth.uid() or th.user_b = auth.uid()))
+  and not exists (
+    select 1 from public.threads th join public.blocks b
+      on (b.blocker = th.user_a and b.blocked = th.user_b)
+      or (b.blocker = th.user_b and b.blocked = th.user_a)
+    where th.id = thread_id));
 -- sender can delete their own message (WhatsApp-style "delete for everyone")
 drop policy if exists m_del on public.messages;
 create policy m_del on public.messages for delete using (from_user = auth.uid());
@@ -543,8 +592,7 @@ grant execute on function public.profile_stats(uuid) to authenticated;
 alter publication supabase_realtime add table public.profiles;
 -- server-side moderation: delist a listing once reports cross the threshold
 alter table public.listings add column if not exists delisted boolean default false;
--- (report_listing updated to set listings.delisted = true when count >= 5)
--- (notify_on_request_status extended to notify the other party on status='cancelled')
+-- (report_listing + the 'cancelled' notify branch now live in their sections above)
 -- storage cleanup for deleted listings is done CLIENT-SIDE via the Storage API
 -- (repo.deleteListingPhotos). Supabase's platform `protect_delete` trigger now
 -- BLOCKS direct `delete from storage.objects` ("Use the Storage API instead"),

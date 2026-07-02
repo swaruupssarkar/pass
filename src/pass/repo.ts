@@ -350,10 +350,12 @@ async function fetchHandoffs(me: string): Promise<Handoff[]> {
   if (error) throw error;
   return (data ?? []).map(rowToHandoff);
 }
-/** Public given/received counts for any user (handoffs are participant-only via RLS). */
-export async function fetchProfileStats(userId: string): Promise<{ given: number; received: number }> {
-  const { data } = await supabase.rpc('profile_stats', { p_user: userId });
-  return { given: data?.given ?? 0, received: data?.received ?? 0 };
+/** Public given/received counts for any user (handoffs are participant-only via RLS).
+ * null on error — an offline failure must not be cached as confident zeros. */
+export async function fetchProfileStats(userId: string): Promise<{ given: number; received: number } | null> {
+  const { data, error } = await supabase.rpc('profile_stats', { p_user: userId });
+  if (error || !data) return null;
+  return { given: data.given ?? 0, received: data.received ?? 0 };
 }
 
 // ---------- saves / blocks / notify prefs / notifications ----------

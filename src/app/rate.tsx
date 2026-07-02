@@ -11,12 +11,14 @@ import { Btn, Pill, Screen, t } from '@/pass/ui';
 export default function Rate() {
   const router = useRouter();
   const tr = useT();
-  const { s, patch, toggleRateTag, submitRate } = usePass();
+  const { s, patch, toggleRateTag, submitRate, showAlert } = usePass();
   const giver = s.rateGiverId ? profileOf(s, s.rateGiverId) : null;
 
   const submit = () => {
     if (s.rating === 0) return;
-    submitRate();
+    const ok = submitRate();
+    // giver unknown (listing deleted, no handoff snapshot) → say so, don't pretend it saved
+    if (!ok) showAlert(tr('rate.goneTitle'), tr('rate.goneBody'));
     router.replace('/feed');
   };
 

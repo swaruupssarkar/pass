@@ -42,7 +42,7 @@ export default function Splash() {
 
   return (
     <Pressable
-      onPress={() => router.push('/intro')}
+      onPress={() => router.navigate('/intro')} // navigate dedupes: a fast double-tap can't push /intro twice
       style={{ flex: 1, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', padding: 40 }}>
       <StatusBar style="light" />
       <View style={{ position: 'absolute', top: -60, right: -40, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.08)' }} />

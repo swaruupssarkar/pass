@@ -85,6 +85,19 @@ export default function Feed() {
   };
   const clampRadius = (n: number) => Math.max(1, Math.min(500, n));
 
+  // manual radius entry stays on local text state so clearing-and-retyping works;
+  // parse/clamp only on commit (blur). Stepper/presets change s.radius → effect re-syncs the field.
+  const [radiusText, setRadiusText] = useState(String(s.radius));
+  useEffect(() => {
+    setRadiusText(String(s.radius));
+  }, [s.radius]);
+  const commitRadius = () => {
+    const n = parseInt(radiusText.replace(/[^0-9]/g, ''), 10);
+    const next = Number.isNaN(n) ? s.radius : clampRadius(n); // NaN → keep previous value
+    setRadiusText(String(next)); // re-sync even when s.radius is unchanged (clamp/NaN case)
+    patch({ radius: next });
+  };
+
   return (
     <Screen>
       <View style={{ paddingHorizontal: 18, paddingTop: 6, paddingBottom: 12 }}>
@@ -223,8 +236,9 @@ export default function Feed() {
             </Pressable>
             <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
               <TextInput
-                value={String(s.radius)}
-                onChangeText={(v) => patch({ radius: clampRadius(parseInt(v.replace(/[^0-9]/g, ''), 10) || 1) })}
+                value={radiusText}
+                onChangeText={setRadiusText}
+                onEndEditing={commitRadius}
                 keyboardType="number-pad"
                 style={{ minWidth: 40, fontSize: 20, fontWeight: '800', color: C.ink, textAlign: 'center', fontVariant: ['tabular-nums'] }}
               />

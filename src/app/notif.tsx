@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ScrollView, Text, useWindowDimensions, View } from 'react-native';
 
 import { capture } from '@/pass/analytics';
@@ -24,10 +24,13 @@ export default function Notif() {
   useEffect(() => {
     capture('onboarding_notifications_viewed');
   }, []);
+  const [busy, setBusy] = useState(false);
   const toCity = () => router.push('/city');
   const enable = async () => {
+    if (busy) return; // re-entry guard while the permission prompt is up
+    setBusy(true);
     await requestNotifications();
-    router.push('/city');
+    router.replace('/city'); // replace: a double-fire can't stack a duplicate screen
   };
 
   const imgW = Math.min(330, Math.round(width * 0.82));
@@ -65,7 +68,7 @@ export default function Notif() {
           </View>
         </View>
 
-        <Btn label={tr('notif.turnOn')} icon="bell" onPress={enable} block style={{ marginTop: 22, borderRadius: radius.lg }} />
+        <Btn label={tr('notif.turnOn')} icon="bell" onPress={enable} disabled={busy} block style={{ marginTop: 22, borderRadius: radius.lg }} />
         <Btn label={tr('notif.maybeLater')} variant="ghost" onPress={toCity} block style={{ marginTop: 4 }} />
       </ScrollView>
     </Screen>

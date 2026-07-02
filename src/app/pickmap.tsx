@@ -53,6 +53,7 @@ export default function PickMap() {
   const { s, setPickup, setNotifyAddress } = usePass();
   const webRef = useRef<WebView>(null);
   const notifyMode = useLocalSearchParams().mode === 'notify';
+  const done = useRef(false); // one-shot: router.back() must fire once even on double-tap
 
   const start = notifyMode
     ? s.notify[s.currentUserId]?.addr ?? s.userLoc ?? activeOrigin(s)
@@ -111,11 +112,14 @@ export default function PickMap() {
   };
 
   const confirm = async () => {
+    if (busy) return; // re-entry guard (double-tap while reverse-geocoding)
     setBusy(true);
     const address = await reverseGeocode(coords.lat, coords.lng);
     if (notifyMode) setNotifyAddress(coords, address);
     else setPickup(coords, address);
     setBusy(false);
+    if (done.current) return;
+    done.current = true;
     router.back();
   };
 
@@ -185,7 +189,7 @@ export default function PickMap() {
           <Icon name="pin" size={16} color={C.accent} />
           <Text style={{ flex: 1, fontSize: 12.5, color: C.muted }}>{tr('pickmap.hint')}</Text>
         </View>
-        <Btn icon="check" label={tr('pickmap.confirm')} onPress={confirm} block />
+        <Btn icon="check" label={tr('pickmap.confirm')} onPress={confirm} disabled={busy} block />
       </View>
     </View>
   );

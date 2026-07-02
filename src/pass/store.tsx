@@ -330,8 +330,10 @@ export function ownerOf(s: State, l: Listing): Profile {
 // ---- requests ----
 
 export function requestsFor(s: State, listingId: string): { request: Request; user: Profile }[] {
+  // blocked (either way) requesters are hidden — accepting/handing to them would
+  // start a chat neither party can use (acceptRequest/confirmTaken refuse anyway)
   return s.requests
-    .filter((r) => r.listingId === listingId)
+    .filter((r) => r.listingId === listingId && !isBlocked(s, r.fromUserId))
     .map((r) => ({ request: r, user: profileOf(s, r.fromUserId) }));
 }
 
@@ -346,7 +348,7 @@ export const incomingRequests = (
   s: State
 ): { request: Request; user: Profile; listing: Listing | null }[] =>
   s.requests
-    .filter((r) => r.toUserId === s.currentUserId)
+    .filter((r) => r.toUserId === s.currentUserId && !isBlocked(s, r.fromUserId)) // hide blocked requesters
     .sort((a, b) => b.createdAt - a.createdAt)
     .map((r) => ({ request: r, user: profileOf(s, r.fromUserId), listing: listingById(s, r.listingId) }));
 
@@ -354,9 +356,12 @@ export const incomingRequests = (
 export const pendingIncomingFrom = (s: State, otherId: UserId): Request | null =>
   s.requests.find((r) => r.toUserId === s.currentUserId && r.fromUserId === otherId && r.status === 'pending') ?? null;
 
-/** The current user's request on a listing (to gate the detail CTA). */
+/** The current user's request on a listing (to gate the detail CTA). Ignores requests
+ * the user themselves cancelled/dismissed — a cold pull reloads the still-present
+ * 'cancelled' row, and without this filter the CTA would dead-end on "declined"
+ * with no way to re-request (insertRequest supports re-request via upsert). */
 export const myRequestFor = (s: State, listingId: string): Request | null =>
-  s.requests.find((r) => r.listingId === listingId && r.fromUserId === s.currentUserId) ?? null;
+  s.requests.find((r) => r.listingId === listingId && r.fromUserId === s.currentUserId && r.status !== 'cancelled' && !s.dismissedRequests[r.id]) ?? null;
 
 // ---- threads ----
 // ONE conversation per pair of users, regardless of which listing it started from.
@@ -592,8 +597,10 @@ type Store = {
   patch: (p: Partial<State>) => void;
   // auth
   signInWithEmail: (email: string, createUser?: boolean) => Promise<{ ok: boolean; error?: string }>;
-  verifyOtp: (email: string, token: string) => Promise<{ ok: boolean; error?: string }>;
-  signInWithPassword: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  /** `onboarded` = the verified account already finished onboarding (has a city). */
+  verifyOtp: (email: string, token: string) => Promise<{ ok: boolean; error?: string; onboarded?: boolean }>;
+  /** `isNew` = account never finished onboarding (no city) — route it there (parity with Google). */
+  signInWithPassword: (email: string, password: string) => Promise<{ ok: boolean; error?: string; isNew?: boolean }>;
   /** Set/replace the current (just-verified) user's password. */
   setPassword: (password: string) => Promise<{ ok: boolean; error?: string }>;
   /** Providers linked to the signed-in user, e.g. ['email','google']. */
@@ -623,7 +630,8 @@ type Store = {
   submitPost: () => string | null;
   deleteListing: (id: string) => void;
   // requests + chat
-  requestListing: (listingId: string, note: string) => void;
+  /** false = nothing was sent (logged out / own listing / blocked / already requested). */
+  requestListing: (listingId: string, note: string) => boolean;
   acceptRequest: (requestId: string) => void;
   declineRequest: (requestId: string) => void;
   cancelRequest: (requestId: string, reason?: string) => void;
@@ -648,7 +656,8 @@ type Store = {
   confirmTaken: (listingId: string, recipientId: UserId) => void;
   openRate: (notif: Notification) => void;
   startRateForListing: (listingId: string, rating?: number) => void;
-  submitRate: () => void;
+  /** false = the giver is unknown (listing gone, no handoff snapshot) — nothing was saved. */
+  submitRate: () => boolean;
   toggleRateTag: (t: string) => void;
   // notifications
   markNotifsRead: () => void;
@@ -681,6 +690,18 @@ const PassContext = createContext<Store | null>(null);
 // not re-create a row the user deleted mid-upload — the upsert checks this set and
 // bails, so delete wins.
 const deletedListings = new Set<string>();
+
+// Same-frame double-tap guard for one-shot flow actions (accept/decline/rate):
+// both taps of a fast double-tap read the SAME stale `s`, so status checks alone
+// can't catch the second call. First call claims the key; repeats within the
+// window no-op. (State catches everything after the window.)
+const onceKeys = new Set<string>();
+const once = (key: string, ms = 1200): boolean => {
+  if (onceKeys.has(key)) return false;
+  onceKeys.add(key);
+  setTimeout(() => onceKeys.delete(key), ms);
+  return true;
+};
 
 // Two-phase listing sync: persist the ROW first (photos stripped to remote-only, so a
 // quick logout can't strand it behind a slow upload), then upload photos + a second
@@ -779,16 +800,38 @@ export function PassProvider({ children }: { children: ReactNode }) {
         let res = await supabase.auth.verifyOtp({ email: e, token: t, type: 'email' });
         if (res.error) res = await supabase.auth.verifyOtp({ email: e, token: t, type: 'signup' });
         // on success the onAuthStateChange listener populates currentUserId + profile
-        return res.error ? { ok: false, error: res.error.message } : { ok: true };
+        if (res.error) return { ok: false, error: res.error.message };
+        // tell the caller whether this account already finished onboarding — the
+        // sign-up flow uses it to catch "create account" on an EXISTING email
+        // (otherwise it would silently overwrite the password + re-run onboarding)
+        let onboarded = false;
+        try {
+          const uid = res.data.user?.id ?? res.data.session?.user?.id;
+          if (uid) {
+            const { data: prof } = await supabase.from('profiles').select('city_id').eq('id', uid).maybeSingle();
+            onboarded = !!prof?.city_id;
+          }
+        } catch {}
+        return { ok: true, onboarded };
       },
 
       signInWithPassword: async (email, password) => {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email: email.trim().toLowerCase(),
           password,
         });
         // success → onAuthStateChange populates currentUserId + profile
-        return error ? { ok: false, error: error.message } : { ok: true };
+        if (error) return { ok: false, error: error.message };
+        // parity with Google: an account that never finished onboarding (killed the
+        // app mid sign-up) is routed back into it instead of straight to the feed
+        let isNew = false;
+        try {
+          if (data.user) {
+            const { data: prof } = await supabase.from('profiles').select('city_id').eq('id', data.user.id).maybeSingle();
+            isNew = !prof?.city_id;
+          }
+        } catch {}
+        return { ok: true, isNew };
       },
 
       // Used right after OTP verification in sign-up: the user already has a
@@ -1039,10 +1082,12 @@ export function PassProvider({ children }: { children: ReactNode }) {
             ...prev,
             reviews: [...revById.values()],
             profiles: { ...prev.profiles, ...Object.fromEntries(profs.map((p) => [p.id, p])) },
-            publicStats: { ...prev.publicStats, [userId]: stats }, // cache so a revisit shows instantly
+            // cache so a revisit shows instantly — but never cache an errored fetch
+            // as confident zeros (keep the previous value / skeleton instead)
+            publicStats: stats ? { ...prev.publicStats, [userId]: stats } : prev.publicStats,
           };
         });
-        return stats;
+        return stats ?? s.publicStats?.[userId] ?? { given: 0, received: 0 };
       },
 
       startPost: () =>
@@ -1169,12 +1214,14 @@ export function PassProvider({ children }: { children: ReactNode }) {
       // send a request to the owner. If a chat with them already exists, the request
       // also drops into that thread as a message (so it shows under Chats, not Requests).
       requestListing: (listingId, note) => {
-        if (!s.currentUserId) return;
+        if (!s.currentUserId) return false;
         const l = s.listings.find((x) => x.id === listingId);
-        if (!l) return;
-        if (l.ownerId === s.currentUserId) return; // can't request your own listing
-        if (isBlocked(s, l.ownerId)) return; // blocked either way → no request/claim
-        if (s.requests.some((r) => r.listingId === listingId && r.fromUserId === s.currentUserId)) return;
+        if (!l) return false;
+        if (l.ownerId === s.currentUserId) return false; // can't request your own listing
+        if (isBlocked(s, l.ownerId)) return false; // blocked either way → no request/claim
+        // an active request already exists (cancelled/dismissed ones don't count — re-request replaces them)
+        if (myRequestFor(s, listingId)) return false;
+        if (!once('request:' + listingId)) return false; // double-tap → one request
         const now = Date.now();
         const text = note.trim() || `Hi! Is the ${l.title} still available?`;
         const req: Request = { id: uuid(), listingId, fromUserId: s.currentUserId, toUserId: l.ownerId, note: text, createdAt: now, status: 'pending', title: l.title, photo: l.photos?.[0], tint: l.tint, cat: l.cat };
@@ -1209,6 +1256,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
             await insertMessage(tid, msg);
           })());
         }
+        return true;
       },
 
       // owner accepts -> opens a shared thread (seeded with the requester's note) for both
@@ -1218,6 +1266,8 @@ export function PassProvider({ children }: { children: ReactNode }) {
         // owner can accept a pending request OR reconsider one they previously declined —
         // but never a cancelled/accepted/taken one.
         if (req.status !== 'pending' && req.status !== 'declined') return;
+        if (isBlocked(s, req.fromUserId)) return; // blocked either way → no deal, no chat
+        if (!once('accept:' + requestId)) return; // double-tap → one accept message/notification
         const id = threadId(req.toUserId, req.fromUserId);
         const l = s.listings.find((x) => x.id === req.listingId);
         const seed: Message = { id: uuid(), from: req.fromUserId, text: req.note, ts: req.createdAt };
@@ -1251,6 +1301,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
       declineRequest: (requestId) => {
         const cur = s.requests.find((r) => r.id === requestId);
         if (!cur || cur.status !== 'pending') return; // can't decline a withdrawn/resolved request
+        if (!once('decline:' + requestId)) return; // double-tap → one decline notification
         setS((prev) => {
           const req = prev.requests.find((r) => r.id === requestId);
           if (!req) return prev;
@@ -1549,21 +1600,26 @@ export function PassProvider({ children }: { children: ReactNode }) {
 
       confirmTaken: (listingId, recipientId) => {
         const src = s.listings.find((x) => x.id === listingId);
+        // listing gone (deleted from another device while the picker was open) or the
+        // recipient is blocked → close the sheet, queue nothing for a dead/blocked deal
+        if (!src || isBlocked(s, recipientId)) {
+          setS((prev) => ({ ...prev, takenPickerId: null }));
+          return;
+        }
+        if (!once('taken:' + listingId)) return; // double-tap → one handoff
         // snapshot the hand-off (persists even if the listing is later deleted)
-        const handoff: Handoff | null = src
-          ? { id: uuid(), listingId, giverId: s.currentUserId, recipientId, title: src.title, photo: src.photos?.[0], tint: src.tint, cat: src.cat, ts: Date.now() }
-          : null;
+        const handoff: Handoff = { id: uuid(), listingId, giverId: s.currentUserId, recipientId, title: src.title, photo: src.photos?.[0], tint: src.tint, cat: src.cat, ts: Date.now() };
         // sync taken state + handoff row to Supabase
         track(setListingTaken(listingId, recipientId));
         capture('item_given', { listingId });
-        if (handoff) track(insertHandoff(handoff));
+        track(insertHandoff(handoff));
         // every OTHER requester loses the deal — decline their request so they no longer
         // see the exact pickup address (detail gates exact on their request being 'accepted').
         const losers = s.requests.filter((r) => r.listingId === listingId && r.fromUserId !== recipientId && (r.status === 'pending' || r.status === 'accepted')).map((r) => r.id);
         losers.forEach((id) => track(updateRequestStatus(id, 'declined')));
         setS((prev) => {
           const l = prev.listings.find((x) => x.id === listingId);
-          if (!l || !handoff) return prev;
+          if (!l) return { ...prev, takenPickerId: null };
           const listings = prev.listings.map((x) => (x.id === listingId ? { ...x, taken: true, takenBy: recipientId } : x));
           return {
             ...prev,
@@ -1608,13 +1664,19 @@ export function PassProvider({ children }: { children: ReactNode }) {
         }),
 
       submitRate: () => {
+        // giver unknown (listing deleted and no handoff snapshot) → nothing can be
+        // saved; tell the caller so the screen can explain instead of silently exiting
+        if (!s.rateGiverId) {
+          setS((prev) => ({ ...prev, rateListingId: null, rateGiverId: null, rating: 0, rateTags: [], reviewDraft: '' }));
+          return false;
+        }
+        if (!once('rate:' + (s.rateListingId ?? s.rateGiverId))) return true; // double-tap → one review
         const dup = s.rateListingId
           ? (s.reviews ?? []).some((r) => r.from === s.currentUserId && r.listingId === s.rateListingId)
           : false;
-        const review: Review | null =
-          s.rateGiverId && !dup
-            ? { id: uuid(), from: s.currentUserId, to: s.rateGiverId, listingId: s.rateListingId ?? undefined, rating: s.rating, tags: s.rateTags, text: s.reviewDraft.trim(), ts: Date.now() }
-            : null;
+        const review: Review | null = !dup
+          ? { id: uuid(), from: s.currentUserId, to: s.rateGiverId, listingId: s.rateListingId ?? undefined, rating: s.rating, tags: s.rateTags, text: s.reviewDraft.trim(), ts: Date.now() }
+          : null;
         setS((prev) => ({
           ...prev,
           reviews: review ? [review, ...(prev.reviews ?? [])] : prev.reviews,
@@ -1625,6 +1687,7 @@ export function PassProvider({ children }: { children: ReactNode }) {
           reviewDraft: '',
         }));
         if (review) track(insertReview(review));
+        return true;
       },
 
       toggleRateTag: (t) =>
@@ -1653,16 +1716,18 @@ export function PassProvider({ children }: { children: ReactNode }) {
       openNotif: (n) => {
         // already reviewed this item -> show the review on the giver's profile, don't re-open the form
         const reviewedTaken = n.kind === 'taken' && hasReviewed(s, n.listingId);
-        const route: string | null = reviewedTaken ? '/giver' : n.route ?? null;
+        // the giver: from the listing, or from the handoff snapshot once the listing is deleted
+        const giver: UserId | null = n.listingId
+          ? (s.listings.find((x) => x.id === n.listingId)?.ownerId ?? (s.handoffs ?? []).find((h) => h.listingId === n.listingId)?.giverId ?? null)
+          : null;
+        // unreviewed 'taken' opens the rating form directly (the server route says
+        // /impact, which has no rating UI — that would dead-end the review flow)
+        const route: string | null = reviewedTaken ? (giver ? '/giver' : null) : n.kind === 'taken' ? '/rate' : n.route ?? null;
         setS((prev) => {
           const upd = prev.notifications.map((x) => (x.id === n.id ? { ...x, read: true } : x));
-          if (reviewedTaken) {
-            const l = prev.listings.find((x) => x.id === n.listingId);
-            return { ...prev, notifications: upd, activePersonId: l?.ownerId ?? null };
-          }
+          if (reviewedTaken) return { ...prev, notifications: upd, activePersonId: giver };
           if (n.kind === 'taken') {
-            const l = prev.listings.find((x) => x.id === n.listingId);
-            return { ...prev, notifications: upd, rateListingId: n.listingId ?? null, rateGiverId: l?.ownerId ?? (prev.handoffs ?? []).find((h) => h.listingId === n.listingId)?.giverId ?? null, rating: 0, rateTags: [], reviewDraft: '' };
+            return { ...prev, notifications: upd, rateListingId: n.listingId ?? null, rateGiverId: giver, rating: 0, rateTags: [], reviewDraft: '' };
           }
           if (n.threadId) return { ...prev, notifications: upd, activeThreadId: n.threadId };
           if (n.listingId) return { ...prev, notifications: upd, activeListingId: n.listingId };
@@ -2019,7 +2084,13 @@ export function PassProvider({ children }: { children: ReactNode }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'listings' }, (payload) => {
         if (payload.eventType === 'DELETE') {
           const id = (payload.old as { id?: string }).id;
-          setS((prev) => ({ ...prev, listings: prev.listings.filter((l) => l.id !== id) }));
+          // also close the taken-picker if it was open for this listing (deleted from
+          // another device) — otherwise its "Choose" button becomes a stuck no-op
+          setS((prev) => ({
+            ...prev,
+            listings: prev.listings.filter((l) => l.id !== id),
+            takenPickerId: prev.takenPickerId === id ? null : prev.takenPickerId,
+          }));
           return;
         }
         const row = rowToListing(payload.new as Record<string, unknown>);

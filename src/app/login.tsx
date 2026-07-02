@@ -6,7 +6,7 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { capture } from '@/pass/analytics';
 import { GoogleG } from '@/pass/google-icon';
 import { Icon, type IconName } from '@/pass/icon';
-import { usePass } from '@/pass/store';
+import { usePass, useT } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Btn, Screen, shadow, t } from '@/pass/ui';
 
@@ -17,6 +17,7 @@ const emailOk = (e: string) => /^\S+@\S+\.\S+$/.test(e);
 
 export default function Login() {
   const router = useRouter();
+  const tr = useT();
   const { signInWithEmail, verifyOtp, signInWithPassword, setPassword, hasPassword, dropSession, signInWithGoogle, showAlert, showConfirm } = usePass();
 
   const [mode, setMode] = useState<Mode>('signin');
@@ -84,6 +85,7 @@ export default function Login() {
   // send the one-time email code. Sign-up may create the account; sign-in must
   // NOT — a non-existent email on sign-in should be told to sign up instead.
   const sendCode = async () => {
+    if (busy) return; // double-tap → one OTP email
     const e = email.trim();
     if (!emailOk(e)) return showAlert('Enter a valid email', mode === 'signin' ? 'Use the email you signed up with.' : 'We’ll send you a verification code.');
     setReset(false); // fresh attempt — don't carry a prior account's create-password state
@@ -123,6 +125,7 @@ export default function Login() {
   // For sign-in, if the account has no email/password identity yet (e.g. it was
   // created via Google), switch to "create a password" instead of asking for one.
   const verify = async () => {
+    if (busy) return; // double-tap → the 2nd call would burn the just-consumed token
     if (code.trim().length < 8) return showAlert('Enter the code', 'Check your email for the 8-digit code.');
     setBusy(true);
     const r = await verifyOtp(email, code);
@@ -135,6 +138,14 @@ export default function Login() {
     }
     setBusy(false);
     if (!r.ok) return showAlert('Invalid code', friendly(r.error));
+    if (mode === 'signup' && r.onboarded) {
+      // "Create account" on an EMAIL THAT ALREADY HAS AN ACCOUNT: the OTP proved
+      // ownership and created a session — sign them in as-is instead of silently
+      // overwriting their password and re-running onboarding.
+      showAlert(tr('login.haveAccountTitle'), tr('login.haveAccountBody'));
+      router.replace('/feed');
+      return;
+    }
     setStep('password');
   };
 
@@ -142,6 +153,7 @@ export default function Login() {
   // existing one (email is already OTP-verified at this point).
   const needsNew = mode === 'signup' || reset;
   const finish = async () => {
+    if (busy) return; // double-tap → one password save / sign-in
     if (needsNew) {
       if (pw.length < 8) return showAlert('Weak password', 'Use at least 8 characters.');
       if (pw !== pw2) return showAlert('Passwords don’t match', 'Re-enter the same password.');
@@ -164,7 +176,9 @@ export default function Login() {
         return showAlert('Wrong password', friendly(r.error));
       }
       setBusy(false);
-      router.replace('/feed'); // existing account → straight to feed
+      // parity with Google: an account that never finished onboarding (app killed
+      // mid sign-up) goes back into it; everyone else → straight to feed
+      router.replace(r.isNew ? '/profile-setup' : '/feed');
     }
   };
 
@@ -225,7 +239,7 @@ export default function Login() {
             {step === 'email' ? (
               <>
                 <Field icon="mail" value={email} onChangeText={setEmail} placeholder="Email" keyboardType="email-address" autoCapitalize="none" textContentType="emailAddress" returnKeyType="send" onSubmitEditing={sendCode} />
-                <Btn label={busy ? 'Sending…' : 'Send code'} onPress={sendCode} block style={{ marginTop: 4, borderRadius: radius.lg }} />
+                <Btn label={busy ? 'Sending…' : 'Send code'} onPress={sendCode} disabled={busy} block style={{ marginTop: 4, borderRadius: radius.lg }} />
               </>
             ) : step === 'otp' ? (
               <>
@@ -241,7 +255,7 @@ export default function Login() {
                   autoFocus
                   style={[inputBase, { letterSpacing: 8, textAlign: 'center', fontSize: 22, fontWeight: '800', paddingVertical: 16 }]}
                 />
-                <Btn label={busy ? 'Verifying…' : 'Verify'} onPress={verify} block style={{ marginTop: 4, borderRadius: radius.lg }} />
+                <Btn label={busy ? 'Verifying…' : 'Verify'} onPress={verify} disabled={busy} block style={{ marginTop: 4, borderRadius: radius.lg }} />
                 <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5, marginTop: 10 }}>
                   <Text style={{ fontSize: 14, color: C.muted }}>Didn’t get it?</Text>
                   <Pressable onPress={resend} disabled={cooldown > 0 || busy} hitSlop={8}>
@@ -278,6 +292,7 @@ export default function Login() {
                 <Btn
                   label={busy ? (needsNew ? 'Saving…' : 'Signing in…') : needsNew ? (reset ? 'Save password' : 'Create account') : 'Sign in'}
                   onPress={finish}
+                  disabled={busy}
                   block
                   style={{ marginTop: 4, borderRadius: radius.lg }}
                 />

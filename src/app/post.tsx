@@ -22,12 +22,13 @@ const CONDS: { key: string; icon: IconName }[] = [
 export default function Post() {
   const router = useRouter();
   const tr = useT();
-  const { s, patch, addPostPhoto, removePostPhoto, setPickup, submitPost, showAlert } = usePass();
+  const { s, patch, addPostPhoto, removePostPhoto, setPickup, submitPost, showAlert, showConfirm } = usePass();
   const editing = !!s.editingId;
   const photos = s.postPhotos;
   const canAdd = photos.length < 4;
   const [suggests, setSuggests] = useState<Suggestion[]>([]);
   const [busy, setBusy] = useState(false);
+  const [submitting, setSubmitting] = useState(false); // double-tap on Post = duplicate listing rows
   const lastQuery = useRef('');
 
   // Force a 1:1 square crop so every product photo fills the feed + detail frames with no
@@ -87,27 +88,49 @@ export default function Post() {
   };
 
   const submit = async () => {
-    if (!s.postTitle.trim()) return showAlert(tr('post.addTitleTitle'), tr('post.addTitleMsg'));
-    if (photos.length === 0) return showAlert(tr('post.addPhotoTitle'), tr('post.addPhotoMsg'));
-    if (!s.postCoords) {
-      if (s.postAddress.trim()) {
-        const place = await geocodeAddress(s.postAddress);
-        if (place) setPickup({ lat: place.lat, lng: place.lng }, place.address);
-        else return showAlert(tr('post.setPickupTitle'), tr('post.setPickupMsgPin'));
-      } else {
-        return showAlert(tr('post.setPickupTitle'), tr('post.setPickupMsgType'));
+    if (submitting) return; // a new post gets a fresh uuid per call — double-tap would post twice
+    setSubmitting(true);
+    try {
+      if (!s.postTitle.trim()) return showAlert(tr('post.addTitleTitle'), tr('post.addTitleMsg'));
+      if (photos.length === 0) return showAlert(tr('post.addPhotoTitle'), tr('post.addPhotoMsg'));
+      if (!s.postCoords) {
+        if (s.postAddress.trim()) {
+          const place = await geocodeAddress(s.postAddress);
+          if (place) setPickup({ lat: place.lat, lng: place.lng }, place.address);
+          else return showAlert(tr('post.setPickupTitle'), tr('post.setPickupMsgPin'));
+        } else {
+          return showAlert(tr('post.setPickupTitle'), tr('post.setPickupMsgType'));
+        }
       }
+      submitPost();
+      // new posts → celebration; edits → back to My listings
+      router.replace(editing ? '/manage' : '/posted');
+    } finally {
+      setSubmitting(false);
     }
-    submitPost();
-    // new posts → celebration; edits → back to My listings
-    router.replace(editing ? '/manage' : '/posted');
+  };
+
+  // a filled NEW post shouldn't vanish on a stray back-tap (edits keep instant back)
+  const goBack = () => {
+    const dirty = !editing && (s.postTitle.trim().length > 0 || photos.length > 0 || s.postAddress.trim().length > 0);
+    if (!dirty) {
+      router.back();
+      return;
+    }
+    showConfirm({
+      title: tr('post.discardTitle'),
+      message: tr('post.discardBody'),
+      confirmLabel: tr('post.discardBtn'),
+      destructive: true,
+      onConfirm: () => router.back(),
+    });
   };
 
   return (
     <Screen bg={C.bg} edges={['top', 'bottom']}>
       {/* header */}
       <Animated.View entering={FadeInDown.duration(400)} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 6, paddingBottom: 12, gap: 12 }}>
-        <Pressable onPress={() => router.back()} hitSlop={8} style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 13, borderCurve: 'continuous', borderWidth: 1, borderColor: C.line, backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center', transform: [{ scale: pressed ? 0.94 : 1 }], ...shadow(8, 18, 0.3) })}>
+        <Pressable onPress={goBack} hitSlop={8} style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 13, borderCurve: 'continuous', borderWidth: 1, borderColor: C.line, backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center', transform: [{ scale: pressed ? 0.94 : 1 }], ...shadow(8, 18, 0.3) })}>
           <Icon name="back" size={22} color={C.ink} />
         </Pressable>
         <View style={{ flex: 1 }}>
@@ -242,7 +265,7 @@ export default function Post() {
         </ScrollView>
 
         <View style={{ padding: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.surface }}>
-          <Btn icon="gift" label={editing ? tr('post.saveChanges') : tr('post.postForFree')} onPress={submit} block style={{ borderRadius: radius.lg }} />
+          <Btn icon="gift" label={editing ? tr('post.saveChanges') : tr('post.postForFree')} onPress={submit} disabled={submitting} block style={{ borderRadius: radius.lg }} />
         </View>
       </KeyboardAvoidingView>
     </Screen>

@@ -177,7 +177,22 @@ export default function Manage() {
                       <Text style={{ fontSize: 12.5, color: C.muted, marginTop: 4, lineHeight: 18 }}>{request.note}</Text>
                       <Text style={{ fontSize: 11, color: C.accent, fontWeight: '700', marginTop: 4 }}>{tr('manage.requestedLine', { rel: fmtRel(request.createdAt, tr), date: fmtDate(request.createdAt) })}</Text>
                     </View>
-                    <Btn label={tr('manage.choose')} onPress={() => confirmTaken(s.takenPickerId!, request.fromUserId)} style={{ paddingVertical: 9, paddingHorizontal: 16 }} textStyle={{ fontSize: 12.5 }} />
+                    {/* irreversible (declines all other requesters, no un-take) → confirm first */}
+                    <Btn
+                      label={tr('manage.choose')}
+                      onPress={() => {
+                        const lid = s.takenPickerId!;
+                        const title = s.listings.find((x) => x.id === lid)?.title ?? '';
+                        showConfirm({
+                          title: tr('manage.giveConfirmTitle', { title, name: user.name }),
+                          message: tr('manage.giveConfirmBody'),
+                          confirmLabel: tr('manage.giveConfirmBtn'),
+                          onConfirm: () => confirmTaken(lid, request.fromUserId),
+                        });
+                      }}
+                      style={{ paddingVertical: 9, paddingHorizontal: 16 }}
+                      textStyle={{ fontSize: 12.5 }}
+                    />
                   </View>
                 ))}
               </ScrollView>

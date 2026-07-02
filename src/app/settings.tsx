@@ -37,10 +37,17 @@ export default function Settings() {
   const [delText, setDelText] = useState('');
   const [delBusy, setDelBusy] = useState(false);
 
-  const onLogout = async () => {
-    await logout(); // syncs briefly then signs out; anything left replays next sign-in
-    router.replace('/login');
-  };
+  const onLogout = () =>
+    // one stray tap must not end the session — confirm first
+    showConfirm({
+      title: tr('settings.logoutConfirmTitle'),
+      message: tr('settings.logoutConfirmBody'),
+      confirmLabel: tr('settings.logout'),
+      onConfirm: async () => {
+        await logout(); // syncs briefly then signs out; anything left replays next sign-in
+        router.replace('/login');
+      },
+    });
 
   const confirmDelete = async () => {
     if (delText !== 'DELETE') return;

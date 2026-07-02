@@ -4,7 +4,7 @@ import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-na
 
 import { CITIES } from '@/pass/data';
 import { catIcon, Icon } from '@/pass/icon';
-import { distLabel, fmtAgo, fmtDate, handoffsBy, handoffsTo, listingById, profileOf, reviewsFor, userName, userRating, usePass, useT, userDp } from '@/pass/store';
+import { distLabel, fmtAgo, fmtDate, handoffsBy, handoffsTo, isBlocked, listingById, profileOf, reviewsFor, userName, userRating, usePass, useT, userDp } from '@/pass/store';
 import { C, radius } from '@/pass/theme';
 import { Avatar, Btn, EmptyState, FreeTag, Header, PhotoTile, ReviewCard, Screen, shadow, t, VerifiedBadge } from '@/pass/ui';
 
@@ -90,7 +90,7 @@ export default function Giver() {
               <Stat n={received} label={tr('profile.received')} loading={statsLoading} />
             </View>
 
-            {!isMe ? (
+            {!isMe && !isBlocked(s, id) ? (
               <Btn icon="chat" label={tr('giver.message', { name })} onPress={message} block style={{ marginTop: 18, paddingVertical: 14 }} />
             ) : null}
           </View>
@@ -121,7 +121,7 @@ export default function Giver() {
               </PhotoTile>
               <View style={{ paddingHorizontal: 5, paddingTop: 10, paddingBottom: 5 }}>
                 <Text style={{ fontSize: 14.5, fontWeight: '800', color: C.ink, letterSpacing: -0.2 }}>{l.title}</Text>
-                <Text style={{ fontSize: 12, color: C.muted, marginTop: 5 }}>{l.cat}</Text>
+                <Text style={{ fontSize: 12, color: C.muted, marginTop: 5 }}>{tr('cat.' + l.cat)}</Text>
               </View>
             </Pressable>
           ))}

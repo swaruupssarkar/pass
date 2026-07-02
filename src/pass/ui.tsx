@@ -174,6 +174,7 @@ export function Btn({
   icon,
   style,
   textStyle,
+  disabled,
 }: {
   label: string;
   onPress?: () => void;
@@ -182,6 +183,7 @@ export function Btn({
   icon?: IconName;
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
+  disabled?: boolean; // blocks presses (async in-flight / invalid form) and dims the button
 }) {
   const v = BTN[variant];
   const fg = (v.text.color as string) ?? C.ink;
@@ -189,12 +191,14 @@ export function Btn({
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       hitSlop={6}
       style={({ pressed }) => [
         styles.btn,
         v.box,
         block && { alignSelf: 'stretch' },
         pressed && { opacity: 0.6 },
+        disabled && { opacity: 0.45 },
         style,
       ]}>
       {icon ? <Icon name={icon} size={size + 2} color={fg} /> : null}
@@ -374,6 +378,7 @@ export function Toggle({ on, onPress }: { on: boolean; onPress?: () => void }) {
   return (
     <Pressable
       onPress={onPress}
+      hitSlop={10}
       style={{ width: 46, height: 27, borderRadius: radius.pill, backgroundColor: on ? C.accent : C.toggleOff }}>
       <View
         style={{

@@ -30,7 +30,7 @@ export default function Categories() {
       <Header
         title={tr('categories.title')}
         right={
-          <Pressable onPress={() => { patch({ catFilter: null, q: '' }); router.navigate('/feed'); }} hitSlop={8}>
+          <Pressable onPress={() => { patch({ catFilter: null, q: '' }); router.navigate('/feed'); }} hitSlop={14}>
             <Icon name="search" size={18} color={C.muted} />
           </Pressable>
         }

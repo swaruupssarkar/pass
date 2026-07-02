@@ -26,7 +26,7 @@ export default function Intro() {
 
   const next = () => {
     if (i < INTRO_CARDS.length - 1) setI(i + 1);
-    else router.push('/login');
+    else router.navigate('/login'); // navigate dedupes: a fast double-tap can't push /login twice
   };
 
   return (
@@ -40,7 +40,7 @@ export default function Intro() {
 
       <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 18, paddingBottom: 28 }}>
         <View style={{ alignItems: 'flex-end' }}>
-          <Pressable onPress={() => router.push('/login')} hitSlop={10} style={{ padding: 6 }}>
+          <Pressable onPress={() => router.navigate('/login')} hitSlop={10} style={{ padding: 6 }}>
             <Text style={{ fontSize: 14, fontWeight: '600', color: C.muted }}>{tr('intro.skip')}</Text>
           </Pressable>
         </View>

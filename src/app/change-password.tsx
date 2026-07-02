@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { type ComponentProps, useEffect, useState } from 'react';
+import { type ComponentProps, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
@@ -27,6 +27,7 @@ export default function ChangePassword() {
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cooldown, setCooldown] = useState(0); // resend lock
+  const done = useRef(false); // one-shot: router.back() must fire once even on double-tap
 
   useEffect(() => {
     let alive = true;
@@ -65,6 +66,7 @@ export default function ChangePassword() {
   };
 
   const submit = async () => {
+    if (busy) return; // re-entry guard (double-tap / Enter while in flight)
     // validate
     if (mode === 'reset' && code.trim().length < 8) return showAlert('Enter the code', 'Check your email for the 8-digit code.');
     if (mode === 'pw' && needsOld && !cur) return showAlert('Enter your current password', 'Your current password is required to change it.');
@@ -90,6 +92,8 @@ export default function ChangePassword() {
     setBusy(false);
     if (!r.ok) return showAlert('Could not update password', r.error ?? 'Please try again.');
     showAlert('Password updated', 'Your password has been changed.');
+    if (done.current) return;
+    done.current = true;
     router.back();
   };
 
@@ -141,7 +145,7 @@ export default function ChangePassword() {
           <PwField value={npw} onChangeText={setNpw} placeholder="New password (at least 8 characters)" show={show} onToggle={() => setShow((v) => !v)} textContentType="newPassword" returnKeyType="next" />
           <PwField value={npw2} onChangeText={setNpw2} placeholder="Re-enter new password" show={show} onToggle={() => setShow((v) => !v)} textContentType="newPassword" returnKeyType="done" onSubmitEditing={submit} />
 
-          <Btn label={busy ? 'Updating…' : mode === 'reset' ? 'Reset password' : 'Update password'} onPress={submit} block style={{ marginTop: 6, borderRadius: radius.lg }} />
+          <Btn label={busy ? 'Updating…' : mode === 'reset' ? 'Reset password' : 'Update password'} onPress={submit} disabled={busy} block style={{ marginTop: 6, borderRadius: radius.lg }} />
 
           {mode === 'reset' ? (
             <Pressable onPress={() => setMode('pw')} hitSlop={8} style={{ alignSelf: 'center', marginTop: 4 }}>

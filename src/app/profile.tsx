@@ -21,7 +21,7 @@ const ROWS: { icon: IconName; labelKey: string; route: '/manage' | '/impact' | '
 export default function Profile() {
   const router = useRouter();
   const tr = useT();
-  const { s, logout, setName, setDp } = usePass();
+  const { s, logout, setName, setDp, showConfirm } = usePass();
   const user = me(s);
   const mine = myListings(s);
   const givenCount = myHandoffs(s).length;
@@ -127,10 +127,18 @@ export default function Profile() {
           icon="back"
           label={tr('profile.logout')}
           variant="outline"
-          onPress={async () => {
-            await logout();
-            router.replace('/login');
-          }}
+          onPress={() =>
+            // one stray tap must not end the session — confirm first
+            showConfirm({
+              title: tr('settings.logoutConfirmTitle'),
+              message: tr('settings.logoutConfirmBody'),
+              confirmLabel: tr('profile.logout'),
+              onConfirm: async () => {
+                await logout();
+                router.replace('/login');
+              },
+            })
+          }
           block
           style={{ marginTop: 16, paddingVertical: 14 }}
           textStyle={{ fontSize: 15, color: C.muted }}

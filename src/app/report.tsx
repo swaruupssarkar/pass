@@ -2,7 +2,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import * as MailComposer from 'expo-mail-composer';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
@@ -26,6 +26,7 @@ export default function Report() {
   const [detail, setDetail] = useState('');
   const [files, setFiles] = useState<Picked[]>([]);
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false); // synchronous double-tap lock — busy state lands a frame late
 
   // start fresh each time the screen opens — a reason picked for one listing must never
   // carry over to another if the user backs out without submitting.
@@ -70,19 +71,20 @@ export default function Report() {
     const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], quality: 0.8 });
     if (res.canceled || !res.assets?.length) return;
     const a = res.assets[0];
-    if ((a.fileSize ?? 0) > MAX_BYTES) return showAlert(tr('feedback.tooBigTitle'), tr('feedback.tooBigBody'));
+    if ((a.fileSize ?? 0) > MAX_BYTES) return showAlert(tr('feedback.tooBigTitle'), tr('report.tooBigBody'));
     setFiles((f) => [...f, { uri: a.uri, name: a.fileName ?? 'attachment', size: a.fileSize ?? 0 }]);
   };
   const addFile = async () => {
     const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
     if (res.canceled || !res.assets?.[0]) return;
     const a = res.assets[0];
-    if ((a.size ?? 0) > MAX_BYTES) return showAlert(tr('feedback.tooBigTitle'), tr('feedback.tooBigBody'));
+    if ((a.size ?? 0) > MAX_BYTES) return showAlert(tr('feedback.tooBigTitle'), tr('report.tooBigBody'));
     setFiles((f) => [...f, { uri: a.uri, name: a.name, size: a.size ?? 0 }]);
   };
 
   const submit = async () => {
-    if (!canSubmit) return;
+    if (inFlight.current || !canSubmit) return;
+    inFlight.current = true;
     const l = activeListing(s);
     setBusy(true);
     try {
@@ -105,11 +107,14 @@ export default function Report() {
         attachments: files.length ? files.map((f) => f.uri) : undefined,
       });
       setBusy(false);
-      // record the per-listing tally + show the thanks screen (skip if they backed out of mail)
-      if (r.status !== 'cancelled') submitReport();
+      // record the per-listing tally + show the thanks screen — only a real send counts
+      // ('saved' = iOS draft, treated like cancel: no thanks, no tally)
+      if (r.status === 'sent') submitReport();
     } catch {
       setBusy(false);
       showAlert(tr('feedback.failTitle'), tr('feedback.failBody'));
+    } finally {
+      inFlight.current = false;
     }
   };
 

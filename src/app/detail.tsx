@@ -56,8 +56,10 @@ export default function Detail() {
     router.push('/giver');
   };
   const wantThis = () => {
-    requestListing(item.id, '');
-    showAlert(tr('detail.requestSentTitle'), tr('detail.requestSentMsg', { name: ownerName }));
+    // only claim success when a request was actually created (store refuses when
+    // blocked / own listing / duplicate) — never a false "Request sent!"
+    const ok = requestListing(item.id, '');
+    if (ok) showAlert(tr('detail.requestSentTitle'), tr('detail.requestSentMsg', { name: ownerName }));
   };
   const messageGiver = () => {
     openThreadFor(item.id);
@@ -184,15 +186,18 @@ export default function Detail() {
           <View style={{ marginTop: 18 }}>
             <SafetyNote text={tr('detail.safetyNote')} />
           </View>
-          <View style={{ marginTop: 20, borderTopWidth: 1, borderTopColor: C.line, paddingTop: 14, alignItems: 'center' }}>
-            <Pressable
-              onPress={() => router.push('/report')}
-              hitSlop={10}
-              style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, opacity: pressed ? 0.5 : 1 })}>
-              <Icon name="flag" size={12} color={C.muted} />
-              <Text style={{ fontSize: 12.5, fontWeight: '600', color: C.muted, textDecorationLine: 'underline' }}>{tr('detail.report')}</Text>
-            </Pressable>
-          </View>
+          {/* no self-reporting — an owner could nudge their own listing toward auto-delist */}
+          {!mine ? (
+            <View style={{ marginTop: 20, borderTopWidth: 1, borderTopColor: C.line, paddingTop: 14, alignItems: 'center' }}>
+              <Pressable
+                onPress={() => router.push('/report')}
+                hitSlop={10}
+                style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, opacity: pressed ? 0.5 : 1 })}>
+                <Icon name="flag" size={12} color={C.muted} />
+                <Text style={{ fontSize: 12.5, fontWeight: '600', color: C.muted, textDecorationLine: 'underline' }}>{tr('detail.report')}</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </ScrollView>
 
         {!item.taken ? (
@@ -251,7 +256,19 @@ const buildMapHtml = (plat: number, plng: number, me: Coords | null, accent: str
 
 function PickupMap({ item, exact }: { item: Listing; exact: boolean }) {
   const tr = useT();
-  const { s, useCurrentLocation } = usePass();
+  // requestLocation (NOT useCurrentLocation): only sets userLoc for the distance —
+  // it must not silently switch the global browse mode / rewrite the home city
+  const { s, requestLocation } = usePass();
+  const [locating, setLocating] = useState(false);
+  const locateMe = async () => {
+    if (locating) return;
+    setLocating(true);
+    try {
+      await requestLocation();
+    } finally {
+      setLocating(false);
+    }
+  };
   const me = userPoint(s);
   const dist = me ? fmtKm(haversineKm(me, { lat: item.lat, lng: item.lng })) : null;
   // exact view gets the precise pin + your-location line; public view gets only a fuzzy circle
@@ -262,7 +279,7 @@ function PickupMap({ item, exact }: { item: Listing; exact: boolean }) {
     const url = me
       ? `https://www.google.com/maps/dir/?api=1&origin=${me.lat},${me.lng}&destination=${dest}&travelmode=driving`
       : `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`;
-    Linking.openURL(url);
+    Linking.openURL(url).catch(() => {});
   };
 
   return (
@@ -297,7 +314,7 @@ function PickupMap({ item, exact }: { item: Listing; exact: boolean }) {
         <Text style={{ fontSize: 12, color: C.muted, marginTop: 9, lineHeight: 17 }}>{tr('detail.exactAfterAccept')}</Text>
       ) : null}
       {!me ? (
-        <Btn icon="pin" label={tr('detail.useMyLocation')} variant="outline" onPress={() => void useCurrentLocation()} block style={{ marginTop: 10, paddingVertical: 12 }} textStyle={{ fontSize: 13.5 }} />
+        <Btn icon="pin" label={tr('detail.useMyLocation')} variant="outline" onPress={locateMe} disabled={locating} block style={{ marginTop: 10, paddingVertical: 12 }} textStyle={{ fontSize: 13.5 }} />
       ) : null}
     </View>
   );

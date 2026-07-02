@@ -151,7 +151,7 @@ export default function Inbox() {
               </View>
 
               {/* listing + message */}
-              <Pressable onPress={() => listing && openItem(listing.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: C.bg, borderRadius: radius.md, padding: 10 }}>
+              <Pressable disabled={!listing} onPress={() => listing && openItem(listing.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: C.bg, borderRadius: radius.md, padding: 10, opacity: listing ? 1 : 0.55 }}>
                 <PhotoTile tint={listing?.tint ?? C.bg} uri={listing?.photos?.[0]} gap={10} style={{ width: 44, height: 44, borderRadius: 11 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 13.5, fontWeight: '700', color: C.ink }} numberOfLines={1}>{listing ? listing.title : tr('inbox.listingRemoved')}</Text>
@@ -162,7 +162,21 @@ export default function Inbox() {
               {/* actions */}
               {request.status === 'pending' ? (
                 <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <Btn label={tr('inbox.reject')} variant="outline" onPress={() => declineRequest(request.id)} style={{ flex: 1, paddingVertical: 11, borderColor: C.dangerBorder }} textStyle={{ fontSize: 14, color: C.dangerInk }} />
+                  <Btn
+                    label={tr('inbox.reject')}
+                    variant="outline"
+                    onPress={() =>
+                      showConfirm({
+                        title: tr('inbox.declineConfirmTitle'),
+                        message: tr('inbox.declineConfirmBody', { name: user.name }),
+                        confirmLabel: tr('inbox.reject'),
+                        destructive: true,
+                        onConfirm: () => declineRequest(request.id),
+                      })
+                    }
+                    style={{ flex: 1, paddingVertical: 11, borderColor: C.dangerBorder }}
+                    textStyle={{ fontSize: 14, color: C.dangerInk }}
+                  />
                   <Btn icon="check" label={tr('common.accept')} onPress={() => acceptRequest(request.id)} style={{ flex: 1, paddingVertical: 11 }} textStyle={{ fontSize: 14 }} />
                 </View>
               ) : request.status === 'declined' ? (

@@ -120,9 +120,18 @@ export default function Thread() {
     const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
     if (!res.canceled && res.assets[0]) sendImage(res.assets[0].uri);
   };
+  const confirmUnblock = () => {
+    // unblocking re-opens messaging both ways — confirm, a mis-tap shouldn't do that
+    showConfirm({
+      title: tr('blocked.unblockConfirmTitle', { name: meta.otherName }),
+      message: tr('blocked.unblockConfirmBody'),
+      confirmLabel: tr('thread.unblock'),
+      onConfirm: () => unblockUser(meta.otherId),
+    });
+  };
   const toggleBlock = () => {
     if (iBlk) {
-      unblockUser(meta.otherId);
+      confirmUnblock();
       return;
     }
     showConfirm({
@@ -158,7 +167,18 @@ export default function Thread() {
   const rate = (n: number) => {
     if (!reviewListing) return;
     startRateForListing(reviewListing.id, n);
-    router.push('/rate');
+    router.navigate('/rate'); // navigate (not push) — a double star-tap must not stack two forms
+  };
+  // share-location is a slow async (GPS fix) — lock the button while in flight
+  const [sharing, setSharing] = useState(false);
+  const onShareLoc = async () => {
+    if (sharing) return;
+    setSharing(true);
+    try {
+      await shareLoc();
+    } finally {
+      setSharing(false);
+    }
   };
   const confirmDeleteMsg = (msgId: string) => {
     Vibration.vibrate(12); // tactile "pop" the instant the menu appears
@@ -201,12 +221,11 @@ export default function Thread() {
               <VerifiedBadge size={14} />
             </Pressable>
           </View>
-          {!blocked || iBlk ? (
-            <Pressable onPress={toggleBlock} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.pill, borderWidth: 1, borderColor: iBlk ? C.accent : C.line }}>
-              <Icon name="shield" size={14} color={iBlk ? C.accent : C.muted} />
-              <Text style={{ fontSize: 12, fontWeight: '700', color: iBlk ? C.accent : C.muted }}>{iBlk ? tr('thread.unblock') : tr('thread.block')}</Text>
-            </Pressable>
-          ) : null}
+          {/* always available — someone blocked BY the other party can still block back */}
+          <Pressable onPress={toggleBlock} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.pill, borderWidth: 1, borderColor: iBlk ? C.accent : C.line }}>
+            <Icon name="shield" size={14} color={iBlk ? C.accent : C.muted} />
+            <Text style={{ fontSize: 12, fontWeight: '700', color: iBlk ? C.accent : C.muted }}>{iBlk ? tr('thread.unblock') : tr('thread.block')}</Text>
+          </Pressable>
         </View>
         {/* product card shows only for a live (pending/accepted) request — see headerListing.
             Hidden once the item is given (taken), the listing deleted, or the request gone. */}
@@ -241,7 +260,11 @@ export default function Thread() {
       <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 10 }}>
         {msgs.map((m, i) => {
           const mine = m.from === s.currentUserId;
-          const url = m.text.match(/https?:\/\/\S+/)?.[0];
+          // ONLY the app's own share format is a trusted, tappable location pin — any
+          // other URL renders as plain text. (Otherwise a scammer could send any
+          // phishing link and the UI would brand it "Open live location".)
+          const rawUrl = m.text.match(/https?:\/\/\S+/)?.[0];
+          const url = rawUrl && /^https:\/\/maps\.google\.com\/\?q=-?\d+(\.\d+)?,-?\d+(\.\d+)?$/.test(rawUrl) ? rawUrl : undefined;
           const fg = mine ? '#fff' : C.ink;
           const prev = msgs[i - 1];
           const showDay = !prev || dayStamp(prev.ts) !== dayStamp(m.ts);
@@ -270,7 +293,7 @@ export default function Thread() {
               ) : (
                 <Pressable
                   disabled={!url && !mine}
-                  onPress={() => url && Linking.openURL(url)}
+                  onPress={() => url && Linking.openURL(url).catch(() => {})}
                   onLongPress={mine ? () => confirmDeleteMsg(m.id) : undefined}
                   delayLongPress={180}
                   style={({ pressed }) => ({
@@ -305,7 +328,7 @@ export default function Thread() {
           );
         })}
         {canShareLoc && !locShared && (
-          <Btn icon="pin" label={tr('thread.shareLocation')} variant="accentOutline" onPress={shareLoc} style={{ alignSelf: 'flex-start', paddingVertical: 9, paddingHorizontal: 14 }} textStyle={{ fontSize: 12.5 }} />
+          <Btn icon="pin" label={tr('thread.shareLocation')} variant="accentOutline" onPress={onShareLoc} disabled={sharing} style={{ alignSelf: 'flex-start', paddingVertical: 9, paddingHorizontal: 14 }} textStyle={{ fontSize: 12.5 }} />
         )}
       </ScrollView>
 
@@ -358,7 +381,7 @@ export default function Thread() {
             <Text style={{ fontSize: 13, color: C.muted, textAlign: 'center' }}>
               {iBlk ? tr('thread.blockedNotice', { name: meta.otherName }) : tr('thread.blockedByOther', { name: meta.otherName })}
             </Text>
-            {iBlk ? <Btn icon="shield" label={tr('thread.unblock')} variant="outline" onPress={() => unblockUser(meta.otherId)} /> : null}
+            {iBlk ? <Btn icon="shield" label={tr('thread.unblock')} variant="outline" onPress={confirmUnblock} /> : null}
           </View>
         ) : pendingChat ? (
           <View style={{ gap: 10, paddingVertical: 4 }}>
